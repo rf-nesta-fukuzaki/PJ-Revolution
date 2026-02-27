@@ -1,0 +1,13 @@
+- Canvas - Title (InstanceID: 49082) | Pos: (486.00, 273.50, 0.00) | State: Active
+  - TitleScreenUI (InstanceID: 49766) | Pos: (-960.00, -539.67, 0.00) | State: Active
+  - Background (InstanceID: 49684) | Pos: (0.00, 0.00, 0.00) | State: Active
+  - TitleLogo (InstanceID: 49810) | Pos: (0.00, 440.12, 0.00) | State: Active [TMP_Text: Cozy Cave Crew]
+  - Subtitle (InstanceID: 48966) | Pos: (0.00, 360.12, 0.00) | State: Active [TMP_Text: 協力洞窟探検サバイバル]
+  - ButtonGroup (InstanceID: 49434) | Pos: (0.00, -30.00, 0.00) | State: Active
+    - StartButton (InstanceID: 49318) | Pos: (0.00, 90.00, 0.00) | State: Active
+      - Text (InstanceID: 49714) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: ゲーム開始]
+    - OptionsButton (InstanceID: 49368) | Pos: (0.00, 0.00, 0.00) | State: Active
+      - Text (InstanceID: 48834) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: オプション]
+    - QuitButton (InstanceID: 48740) | Pos: (0.00, -90.00, 0.00) | State: Active
+      - Text (TMP) (InstanceID: 49454) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: ゲーム終了]
+  - VersionText (InstanceID: 49824) | Pos: (939.78, -520.12, 0.00) | State: Active [TMP_Text: Early Access v0.1]

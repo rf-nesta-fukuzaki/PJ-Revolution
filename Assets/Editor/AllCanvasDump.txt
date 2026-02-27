@@ -1,0 +1,71 @@
+=== CANVAS DUMP START ===
+
+Canvas Name: Canvas - HUD
+Active: False
+Sort Order: 0
+TMP_Text Contents:
+  - TorchStatusText: "ああああああ\n"
+  - ConnectStatus: "aaaaaaあああああああああ\n"
+  - Interact: "ああああ"
+  - Downed: "New Text"
+  - HPText: "ああああああ\n"
+  - OxygenText: "ああああああ\n"
+  - HungerText: "ああああああ\n"
+  - FuelText: "燃料"
+
+Canvas Name: Canvas - Result
+Active: False
+Sort Order: 5
+TMP_Text Contents:
+  - TitleText: "脱出成功"
+  - TimeText: "ああああああ\n"
+  - GemText: "ああああああ\n"
+  - Text (TMP): "ああああああ\n"
+  - Text (TMP): "ああああああ\n"
+  - Text: "終了"
+
+Canvas Name: Canvas - Title
+Active: True
+Sort Order: 10
+TMP_Text Contents:
+  - TitleLogo: "Cozy Cave Crew"
+  - Subtitle: "協力洞窟探検サバイバル"
+  - Text: "ゲーム開始"
+  - Text: "オプション"
+  - Text (TMP): "ゲーム終了"
+  - VersionText: "Early Access v0.1"
+
+Canvas Name: Canvas - CosmeticShop
+Active: False
+Sort Order: 5
+TMP_Text Contents:
+  - GemCountText: ""
+
+Canvas Name: Canvas - Options
+Active: False
+Sort Order: 20
+TMP_Text Contents:
+  - OptionsTitle: "オプション"
+  - Text: "マスター音量"
+  - Text: "マウス感度"
+  - Text: "画面モード"
+  - Text: "解像度"
+  - Text: "適用"
+  - Text: "戻る"
+
+Canvas Name: Canvas - CosmeticShop
+Active: False
+Sort Order: 0
+TMP_Text Contents: None
+
+Canvas Name: Canvas - Lobby
+Active: False
+Sort Order: 10
+TMP_Text Contents:
+  - LobbyTitle: "ロビー"
+  - Text: "ソロで開始"
+  - Text: "ホストで開始"
+  - Text: "参加"
+  - Text: "戻る"
+  - StatusText: "接続待機中..."
+=== CANVAS DUMP END ===
