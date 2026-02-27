@@ -418,6 +418,7 @@ GameObject:
   - component: {fileID: 949002330}
   - component: {fileID: 949002329}
   - component: {fileID: 949002328}
+  - component: {fileID: 949002333}
   m_Layer: 0
   m_Name: CaveSystem
   m_TagString: Untagged
@@ -455,9 +456,13 @@ MonoBehaviour:
   crystalDensity: 15
   foodDensity: 8
   mushroomDensity: 6
-  crystalPrefabs: []
-  foodPrefab: {fileID: 0}
-  mushroomPrefab: {fileID: 0}
+  crystalPrefabs:
+  - {fileID: 6067396198288509339, guid: 6e8996aa7924c489ab333821323f9f00, type: 3}
+  - {fileID: 1133399849730174625, guid: 5abd7cc981fa24e93bd458bfa55c1517, type: 3}
+  - {fileID: 1133399849730174625, guid: 59d2baa5c9ba1454896be6cb03e7aa9e, type: 3}
+  - {fileID: 1133399849730174625, guid: 1fb0af9f7519c415a820e8d3b7371529, type: 3}
+  foodPrefab: {fileID: 7905170012910929621, guid: 28ad9378423b242918da7cd9cf843424, type: 3}
+  mushroomPrefab: {fileID: 7905170012910929621, guid: 4c975a4d34444400da732bce170519b6, type: 3}
   startExcludeRadius: 12
   minSpacing: 3
   maxCrystals: 80
@@ -475,17 +480,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ffbcdc2e443ef4128bce0f0877174a52, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CaveGenerator
-  caveGenerationMode: 0
-  gridWidth: 80
-  gridHeight: 80
-  cellSize: 1
-  wallDensity: 47
-  smoothingIterations: 5
-  randomSeed: 0
-  startAreaRadius: 5
-  floorMesh: {fileID: 0}
-  ceilingMesh: {fileID: 0}
-  wallMesh: {fileID: 0}
   chunkCountX: 8
   chunkCountY: 4
   chunkCountZ: 8
@@ -499,7 +493,7 @@ MonoBehaviour:
     seed: 0
   startRadius: 8
   goalRadius: 6
-  caveMaterial: {fileID: 0}
+  caveMaterial: {fileID: 2100000, guid: 021751b236b40470ea87144931d16033, type: 2}
   showGenerationTime: 1
 --- !u!114 &949002331
 MonoBehaviour:
@@ -528,6 +522,25 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &949002333
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 949002327}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37ffc16868af742f9b15d7909497a7e3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BatSpawner
+  _maxBats: 5
+  _minDistanceBetweenBats: 10
+  _safeRadiusFromStart: 20
+  _batPrefab: {fileID: 1049663417583727117, guid: d2b64ca5ff5474c6c92364f0b0e73f48, type: 3}
+  _caveGenerator: {fileID: 949002330}
+  _debugSpawnedCount: 0
+  _debugPlayerCount: 0
 --- !u!1 &1050530134
 GameObject:
   m_ObjectHideFlags: 0
@@ -816,6 +829,7 @@ GameObject:
   - component: {fileID: 1916425183}
   - component: {fileID: 1916425182}
   - component: {fileID: 1916425197}
+  - component: {fileID: 1916425198}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -1250,7 +1264,7 @@ CapsuleCollider:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1916425181}
-  m_Material: {fileID: 0}
+  m_Material: {fileID: 2048522624}
   m_IncludeLayers:
     serializedVersion: 2
     m_Bits: 0
@@ -1339,6 +1353,23 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
+--- !u!114 &1916425198
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1916425181}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f9541de87605f4055b799ade47b81065, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SurvivalStats
+  decayOxygen: 2
+  decayHunger: 1
+  damageRate: 5
+  depthThreshold: -20
+  depthOxygenMultiplier: 1.5
 --- !u!1 &1936119512
 GameObject:
   m_ObjectHideFlags: 0
@@ -1444,6 +1475,19 @@ Transform:
   - {fileID: 1403675999}
   m_Father: {fileID: 1916425196}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!134 &2048522624
+PhysicsMaterial:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: 
+  serializedVersion: 2
+  m_DynamicFriction: 0.6
+  m_StaticFriction: 0.6
+  m_Bounciness: 0
+  m_FrictionCombine: 0
+  m_BounceCombine: 0
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
