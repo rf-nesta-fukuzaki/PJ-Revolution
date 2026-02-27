@@ -45,7 +45,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c791fb57771f0498781b34c56cddbee1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlacedResourceItem
-  itemType: 0
+  itemType: 1
   restoreAmount: 30
 --- !u!1 &8379639440446259316
 GameObject:
