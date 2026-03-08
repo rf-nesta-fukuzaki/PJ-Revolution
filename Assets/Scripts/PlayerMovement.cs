@@ -74,6 +74,10 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private float _debugSlopeAngle;
     [SerializeField] private float _debugFriction;
 
+    [Header("デバッグ（ジャンプ）")]
+    [Tooltip("オンにすると接地判定・ジャンプに関するログを Console に出力する")]
+    [SerializeField] private bool _debugJump = false;
+
     // ──────── Internal ────────
 
     private Rigidbody          _rb;
@@ -186,14 +190,43 @@ public class PlayerMovement : MonoBehaviour
     /// </summary>
     private bool PerformGroundCheck(out Vector3 avgNormal, out float slopeAngle)
     {
-        float radius   = _capsule != null ? _capsule.radius * 0.85f : _groundCheckRadius;
-        Vector3 origin = transform.position + Vector3.up * (radius + 0.05f);
+        float radius;
+        Vector3 origin;
+
+        if (_capsule != null)
+        {
+            // CapsuleCollider.center のオフセットを考慮してカプセル底面中心をワールド空間で算出する。
+            // center を無視すると、プレハブの pivot が足元にある場合でもキャストの始点が
+            // カプセル内部の中央付近になり、地面まで届かないことがある。
+            Vector3 capsuleWorldCenter = transform.TransformPoint(_capsule.center);
+            float halfHeightNoHemi = Mathf.Max(0f, _capsule.height * 0.5f - _capsule.radius);
+            Vector3 capsuleBottom = capsuleWorldCenter + Vector3.down * halfHeightNoHemi;
+
+            radius = _capsule.radius * 0.9f;
+            // カプセル底面の半球中心から少し内側（上方）を始点にすることで
+            // 自分自身の Collider 内部からキャストを開始し、下方向を安定的に検出する。
+            origin = capsuleBottom + Vector3.up * 0.05f;
+        }
+        else
+        {
+            radius = _groundCheckRadius;
+            origin = transform.position + Vector3.up * (radius + 0.05f);
+        }
+
+        // プレイヤー自身のレイヤーを除外することで自 Collider へのヒットを防ぐ
+        int effectiveLayer = _groundLayer & ~(1 << gameObject.layer);
 
         bool mainHit = Physics.SphereCast(
             origin, radius, Vector3.down, out RaycastHit mainInfo,
-            _groundCheckDistance + 0.05f, _groundLayer, QueryTriggerInteraction.Ignore);
+            _groundCheckDistance + 0.05f, effectiveLayer, QueryTriggerInteraction.Ignore);
+
+        if (_debugJump)
+            Debug.Log($"[Jump] isGrounded={IsGrounded}, SphereCast hit={mainHit}, " +
+                      $"hitCollider={mainInfo.collider?.name ?? "none"}, origin={origin}");
 
         // 4方向サブ Raycast（前後左右にオフセット）
+        // サブ ray の始点もカプセル底面から算出することで一貫性を保つ
+        Vector3 subRayOrigin = origin + Vector3.up * 0.05f; // 少し上から開始
         Vector3[] offsets =
         {
              transform.forward * radius * 0.5f,
@@ -207,9 +240,9 @@ public class PlayerMovement : MonoBehaviour
 
         foreach (var offset in offsets)
         {
-            Vector3 rayOrigin = transform.position + Vector3.up * 0.1f + offset;
+            Vector3 rayOrigin = subRayOrigin + offset;
             if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit subHit,
-                _groundCheckDistance + 0.3f, _groundLayer, QueryTriggerInteraction.Ignore))
+                _groundCheckDistance + 0.3f, effectiveLayer, QueryTriggerInteraction.Ignore))
             {
                 normals.Add(subHit.normal);
             }
@@ -383,7 +416,12 @@ public class PlayerMovement : MonoBehaviour
         _jumpRequested = false;
 
         // コヨーテタイム内のみジャンプ可
-        if (_coyoteTimer <= 0f) return;
+        if (_coyoteTimer <= 0f)
+        {
+            if (_debugJump)
+                Debug.Log($"[Jump] Jump blocked: coyoteTimer={_coyoteTimer:F3}, IsGrounded={IsGrounded}");
+            return;
+        }
 
         _coyoteTimer  = 0f;
         _jumpCooldown = 0.1f;
@@ -392,6 +430,10 @@ public class PlayerMovement : MonoBehaviour
         Vector3 v = _rb.linearVelocity;
         v.y = 0f;
         _rb.linearVelocity = v;
+
+        if (_debugJump)
+            Debug.Log($"[Jump] Executing jump, force={_jumpForce}, velocity before={_rb.linearVelocity}");
+
         _rb.AddForce(Vector3.up * _jumpForce, ForceMode.VelocityChange);
     }
 
@@ -429,8 +471,21 @@ public class PlayerMovement : MonoBehaviour
 
     private void OnDrawGizmosSelected()
     {
-        float   radius = _capsule != null ? _capsule.radius * 0.85f : _groundCheckRadius;
-        Vector3 origin = transform.position + Vector3.up * (radius + 0.05f);
+        float radius;
+        Vector3 origin;
+        if (_capsule != null)
+        {
+            Vector3 capsuleWorldCenter = transform.TransformPoint(_capsule.center);
+            float halfHeightNoHemi = Mathf.Max(0f, _capsule.height * 0.5f - _capsule.radius);
+            Vector3 capsuleBottom = capsuleWorldCenter + Vector3.down * halfHeightNoHemi;
+            radius = _capsule.radius * 0.9f;
+            origin = capsuleBottom + Vector3.up * 0.05f;
+        }
+        else
+        {
+            radius = _groundCheckRadius;
+            origin = transform.position + Vector3.up * (radius + 0.05f);
+        }
 
         // メイン SphereCast の当たり判定
         Gizmos.color = IsGrounded ? Color.green : (IsOnSteepSlope ? Color.yellow : Color.red);
