@@ -69,6 +69,7 @@ public class PlayerInputController : MonoBehaviour
     private void HandleJump()
     {
         if (!Input.GetButtonDown("Jump")) return;
+        Debug.Log("[Jump] Jump input detected");
         playerMovement.Jump();
     }
 
