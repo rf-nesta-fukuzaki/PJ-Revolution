@@ -48,6 +48,7 @@ public class PlayerInputController : MonoBehaviour
         HandleMovement();
         HandleJump();
         HandleCrouch();
+        HandleProne();
     }
 
     // ─────────────── 状態チェック ───────────────
@@ -80,6 +81,12 @@ public class PlayerInputController : MonoBehaviour
             playerMovement.SetCrouch(true);
         else if (Input.GetKeyUp(KeyCode.LeftControl))
             playerMovement.SetCrouch(false);
+    }
+
+    private void HandleProne()
+    {
+        if (!Input.GetKeyDown(KeyCode.C)) return;
+        playerMovement.SetProne(!playerMovement.IsProne);
     }
 
     private void HandleTorch()
