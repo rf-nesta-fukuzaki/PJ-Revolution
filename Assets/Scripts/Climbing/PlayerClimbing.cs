@@ -24,6 +24,10 @@ public class PlayerClimbing : MonoBehaviour
 {
     // ─────────────── Inspector ───────────────
 
+    [Header("ロープ所持")]
+    [Tooltip("ゲーム開始時の所持ロープ数")]
+    [SerializeField] private int _initialRopeCount = 3;
+
     [Header("登攀設定")]
     [Tooltip("ロープを登る速度 (m/s)")]
     [SerializeField] private float climbSpeed = 3f;
@@ -46,8 +50,11 @@ public class PlayerClimbing : MonoBehaviour
 
     // ─────────────── 公開プロパティ ───────────────
 
-    /// <summary>ロープアイテムを所持しているか。</summary>
-    public bool HasRope { get; private set; } = true;
+    /// <summary>所持ロープ数。</summary>
+    public int HasRope { get; private set; }
+
+    /// <summary>所持ロープ数（HUD 表示用エイリアス）。</summary>
+    public int RopeCount => HasRope;
 
     // ─────────────── 内部状態 ───────────────
 
@@ -68,6 +75,7 @@ public class PlayerClimbing : MonoBehaviour
         _rb            = GetComponent<Rigidbody>();
         _stateManager  = GetComponent<PlayerStateManager>();
         _survivalStats = GetComponent<SurvivalStats>();
+        HasRope        = _initialRopeCount;
 
         if (_stateManager == null)
             Debug.LogError("[PlayerClimbing] PlayerStateManager が見つかりません。");
@@ -170,11 +178,11 @@ public class PlayerClimbing : MonoBehaviour
         Debug.Log($"[PlayerClimbing] {gameObject.name} が登攀開始");
     }
 
-    /// <summary>ロープアイテムを消費する。</summary>
-    public void ConsumeRope() => HasRope = false;
+    /// <summary>ロープを 1 本消費する。0 本のときは無操作。</summary>
+    public void ConsumeRope() { if (HasRope > 0) HasRope--; }
 
-    /// <summary>ロープアイテムを付与する。</summary>
-    public void GiveRope() => HasRope = true;
+    /// <summary>ロープを 1 本付与する。</summary>
+    public void GiveRope() => HasRope++;
 
     // ─────────────── 内部処理 ───────────────
 

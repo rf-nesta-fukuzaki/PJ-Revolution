@@ -32,12 +32,22 @@ public class RopeController : MonoBehaviour, IInteractable
     [Tooltip("ロープの描画幅 (LineRenderer の Width)")]
     [SerializeField] private float ropeWidth = 0.05f;
 
+    [Header("回収設定")]
+    [Tooltip("長押し判定の閾値（秒）")]
+    [SerializeField] private float _holdThreshold = 0.8f;
+
     // ─────────────── 状態 ───────────────
 
     private bool _isDeployed;
 
     /// <summary>ロープが設置済みかどうか。</summary>
     public bool IsDeployed => _isDeployed;
+
+    // ─────────────── 長押し判定 ───────────────
+
+    private float          _holdTimer;
+    private bool           _isHolding;
+    private PlayerClimbing _playerClimbing; // 最後にインタラクトしたプレイヤー（プロンプト表示・操作に使用）
 
     // ─────────────── 内部参照 ───────────────
 
@@ -59,6 +69,32 @@ public class RopeController : MonoBehaviour, IInteractable
     private void Start()
     {
         UpdateVisuals(false);
+        // シングルプレイ想定：シーン上のプレイヤーを一度だけキャッシュしてプロンプト表示に使用
+        _playerClimbing = FindFirstObjectByType<PlayerClimbing>();
+    }
+
+    private void Update()
+    {
+        if (!_isHolding || _playerClimbing == null) return;
+
+        if (Input.GetKey(KeyCode.E))
+        {
+            _holdTimer += Time.deltaTime;
+            if (_holdTimer >= _holdThreshold)
+                RetrieveRope();
+        }
+        else if (Input.GetKeyUp(KeyCode.E))
+        {
+            // 短押し：登攀開始
+            if (!_playerClimbing.IsClimbing)
+                _playerClimbing.StartClimbing(this);
+            ResetHold();
+        }
+        else
+        {
+            // フォーカス喪失などでキーが離れた場合のリセット
+            ResetHold();
+        }
     }
 
     // ─────────────── ビジュアル更新 ───────────────
@@ -99,9 +135,11 @@ public class RopeController : MonoBehaviour, IInteractable
             return;
         }
 
+        _playerClimbing = climbing;
+
         if (!_isDeployed)
         {
-            if (!climbing.HasRope)
+            if (climbing.RopeCount <= 0)
             {
                 Debug.Log("[RopeController] ロープアイテムが必要です");
                 return;
@@ -120,15 +158,21 @@ public class RopeController : MonoBehaviour, IInteractable
                 return;
             }
 
-            climbing.StartClimbing(this);
+            // 長押し判定を開始（短押し → 登る、長押し → 回収）
+            _holdTimer = 0f;
+            _isHolding = true;
         }
     }
 
     public string GetPromptText()
     {
-        return _isDeployed
-            ? "[E] ロープを登る"
-            : "[E] ロープを設置する（ロープアイテムが必要）";
+        if (_isDeployed)
+            return "[ E ] 登る　[ E長押し ] 回収";
+
+        if (_playerClimbing != null && _playerClimbing.RopeCount > 0)
+            return "[ E ] ロープを設置";
+
+        return "";
     }
 
     // ─────────────── 公開プロパティ ───────────────
@@ -141,6 +185,23 @@ public class RopeController : MonoBehaviour, IInteractable
         anchorPoint != null
             ? anchorPoint.position
             : transform.position + Vector3.up * 5f;
+
+    // ─────────────── 内部処理 ───────────────
+
+    private void RetrieveRope()
+    {
+        _isDeployed = false;
+        UpdateVisuals(false);
+        _playerClimbing?.GiveRope();
+        Debug.Log("[RopeController] ロープを回収しました");
+        ResetHold();
+    }
+
+    private void ResetHold()
+    {
+        _isHolding = false;
+        _holdTimer  = 0f;
+    }
 
     // ─────────────── Gizmo ───────────────
 
