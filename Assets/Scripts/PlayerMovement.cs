@@ -70,6 +70,13 @@ public class PlayerMovement : MonoBehaviour
     [Tooltip("しゃがみ / 立ち上がりの遷移速度")]
     [SerializeField] private float _crouchTransitionSpeed = 10f;
 
+    [Header("匍匐")]
+    [Tooltip("匍匐中の移動速度倍率")]
+    [SerializeField] private float _proneSpeedMultiplier = 0.2f;
+
+    [Tooltip("匍匐時の CapsuleCollider height（Z軸方向長さ）")]
+    [SerializeField] private float _proneHeight = 0.5f;
+
     [Header("落下ダメージ")]
     [Tooltip("この落下速度以下はノーダメージ (m/s)")]
     [SerializeField] private float _safeFallSpeed = 10f;
@@ -116,6 +123,7 @@ public class PlayerMovement : MonoBehaviour
     private float   _stepOffset;         // HandleStepClimb が発生させた今 FixedUpdate の上昇量
 
     private bool    _isCrouching;
+    private bool    _isProne;
     private float   _originalHeight;
     private Vector3 _originalCenter;
 
@@ -134,6 +142,9 @@ public class PlayerMovement : MonoBehaviour
 
     /// <summary>しゃがみ中か</summary>
     public bool IsCrouching => _isCrouching;
+
+    /// <summary>匍匐中か</summary>
+    public bool IsProne => _isProne;
 
     /// <summary>空中にいる間に記録した最大落下速度（HUD 表示用）</summary>
     public float MaxFallSpeed => _maxFallSpeed;
@@ -370,7 +381,8 @@ public class PlayerMovement : MonoBehaviour
         float control = IsGrounded ? 1f : _airControlMultiplier;
         if (IsOnSteepSlope) control = _airControlMultiplier;
 
-        float   crouchMultiplier  = _isCrouching ? _crouchSpeedMultiplier : 1f;
+        float   crouchMultiplier  = _isProne     ? _proneSpeedMultiplier  :
+                                    _isCrouching ? _crouchSpeedMultiplier : 1f;
         float   effectiveSpeed    = _moveSpeed * slopeSpeedMultiplier * control * crouchMultiplier;
         Vector3 targetVel         = worldDir * effectiveSpeed;
         Vector3 currentHorizontal = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
@@ -476,8 +488,8 @@ public class PlayerMovement : MonoBehaviour
         if (!_jumpRequested) return;
         _jumpRequested = false;
 
-        // しゃがみ中はジャンプ不可
-        if (_isCrouching) return;
+        // しゃがみ中・匍匐中はジャンプ不可
+        if (_isCrouching || _isProne) return;
 
         // コヨーテタイム内のみジャンプ可
         if (_coyoteTimer <= 0f)
@@ -522,7 +534,8 @@ public class PlayerMovement : MonoBehaviour
 
     private void UpdateCrouchTransition()
     {
-        if (_capsule == null) return;
+        // 匍匐中はカプセル設定を SetProne() が直接管理するため Lerp をスキップ
+        if (_capsule == null || _isProne) return;
 
         float targetHeight = _isCrouching ? _crouchHeight : _originalHeight;
         float newHeight    = Mathf.Lerp(_capsule.height, targetHeight,
@@ -561,6 +574,68 @@ public class PlayerMovement : MonoBehaviour
     /// しゃがみ状態を設定する。PlayerInputController から呼ぶ。
     /// </summary>
     public void SetCrouch(bool crouch) => _isCrouching = crouch;
+
+    /// <summary>
+    /// 匍匐状態を設定する。PlayerInputController から呼ぶ。
+    /// - prone=true:  しゃがみ中のみ移行可能。CapsuleCollider を Z 軸横倒しに変更。
+    /// - prone=false: 頭上チェックで天井が低い場合は解除を拒否。解除後はしゃがみを維持。
+    /// </summary>
+    public void SetProne(bool prone)
+    {
+        if (_capsule == null) return;
+
+        if (prone)
+        {
+            if (!_isCrouching) return; // しゃがみ中のみ移行可能
+
+            _isProne           = true;
+            _capsule.direction = 2;          // Z軸（横倒し）
+            _capsule.height    = _proneHeight;
+
+            // center.y をカプセル半径に合わせて地面に貼り付ける
+            Vector3 proneCenter = _originalCenter;
+            proneCenter.y       = _capsule.radius;
+            _capsule.center     = proneCenter;
+
+            Debug.Log("[PlayerMovement] 匍匐開始");
+        }
+        else
+        {
+            // 頭上に十分なスペースがなければ解除を拒否
+            if (!HasClearanceForCrouch())
+            {
+                Debug.Log("[PlayerMovement] 頭上に障害物があるため匍匐解除不可");
+                return;
+            }
+
+            _isProne           = false;
+            _isCrouching       = true;       // しゃがみを維持（即立ちは避ける）
+            _capsule.direction = 1;          // Y軸に戻す
+            // UpdateCrouchTransition() が _crouchHeight へスムーズに遷移する
+
+            Debug.Log("[PlayerMovement] 匍匐解除（しゃがみへ移行）");
+        }
+    }
+
+    /// <summary>
+    /// 匍匐状態からしゃがみへ戻るための頭上クリアランスを確認する。
+    /// _crouchHeight 分のスペースがあれば true を返す。
+    /// </summary>
+    private bool HasClearanceForCrouch()
+    {
+        if (_capsule == null) return true;
+
+        float radius   = _capsule.radius * 0.9f;
+        Vector3 origin = transform.position + Vector3.up * radius;
+        float distance = _crouchHeight - radius * 2f;
+
+        if (distance <= 0f) return true;
+
+        int effectiveLayer = _groundLayer & ~(1 << gameObject.layer);
+        return !Physics.SphereCast(
+            origin, radius, Vector3.up, out _,
+            distance, effectiveLayer, QueryTriggerInteraction.Ignore);
+    }
 
     /// <summary>
     /// しゃがみによるカメラ Y オフセットを返す（通常 0、しゃがみ中は負値）。
