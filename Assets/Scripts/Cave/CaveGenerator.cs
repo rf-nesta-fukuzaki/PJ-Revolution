@@ -184,18 +184,19 @@ public class CaveGenerator : MonoBehaviour
         }
 
         // Apply forced cavities
-        ApplyForcedCavity(GetStartWorldPos3D(), startRadius);
-        ApplyForcedCavity(GetGoalWorldPos3D(),  goalRadius);
+        CarveSphericalCavity(GetStartWorldPos3D(), startRadius);
+        CarveSphericalCavity(GetGoalWorldPos3D(),  goalRadius);
 
-        // Rebuild mesh after applying forced cavities
+        // TunnelCarver が参照するため RebuildMesh 前に座標を確定する
+        StartWorldPosition = GetStartWorldPos3D();
+        GoalCenterPosition = GetGoalWorldPos3D();
+
+        // トンネル・大部屋の彫刻（同 GameObject に TunnelCarver があれば実行）
+        GetComponent<TunnelCarver>()?.CarveTunnels(UsedSeed);
+
+        // 全彫刻完了後に一括で Mesh を再構築
         foreach (var chunk in _chunks)
             chunk.RebuildMesh(noiseSettings.isoLevel);
-
-        // スタート空洞のワールド座標を確定
-        StartWorldPosition = GetStartWorldPos3D();
-
-        // ゴール空洞のワールド座標を確定（EscapeGate 自動配置が参照する）
-        GoalCenterPosition = GetGoalWorldPos3D();
 
         if (sw != null)
         {
@@ -231,21 +232,42 @@ public class CaveGenerator : MonoBehaviour
         return chunk;
     }
 
-    void ApplyForcedCavity(Vector3 worldCenter, float radius)
+    /// <summary>
+    /// 指定ワールド座標を中心に球形空洞を彫る。
+    /// TunnelCarver からも呼び出される。
+    /// </summary>
+    public void CarveSphericalCavity(Vector3 worldCenter, float radius)
     {
-        float isoLevel = noiseSettings.isoLevel;
+        float isoLevel    = noiseSettings.isoLevel;
+        float carveValue  = isoLevel - 0.1f;
+        float chunkExtent = CaveChunk.ChunkSize * cellSize3D;
 
         foreach (var chunk in _chunks)
         {
             Vector3 chunkWorldPos = chunk.transform.position;
 
-            for (int lx = 0; lx <= CaveChunk.ChunkSize; lx++)
-            for (int ly = 0; ly <= CaveChunk.ChunkSize; ly++)
-            for (int lz = 0; lz <= CaveChunk.ChunkSize; lz++)
+            // チャンク AABB と球の早期棄却
+            Vector3 nearest = new Vector3(
+                Mathf.Clamp(worldCenter.x, chunkWorldPos.x, chunkWorldPos.x + chunkExtent),
+                Mathf.Clamp(worldCenter.y, chunkWorldPos.y, chunkWorldPos.y + chunkExtent),
+                Mathf.Clamp(worldCenter.z, chunkWorldPos.z, chunkWorldPos.z + chunkExtent));
+            if (Vector3.Distance(nearest, worldCenter) > radius) continue;
+
+            Vector3 localCenter = worldCenter - chunkWorldPos;
+            int minLx = Mathf.Max(0, Mathf.FloorToInt((localCenter.x - radius) / cellSize3D));
+            int maxLx = Mathf.Min(CaveChunk.ChunkSize, Mathf.CeilToInt((localCenter.x + radius) / cellSize3D));
+            int minLy = Mathf.Max(0, Mathf.FloorToInt((localCenter.y - radius) / cellSize3D));
+            int maxLy = Mathf.Min(CaveChunk.ChunkSize, Mathf.CeilToInt((localCenter.y + radius) / cellSize3D));
+            int minLz = Mathf.Max(0, Mathf.FloorToInt((localCenter.z - radius) / cellSize3D));
+            int maxLz = Mathf.Min(CaveChunk.ChunkSize, Mathf.CeilToInt((localCenter.z + radius) / cellSize3D));
+
+            for (int lx = minLx; lx <= maxLx; lx++)
+            for (int ly = minLy; ly <= maxLy; ly++)
+            for (int lz = minLz; lz <= maxLz; lz++)
             {
                 Vector3 pointWorld = chunkWorldPos + new Vector3(lx, ly, lz) * cellSize3D;
                 if (Vector3.Distance(pointWorld, worldCenter) <= radius)
-                    chunk.SetScalar(lx, ly, lz, Mathf.Min(chunk.GetScalar(lx, ly, lz), isoLevel - 0.1f));
+                    chunk.SetScalar(lx, ly, lz, Mathf.Min(chunk.GetScalar(lx, ly, lz), carveValue));
             }
         }
     }
