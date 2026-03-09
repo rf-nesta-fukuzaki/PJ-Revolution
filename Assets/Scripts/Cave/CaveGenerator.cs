@@ -131,6 +131,13 @@ public class CaveGenerator : MonoBehaviour
     public void SetNetworkControlled(bool value) => _networkControlled = value;
 
     /// <summary>
+    /// シードオーバーライドを設定する。DailyChallenge からゲーム開始前に呼ぶ。
+    /// 0 以外の値を設定すると次回の Generate() でそのシードが使用される。
+    /// 0 を渡すとオーバーライドをクリアして通常の Inspector 設定に戻る。
+    /// </summary>
+    public void SetSeedOverride(int seed) => _overrideSeed = seed;
+
+    /// <summary>
     /// チャンク数を上書きする。DepthManager から深度遷移時に呼ぶ。
     /// 次回の Generate() / GenerateCave() で反映される。
     /// </summary>

@@ -234,7 +234,13 @@ public class GameManager : MonoBehaviour
         // ゲーム終了時（AllDowned / EscapeSuccess）はタイムスケールを 0 にして停止する。
         // DepthTransition はゲーム継続中なのでタイムスケールを変更しない。
         if (newState == GameState.AllDowned || newState == GameState.EscapeSuccess)
+        {
             Time.timeScale = 0f;
+
+            // デイリーチャレンジモードなら本日のベストスコアを更新する。
+            if (DailyChallenge.IsDailyMode)
+                DailyChallenge.SaveScore(ElapsedTime, CollectedGems);
+        }
 
         // Exploring 開始時はアップグレードを全コンポーネントに反映する。
         if (newState == GameState.Exploring)

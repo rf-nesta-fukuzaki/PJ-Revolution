@@ -307,6 +307,10 @@ public class TestSceneHUD : MonoBehaviour
         bool isSuccess = _gameState == GameState.EscapeSuccess;
         string title   = isSuccess ? "脱出成功！" : "ゲームオーバー...";
 
+        // デイリーチャレンジモードのときはタイトルに日付を付記する
+        if (DailyChallenge.IsDailyMode)
+            title = $"デイリーチャレンジ {DailyChallenge.GetDailyDateString()}";
+
         float blink = (Mathf.Sin(Time.unscaledTime * 3f) + 1f) * 0.5f;
         _resultTitleStyle.normal.textColor = isSuccess
             ? new Color(1f, 1f, 0.2f, 0.6f + blink * 0.4f)
@@ -317,10 +321,20 @@ public class TestSceneHUD : MonoBehaviour
         int minutes = (int)(_resultElapsedTime / 60f);
         int seconds = (int)(_resultElapsedTime % 60f);
         string body = $"探索時間: {minutes:D2}:{seconds:D2}\n宝石: {_resultGems} 個";
-        GUI.Label(new Rect(cx - 200f, cy - 10f, 400f, 60f), body, _resultBodyStyle);
+
+        // デイリーチャレンジモードのときはベストスコアを追記する
+        if (DailyChallenge.IsDailyMode)
+        {
+            var (bestTime, bestGems) = DailyChallenge.GetBestScore();
+            int bm = (int)(bestTime / 60f);
+            int bs = (int)(bestTime % 60f);
+            body += $"\n\nベスト: {bm:D2}:{bs:D2} / {bestGems} 個";
+        }
+
+        GUI.Label(new Rect(cx - 200f, cy - 10f, 400f, 80f), body, _resultBodyStyle);
 
         GUI.Label(
-            new Rect(cx - 200f, cy + 60f, 400f, 40f),
+            new Rect(cx - 200f, cy + 80f, 400f, 40f),
             "[ R ] リトライ　　[ Q ] 終了",
             _resultBodyStyle);
     }

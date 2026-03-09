@@ -20,6 +20,9 @@ public class TitleScreenUI : MonoBehaviour
     [Tooltip("「ゲーム開始」ボタン")]
     [SerializeField] private Button startButton;
 
+    [Tooltip("「デイリーチャレンジ」ボタン")]
+    [SerializeField] private Button dailyChallengeButton;
+
     [Tooltip("「オプション」ボタン")]
     [SerializeField] private Button optionsButton;
 
@@ -30,9 +33,10 @@ public class TitleScreenUI : MonoBehaviour
 
     private void Awake()
     {
-        if (startButton   != null) startButton.onClick.AddListener(OnStartClicked);
-        if (optionsButton != null) optionsButton.onClick.AddListener(OnOptionsClicked);
-        if (quitButton    != null) quitButton.onClick.AddListener(OnQuitClicked);
+        if (startButton          != null) startButton.onClick.AddListener(OnStartClicked);
+        if (dailyChallengeButton != null) dailyChallengeButton.onClick.AddListener(OnDailyChallengeClicked);
+        if (optionsButton        != null) optionsButton.onClick.AddListener(OnOptionsClicked);
+        if (quitButton           != null) quitButton.onClick.AddListener(OnQuitClicked);
     }
 
     private void OnEnable()
@@ -46,7 +50,19 @@ public class TitleScreenUI : MonoBehaviour
 
     private void OnStartClicked()
     {
+        DailyChallenge.IsDailyMode = false;
         UIFlowController.Instance?.GoTo(UIScreen.Lobby);
+    }
+
+    private void OnDailyChallengeClicked()
+    {
+        DailyChallenge.IsDailyMode = true;
+
+        // 本日のシードを CaveGenerator に設定してから直接ゲーム開始
+        var caveGen = UnityEngine.Object.FindFirstObjectByType<CaveGenerator>();
+        caveGen?.SetSeedOverride(DailyChallenge.GetDailySeed());
+
+        UIFlowController.Instance?.GoTo(UIScreen.Playing);
     }
 
     private void OnOptionsClicked()
