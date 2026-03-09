@@ -10,6 +10,7 @@ using UnityEngine;
 ///   2. スタート・ゴールを含む _roomCount 個の大部屋候補をランダム選定し球形空洞を彫る。
 ///   3. Prim 法で最小全域木（MST）を構築し、各辺を 0.5m ステップでトンネル補間する。
 ///   4. 追加で _extraTunnels 本のランダム辺を彫り、デッドエンドを減らす。
+///   5. 大部屋の一部から垂直シャフト（縦穴）を彫り、上下探索ルートを追加する。
 ///
 /// [設計制約]
 ///   - RebuildMesh は CaveGenerator が最後に一括で行うため本コンポーネントでは呼ばない。
@@ -36,6 +37,13 @@ public class TunnelCarver : MonoBehaviour
 
     [Tooltip("false にするとトンネル彫刻をスキップする（デバッグ用）")]
     [SerializeField] private bool  _enableTunnels = true;
+
+    [Header("垂直シャフト設定")]
+    [Tooltip("生成する垂直シャフト数（大部屋リストから選択）")]
+    [SerializeField] private int   _shaftCount  = 2;
+
+    [Tooltip("垂直シャフトの彫刻半径 (m)")]
+    [SerializeField] private float _shaftRadius = 1.5f;
 
     // ─── 公開 API ─────────────────────────────────────────────────
 
@@ -85,7 +93,10 @@ public class TunnelCarver : MonoBehaviour
             CarveTunnel(caveGen, rooms[a], rooms[b], isoLevel, rng);
         }
 
-        Debug.Log($"[TunnelCarver] 完了: 大部屋={rooms.Count}, MSTエッジ={mstEdges.Count}, 追加辺={_extraTunnels}");
+        // ── Step 6: 垂直シャフト（縦穴）────────────────────────────
+        CarveVerticalShafts(caveGen, rooms, rng);
+
+        Debug.Log($"[TunnelCarver] 完了: 大部屋={rooms.Count}, MSTエッジ={mstEdges.Count}, 追加辺={_extraTunnels}, シャフト={_shaftCount}");
     }
 
     // ─── 大部屋位置収集 ───────────────────────────────────────────
@@ -178,6 +189,52 @@ public class TunnelCarver : MonoBehaviour
             pos.y += ((float)rng.NextDouble() - 0.5f);
 
             CarvePoint(caveGen, pos, _tunnelRadius, isoLevel);
+        }
+    }
+
+    // ─── 垂直シャフト彫刻 ────────────────────────────────────────
+
+    /// <summary>
+    /// 大部屋リストから最大 _shaftCount 箇所を選択し、垂直シャフト（縦穴）を彫る。
+    /// 各シャフトは上下に chunkCountY * ChunkSize * cellSize * 0.3f の長さで伸び、
+    /// 端部には radius × 1.5 の広い空間を設けて足場とする。
+    /// </summary>
+    private void CarveVerticalShafts(CaveGenerator caveGen, List<Vector3> rooms, System.Random rng)
+    {
+        if (_shaftCount <= 0 || rooms.Count == 0) return;
+
+        Vector3Int cc       = caveGen.ChunkCount3D;
+        float      cs       = caveGen.CellSize3D;
+        float      isoLevel = caveGen.NoiseConfig.isoLevel;
+        float      halfLen  = cc.y * CaveChunk.ChunkSize * cs * 0.3f;
+
+        // Fisher-Yates シャッフルでインデックスをランダム化して先頭から選ぶ
+        var indices = new List<int>(rooms.Count);
+        for (int i = 0; i < rooms.Count; i++) indices.Add(i);
+        for (int i = indices.Count - 1; i > 0; i--)
+        {
+            int j = rng.Next(i + 1);
+            (indices[i], indices[j]) = (indices[j], indices[i]);
+        }
+
+        int actualCount = Mathf.Min(_shaftCount, rooms.Count);
+        for (int s = 0; s < actualCount; s++)
+        {
+            Vector3 origin = rooms[indices[s]];
+            float   topY   = origin.y + halfLen;
+            float   botY   = origin.y - halfLen;
+
+            // 上方向に 0.5m ステップで掘削
+            for (float y = origin.y; y <= topY; y += 0.5f)
+                CarvePoint(caveGen, new Vector3(origin.x, y, origin.z), _shaftRadius, isoLevel);
+
+            // 下方向に 0.5m ステップで掘削
+            for (float y = origin.y; y >= botY; y -= 0.5f)
+                CarvePoint(caveGen, new Vector3(origin.x, y, origin.z), _shaftRadius, isoLevel);
+
+            // 上端・下端に広い足場空間
+            caveGen.CarveSphericalCavity(new Vector3(origin.x, topY, origin.z), _shaftRadius * 1.5f);
+            caveGen.CarveSphericalCavity(new Vector3(origin.x, botY, origin.z), _shaftRadius * 1.5f);
         }
     }
 
