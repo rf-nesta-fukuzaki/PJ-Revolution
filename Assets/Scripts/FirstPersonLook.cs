@@ -83,7 +83,10 @@ public class FirstPersonLook : MonoBehaviour
         if (step > 0f) _cameraYOffset -= step;                                   // 体が上がった分を一時的に相殺
         _cameraYOffset = Mathf.Lerp(_cameraYOffset, 0f, Time.deltaTime * 15f);  // 滑らかに元の位置へ戻す
         if (cameraRig != null)
-            cameraRig.localPosition = new Vector3(0f, _cameraYOffset, 0f);
+        {
+            float crouchOffset = _playerMovement != null ? _playerMovement.GetCrouchCameraY() : 0f;
+            cameraRig.localPosition = new Vector3(0f, _cameraYOffset + crouchOffset, 0f);
+        }
     }
 
     // ─────────────── OnGUI（ヒント表示） ───────────────

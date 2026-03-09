@@ -60,6 +60,16 @@ public class PlayerMovement : MonoBehaviour
     [Tooltip("段差を上る速さ（滑らかさ）")]
     [SerializeField] private float _stepSmooth = 8f;
 
+    [Header("しゃがみ")]
+    [Tooltip("しゃがみ中の移動速度倍率")]
+    [SerializeField] private float _crouchSpeedMultiplier = 0.45f;
+
+    [Tooltip("しゃがみ時の CapsuleCollider 高さ（通常高さの約半分）")]
+    [SerializeField] private float _crouchHeight = 1.0f;
+
+    [Tooltip("しゃがみ / 立ち上がりの遷移速度")]
+    [SerializeField] private float _crouchTransitionSpeed = 10f;
+
     [Header("接地判定")]
     [Tooltip("SphereCast の半径（CapsuleCollider がない場合に使用）")]
     [SerializeField] private float _groundCheckRadius = 0.3f;
@@ -92,6 +102,10 @@ public class PlayerMovement : MonoBehaviour
 
     private float   _stepOffset;         // HandleStepClimb が発生させた今 FixedUpdate の上昇量
 
+    private bool    _isCrouching;
+    private float   _originalHeight;
+    private Vector3 _originalCenter;
+
     private Vector3 _groundNormal    = Vector3.up;
     private float   _currentSlopeAngle;
 
@@ -100,6 +114,9 @@ public class PlayerMovement : MonoBehaviour
 
     /// <summary>急斜面上にいるか（moderateSlopeMax 超え）</summary>
     public bool IsOnSteepSlope { get; private set; }
+
+    /// <summary>しゃがみ中か</summary>
+    public bool IsCrouching => _isCrouching;
 
     private bool CanMove =>
         _stateManager == null ||
@@ -112,6 +129,12 @@ public class PlayerMovement : MonoBehaviour
         _rb           = GetComponent<Rigidbody>();
         _capsule      = GetComponent<CapsuleCollider>();
         _stateManager = GetComponent<PlayerStateManager>();
+
+        if (_capsule != null)
+        {
+            _originalHeight = _capsule.height;
+            _originalCenter = _capsule.center;
+        }
 
         _rb.constraints = RigidbodyConstraints.FreezeRotationX
                         | RigidbodyConstraints.FreezeRotationZ;
@@ -136,6 +159,7 @@ public class PlayerMovement : MonoBehaviour
         ApplyFriction();
         HandleStepClimb();
         ProcessJump();
+        UpdateCrouchTransition();
     }
 
     // ──────── 接地判定（複合） ────────
@@ -314,7 +338,8 @@ public class PlayerMovement : MonoBehaviour
         float control = IsGrounded ? 1f : _airControlMultiplier;
         if (IsOnSteepSlope) control = _airControlMultiplier;
 
-        float   effectiveSpeed    = _moveSpeed * slopeSpeedMultiplier * control;
+        float   crouchMultiplier  = _isCrouching ? _crouchSpeedMultiplier : 1f;
+        float   effectiveSpeed    = _moveSpeed * slopeSpeedMultiplier * control * crouchMultiplier;
         Vector3 targetVel         = worldDir * effectiveSpeed;
         Vector3 currentHorizontal = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
         Vector3 delta             = targetVel - currentHorizontal;
@@ -419,6 +444,9 @@ public class PlayerMovement : MonoBehaviour
         if (!_jumpRequested) return;
         _jumpRequested = false;
 
+        // しゃがみ中はジャンプ不可
+        if (_isCrouching) return;
+
         // コヨーテタイム内のみジャンプ可
         if (_coyoteTimer <= 0f)
         {
@@ -441,6 +469,23 @@ public class PlayerMovement : MonoBehaviour
         _rb.AddForce(Vector3.up * _jumpForce, ForceMode.VelocityChange);
     }
 
+    // ──────── しゃがみ遷移 ────────
+
+    private void UpdateCrouchTransition()
+    {
+        if (_capsule == null) return;
+
+        float targetHeight = _isCrouching ? _crouchHeight : _originalHeight;
+        float newHeight    = Mathf.Lerp(_capsule.height, targetHeight,
+                                        _crouchTransitionSpeed * Time.fixedDeltaTime);
+        _capsule.height = newHeight;
+
+        // center.y を高さの半分に同期（capsule.center.x/z は原点を保持）
+        Vector3 newCenter = _originalCenter;
+        newCenter.y       = newHeight * 0.5f;
+        _capsule.center   = newCenter;
+    }
+
     // ──────── 公開 API ────────
 
     /// <summary>移動入力を受け取る。PlayerInputController から呼ぶ。</summary>
@@ -461,6 +506,21 @@ public class PlayerMovement : MonoBehaviour
         float v = _stepOffset;
         _stepOffset = 0f;
         return v;
+    }
+
+    /// <summary>
+    /// しゃがみ状態を設定する。PlayerInputController から呼ぶ。
+    /// </summary>
+    public void SetCrouch(bool crouch) => _isCrouching = crouch;
+
+    /// <summary>
+    /// しゃがみによるカメラ Y オフセットを返す（通常 0、しゃがみ中は負値）。
+    /// FirstPersonLook が cameraRig.localPosition に合成して使用する。
+    /// </summary>
+    public float GetCrouchCameraY()
+    {
+        if (_capsule == null) return 0f;
+        return _capsule.height - _originalHeight;
     }
 
     /// <summary>
