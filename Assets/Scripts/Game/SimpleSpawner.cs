@@ -74,6 +74,9 @@ public class SimpleSpawner : MonoBehaviour
                 rb.angularVelocity = Vector3.zero;
             }
         }
+
+        // プレイヤーがスポーン完了した後でキャッシュを更新する
+        GameManager.Instance?.RefreshPlayerCache();
     }
 
     /// <summary>

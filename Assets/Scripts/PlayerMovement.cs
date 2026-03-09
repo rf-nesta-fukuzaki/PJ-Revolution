@@ -90,6 +90,8 @@ public class PlayerMovement : MonoBehaviour
     private float   _coyoteTimer;
     private float   _jumpCooldown;   // ジャンプ直後の再接地誤判定防止
 
+    private float   _stepOffset;         // HandleStepClimb が発生させた今 FixedUpdate の上昇量
+
     private Vector3 _groundNormal    = Vector3.up;
     private float   _currentSlopeAngle;
 
@@ -218,7 +220,7 @@ public class PlayerMovement : MonoBehaviour
 
         bool mainHit = Physics.SphereCast(
             origin, radius, Vector3.down, out RaycastHit mainInfo,
-            _groundCheckDistance + 0.05f, effectiveLayer, QueryTriggerInteraction.Ignore);
+            _groundCheckDistance + radius, effectiveLayer, QueryTriggerInteraction.Ignore);
 
         if (_debugJump)
             Debug.Log($"[Jump] isGrounded={IsGrounded}, SphereCast hit={mainHit}, " +
@@ -405,7 +407,9 @@ public class PlayerMovement : MonoBehaviour
             return;
 
         // 段差を滑らかに乗り越える
-        _rb.position += Vector3.up * _stepSmooth * Time.fixedDeltaTime;
+        float stepAmount = _stepSmooth * Time.fixedDeltaTime;
+        _rb.position += Vector3.up * stepAmount;
+        _stepOffset  += stepAmount;
     }
 
     // ──────── ジャンプ処理 ────────
@@ -447,6 +451,17 @@ public class PlayerMovement : MonoBehaviour
     /// 実際のジャンプは次の FixedUpdate で処理される。
     /// </summary>
     public void Jump() => _jumpRequested = true;
+
+    /// <summary>
+    /// FixedUpdate で蓄積した段差上昇量を返してリセットする。
+    /// FirstPersonLook からカメラ補正に使用する。
+    /// </summary>
+    public float ConsumeStepOffset()
+    {
+        float v = _stepOffset;
+        _stepOffset = 0f;
+        return v;
+    }
 
     /// <summary>
     /// 登攀モードの切替。PlayerClimbing から呼ぶ。

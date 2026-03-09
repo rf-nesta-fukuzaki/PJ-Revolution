@@ -170,6 +170,11 @@ public class GameManager : MonoBehaviour
 
         Debug.Log($"[GameManager] 状態遷移: {CurrentState} → {newState}");
         CurrentState = newState;
+
+        // ゲーム終了時はタイムスケールを 0 にしてゲームを停止する
+        if (newState == GameState.AllDowned || newState == GameState.EscapeSuccess)
+            Time.timeScale = 0f;
+
         OnGameStateChanged?.Invoke(newState);
     }
 }
