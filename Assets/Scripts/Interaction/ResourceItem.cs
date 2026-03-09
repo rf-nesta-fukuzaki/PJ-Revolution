@@ -23,6 +23,9 @@ public class ResourceItem : MonoBehaviour, IInteractable
     [Tooltip("回復量 / FuelCanister の場合は燃料補充量")]
     [SerializeField] private float restoreAmount = 30f;
 
+    [Tooltip("インベントリ連携用 ScriptableObject（null の場合は既存動作）")]
+    [SerializeField] private InventoryItem _inventoryItemRef;
+
     // ─────────────── プロンプト文字列 ───────────────
 
     private static readonly string[] PromptTexts =
@@ -37,6 +40,19 @@ public class ResourceItem : MonoBehaviour, IInteractable
 
     public void Interact(UnityEngine.GameObject interactor)
     {
+        if (_inventoryItemRef != null)
+        {
+            var inventory = interactor != null
+                ? interactor.GetComponent<InventorySystem>()
+                : null;
+
+            if (inventory != null && !inventory.TryAddItem(_inventoryItemRef))
+            {
+                Debug.Log($"[ResourceItem] 重量オーバーで拾えません ({gameObject.name})");
+                return;
+            }
+        }
+
         if (itemType == ResourceItemType.FuelCanister)
         {
             var torch = interactor != null
