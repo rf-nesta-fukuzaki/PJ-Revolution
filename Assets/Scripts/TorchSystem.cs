@@ -43,6 +43,14 @@ public class TorchSystem : MonoBehaviour
     /// <summary>最大燃料量</summary>
     public float MaxFuel => maxFuel;
 
+    /// <summary>UpgradeSystem から最大燃料量を変更する。現在燃料は新しい上限でクランプされる。</summary>
+    public void SetMaxFuel(float v)
+    {
+        maxFuel     = Mathf.Max(1f, v);
+        currentFuel = Mathf.Min(currentFuel, maxFuel);
+        OnFuelChanged?.Invoke(FuelRatio);
+    }
+
     /// <summary>燃料消費速度</summary>
     public float FuelConsumptionRate => fuelConsumptionRate;
 

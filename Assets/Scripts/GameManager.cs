@@ -236,6 +236,10 @@ public class GameManager : MonoBehaviour
         if (newState == GameState.AllDowned || newState == GameState.EscapeSuccess)
             Time.timeScale = 0f;
 
+        // Exploring 開始時はアップグレードを全コンポーネントに反映する。
+        if (newState == GameState.Exploring)
+            UpgradeSystem.Instance?.ApplyAllUpgrades();
+
         OnGameStateChanged?.Invoke(newState);
     }
 }

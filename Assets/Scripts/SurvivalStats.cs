@@ -34,15 +34,21 @@ public class SurvivalStats : MonoBehaviour
     [Range(1f, 5f)]
     [SerializeField] private float depthOxygenMultiplier = 1.5f;
 
+    // ─────────────── 最大値（アップグレードで変化） ───────────────
+
+    private float _maxHealth = 100f;
+    private float _maxOxygen = 100f;
+    private float _maxHunger = 100f;
+
     // ─────────────── ステータス値 ───────────────
 
-    /// <summary>現在 HP (0〜100)。</summary>
+    /// <summary>現在 HP (0〜_maxHealth)。</summary>
     public float Health { get; private set; } = 100f;
 
-    /// <summary>現在 酸素量 (0〜100)。</summary>
+    /// <summary>現在 酸素量 (0〜_maxOxygen)。</summary>
     public float Oxygen { get; private set; } = 100f;
 
-    /// <summary>現在 空腹値 (0〜100)。</summary>
+    /// <summary>現在 空腹値 (0〜_maxHunger)。</summary>
     public float Hunger { get; private set; } = 100f;
 
     /// <summary>HP が 0 になったとき true に遷移する。</summary>
@@ -106,13 +112,13 @@ public class SurvivalStats : MonoBehaviour
         switch (type)
         {
             case StatType.Health:
-                SetHealth(Mathf.Clamp(Health + amount, 0f, 100f));
+                SetHealth(Mathf.Clamp(Health + amount, 0f, _maxHealth));
                 break;
             case StatType.Oxygen:
-                SetOxygen(Mathf.Clamp(Oxygen + amount, 0f, 100f));
+                SetOxygen(Mathf.Clamp(Oxygen + amount, 0f, _maxOxygen));
                 break;
             case StatType.Hunger:
-                SetHunger(Mathf.Clamp(Hunger + amount, 0f, 100f));
+                SetHunger(Mathf.Clamp(Hunger + amount, 0f, _maxHunger));
                 break;
         }
 
@@ -120,6 +126,15 @@ public class SurvivalStats : MonoBehaviour
         if (IsDowned && Health > 0f)
             SetDowned(false);
     }
+
+    /// <summary>UpgradeSystem から最大 HP を変更する。現在 HP は新しい上限でクランプされる。</summary>
+    public void SetMaxHealth(float v) { _maxHealth = Mathf.Max(1f, v); SetHealth(Mathf.Min(Health, _maxHealth)); }
+
+    /// <summary>UpgradeSystem から最大酸素量を変更する。現在酸素は新しい上限でクランプされる。</summary>
+    public void SetMaxOxygen(float v) { _maxOxygen = Mathf.Max(1f, v); SetOxygen(Mathf.Min(Oxygen, _maxOxygen)); }
+
+    /// <summary>UpgradeSystem から最大空腹値を変更する。現在空腹値は新しい上限でクランプされる。</summary>
+    public void SetMaxHunger(float v) { _maxHunger = Mathf.Max(1f, v); SetHunger(Mathf.Min(Hunger, _maxHunger)); }
 
     // ─────────────── 内部セッター（イベント発火付き） ───────────────
 
