@@ -60,6 +60,9 @@ public class CaveGenerator : MonoBehaviour
     /// <summary>3D ノイズ設定（isoLevel 参照用）</summary>
     public NoiseSettings NoiseConfig => noiseSettings;
 
+    /// <summary>洞窟全体のワールド高さ（m）。DepthEnvironment の深度判定に使用する。</summary>
+    public float TotalWorldHeight => chunkCountY * CaveChunk.ChunkSize * cellSize3D;
+
     /// <summary>
     /// スタート空洞のワールド座標。
     /// Generate() 呼び出し後に確定する。
