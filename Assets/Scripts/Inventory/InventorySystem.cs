@@ -41,6 +41,9 @@ public class InventorySystem : MonoBehaviour
 
     public float MaxWeight => _maxWeight;
 
+    /// <summary>UpgradeSystem から最大重量を変更する。</summary>
+    public void SetMaxWeight(float v) => _maxWeight = Mathf.Max(0f, v);
+
     public IReadOnlyList<InventorySlot> Slots => _slots;
 
     // ─── イベント ─────────────────────────────────────────────────────

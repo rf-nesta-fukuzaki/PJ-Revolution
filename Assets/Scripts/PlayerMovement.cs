@@ -550,6 +550,12 @@ public class PlayerMovement : MonoBehaviour
 
     // ──────── 公開 API ────────
 
+    /// <summary>UpgradeSystem から移動速度を変更する。</summary>
+    public void SetMoveSpeed(float v) => _moveSpeed = Mathf.Max(0f, v);
+
+    /// <summary>UpgradeSystem からジャンプ力を変更する。</summary>
+    public void SetJumpForce(float v) => _jumpForce = Mathf.Max(0f, v);
+
     /// <summary>移動入力を受け取る。PlayerInputController から呼ぶ。</summary>
     public void Move(Vector2 input) => _currentInput = input;
 

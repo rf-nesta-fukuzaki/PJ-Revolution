@@ -22,6 +22,11 @@ using UnityEngine;
 /// </summary>
 public class PlayerCosmeticSaveData : MonoBehaviour
 {
+    // ─────────────── Singleton ───────────────
+
+    /// <summary>シーン全体からアクセスできる PlayerCosmeticSaveData インスタンス。</summary>
+    public static PlayerCosmeticSaveData Instance { get; private set; }
+
     // ─────────────── 定数 ───────────────
 
     private const string SaveKey = "PlayerCosmeticSaveData_v1";
@@ -48,7 +53,19 @@ public class PlayerCosmeticSaveData : MonoBehaviour
 
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+        Instance = this;
+
         LoadData();
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
     }
 
     // ─────────────── 公開 API ───────────────
@@ -156,6 +173,25 @@ public class PlayerCosmeticSaveData : MonoBehaviour
         _payload.gems += amount;
         SaveData();
         Debug.Log($"[PlayerCosmeticSaveData] 宝石 +{amount} → 合計 {_payload.gems}");
+    }
+
+    /// <summary>
+    /// 宝石を消費する。残高が不足している場合は false を返す。
+    /// UpgradeSystem からアップグレード購入時に呼ぶ。
+    /// SaveData() を自動呼び出しする。
+    /// </summary>
+    public bool SpendGems(int amount)
+    {
+        if (_payload.gems < amount)
+        {
+            Debug.Log($"[PlayerCosmeticSaveData] 宝石不足: 必要={amount}, 所持={_payload.gems}");
+            return false;
+        }
+
+        _payload.gems -= amount;
+        SaveData();
+        Debug.Log($"[PlayerCosmeticSaveData] 宝石 -{amount} → 残 {_payload.gems}");
+        return true;
     }
 
     /// <summary>
