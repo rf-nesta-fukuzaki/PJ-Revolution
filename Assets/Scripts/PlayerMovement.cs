@@ -70,6 +70,19 @@ public class PlayerMovement : MonoBehaviour
     [Tooltip("しゃがみ / 立ち上がりの遷移速度")]
     [SerializeField] private float _crouchTransitionSpeed = 10f;
 
+    [Header("落下ダメージ")]
+    [Tooltip("この落下速度以下はノーダメージ (m/s)")]
+    [SerializeField] private float _safeFallSpeed = 10f;
+
+    [Tooltip("この落下速度以上は即死相当のダメージ (m/s)")]
+    [SerializeField] private float _fatalFallSpeed = 25f;
+
+    [Tooltip("安全速度超過分 × この倍率 = HP ダメージ")]
+    [SerializeField] private float _fallDamageMultiplier = 3f;
+
+    [Tooltip("落下ダメージ発生時のスタン時間 (秒)")]
+    [SerializeField] private float _fallStunDuration = 0.5f;
+
     [Header("接地判定")]
     [Tooltip("SphereCast の半径（CapsuleCollider がない場合に使用）")]
     [SerializeField] private float _groundCheckRadius = 0.3f;
@@ -106,6 +119,10 @@ public class PlayerMovement : MonoBehaviour
     private float   _originalHeight;
     private Vector3 _originalCenter;
 
+    private float   _maxFallSpeed;   // 空中にいる間の最大落下速度（着地ダメージ計算に使用）
+
+    private SurvivalStats _survivalStats;
+
     private Vector3 _groundNormal    = Vector3.up;
     private float   _currentSlopeAngle;
 
@@ -118,6 +135,9 @@ public class PlayerMovement : MonoBehaviour
     /// <summary>しゃがみ中か</summary>
     public bool IsCrouching => _isCrouching;
 
+    /// <summary>空中にいる間に記録した最大落下速度（HUD 表示用）</summary>
+    public float MaxFallSpeed => _maxFallSpeed;
+
     private bool CanMove =>
         _stateManager == null ||
         _stateManager.CurrentState == PlayerState.Normal;
@@ -126,9 +146,10 @@ public class PlayerMovement : MonoBehaviour
 
     private void Awake()
     {
-        _rb           = GetComponent<Rigidbody>();
-        _capsule      = GetComponent<CapsuleCollider>();
-        _stateManager = GetComponent<PlayerStateManager>();
+        _rb            = GetComponent<Rigidbody>();
+        _capsule       = GetComponent<CapsuleCollider>();
+        _stateManager  = GetComponent<PlayerStateManager>();
+        _survivalStats = GetComponent<SurvivalStats>();
 
         if (_capsule != null)
         {
@@ -153,6 +174,11 @@ public class PlayerMovement : MonoBehaviour
             _jumpCooldown -= Time.fixedDeltaTime;
 
         CheckGround();
+
+        // 空中にいる間の最大落下速度を記録（着地ダメージ計算に使用）
+        if (!IsGrounded)
+            _maxFallSpeed = Mathf.Max(_maxFallSpeed, Mathf.Abs(_rb.linearVelocity.y));
+
         ApplyGravityModifier();
         ApplyMovement();
         ApplySlopeSlide();
@@ -166,6 +192,8 @@ public class PlayerMovement : MonoBehaviour
 
     private void CheckGround()
     {
+        bool wasGrounded = IsGrounded;
+
         if (_jumpCooldown > 0f)
         {
             IsGrounded     = false;
@@ -208,6 +236,10 @@ public class PlayerMovement : MonoBehaviour
             _coyoteTimer = _coyoteTime;
         else if (_coyoteTimer > 0f)
             _coyoteTimer -= Time.fixedDeltaTime;
+
+        // 非接地 → 接地 への遷移を検出して落下ダメージを処理
+        if (!wasGrounded && IsGrounded)
+            ProcessLanding();
     }
 
     /// <summary>
@@ -467,6 +499,23 @@ public class PlayerMovement : MonoBehaviour
             Debug.Log($"[Jump] Executing jump, force={_jumpForce}, velocity before={_rb.linearVelocity}");
 
         _rb.AddForce(Vector3.up * _jumpForce, ForceMode.VelocityChange);
+    }
+
+    // ──────── 落下ダメージ ────────
+
+    private void ProcessLanding()
+    {
+        float speed = _maxFallSpeed;
+        _maxFallSpeed = 0f;
+
+        if (speed <= _safeFallSpeed) return;
+
+        // 超過速度に倍率を掛けてダメージを算出（fatalFallSpeed で 100 になるよう上限はクランプせず SurvivalStats に委ねる）
+        float damage = (speed - _safeFallSpeed) * _fallDamageMultiplier;
+        Debug.Log($"[FallDamage] 落下速度={speed:F1} m/s, ダメージ={damage:F1}");
+
+        _survivalStats?.ApplyStatModification(StatType.Health, -damage);
+        _stateManager?.ApplyStun(_fallStunDuration);
     }
 
     // ──────── しゃがみ遷移 ────────
