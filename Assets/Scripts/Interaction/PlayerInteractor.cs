@@ -66,9 +66,9 @@ public class PlayerInteractor : MonoBehaviour
             found = hit.collider.GetComponentInParent<IInteractable>();
 
         if (found != _currentTarget)
-        {
             _currentTarget = found;
-            _ui?.SetInteractPrompt(found?.GetPromptText());
-        }
+
+        // インタラクタブルの内部状態変化（ロープ設置/回収など）に追従するため毎フレーム更新
+        _ui?.SetInteractPrompt(_currentTarget?.GetPromptText());
     }
 }
