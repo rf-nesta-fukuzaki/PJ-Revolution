@@ -257,4 +257,7 @@ public class BatSpawner : MonoBehaviour
     {
         UnregisterPlayer(playerObj);
     }
+
+    /// <summary>DepthManager から深度遷移時に最大スポーン数を更新する。</summary>
+    public void SetMaxBats(int count) => _maxBats = count;
 }

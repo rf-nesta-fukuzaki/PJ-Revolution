@@ -131,6 +131,18 @@ public class CaveGenerator : MonoBehaviour
     public void SetNetworkControlled(bool value) => _networkControlled = value;
 
     /// <summary>
+    /// チャンク数を上書きする。DepthManager から深度遷移時に呼ぶ。
+    /// 次回の Generate() / GenerateCave() で反映される。
+    /// </summary>
+    public void SetChunkCounts(int x, int y, int z)
+    {
+        chunkCountX = x;
+        chunkCountY = y;
+        chunkCountZ = z;
+        UnityEngine.Debug.Log($"[CaveGenerator] チャンク数を更新: {x}x{y}x{z}");
+    }
+
+    /// <summary>
     /// 指定シード値で洞窟を生成する。
     /// </summary>
     /// <param name="seed">使用するシード値（0 不可）</param>
