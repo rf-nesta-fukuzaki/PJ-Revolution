@@ -6,10 +6,16 @@ using UnityEngine;
 /// [ステート一覧]
 ///   Sleeping  : スポーン位置で静止待機。IsPlayerDetected() で Alerted へ。
 ///   Alerted   : 気づき状態（_alertDuration 秒の猶予）。sin 振動演出。
-///   Chasing   : 最も近い有効プレイヤーを追尾。
+///   Chasing   : 最も近い有効プレイヤーを追尾。_alertCallRadius 内の仲間を起こす。
 ///   Attacking : 攻撃射程内で _attackCooldown 間隔のダメージ付与。
 ///   Fleeing   : 点灯たいまつから反対方向へ逃走。
 ///   Returning : スポーン位置（_homePosition）へ帰還。
+///
+/// [群れ呼び出し]
+///   Alerted → Chasing 遷移時に _alertCallRadius 内の他の BatAI へ WakeUp() を呼ぶ。
+///
+/// [回避機動]
+///   個体固有の速度揺らぎ（±20%）と横揺れ周波数で、複数個体が一列に並ばない群れ感を演出。
 /// </summary>
 [RequireComponent(typeof(BatPerception))]
 public class BatAI : MonoBehaviour
@@ -32,6 +38,13 @@ public class BatAI : MonoBehaviour
     [Tooltip("Y 軸補間速度（追尾時にターゲット頭上への滑らかな追従）")]
     [Range(0.5f, 5f)]
     [SerializeField] private float _ySmoothing = 2f;
+
+    // ─────────────── Inspector (群れ) ───────────────
+
+    [Header("🐾 群れ呼び出し")]
+    [Tooltip("Chasing 遷移時に WakeUp() を呼ぶ範囲（m）")]
+    [Range(5f, 30f)]
+    [SerializeField] private float _alertCallRadius = 15f;
 
     // ─────────────── Inspector (攻撃) ───────────────
 
@@ -98,12 +111,21 @@ public class BatAI : MonoBehaviour
     private float _fleeResumeTimer;
     private bool  _fleeResumeWaiting;
 
+    // 回避機動: Awake で個体固有の値を生成
+    private float _chaseSpeedMultiplier; // ±20% 揺らぎ
+    private float _swerveFrequency;      // 横揺れ周波数（個体固有）
+
     // ─────────────── Unity Lifecycle ───────────────
 
     private void Awake()
     {
         _perception   = GetComponent<BatPerception>();
         _homePosition = transform.position;
+
+        // 個体固有の乱数パラメータを生成（GetInstanceID でシードが個体ごとに変わる）
+        var rng = new System.Random(GetInstanceID());
+        _chaseSpeedMultiplier = 0.8f + (float)rng.NextDouble() * 0.4f; // 0.8 〜 1.2（±20%）
+        _swerveFrequency      = 1.5f + (float)rng.NextDouble() * 2.0f; // 1.5 〜 3.5 Hz
     }
 
     private void Start()
@@ -274,6 +296,10 @@ public class BatAI : MonoBehaviour
                 _alertStartPosition = transform.position;
                 break;
 
+            case BatState.Chasing:
+                CallNearbyBats();
+                break;
+
             case BatState.Attacking:
                 _attackTimer = 0f;
                 break;
@@ -283,6 +309,33 @@ public class BatAI : MonoBehaviour
                 _fleeResumeTimer   = 0f;
                 break;
         }
+    }
+
+    // ─────────────── 群れ呼び出し ───────────────
+
+    /// <summary>
+    /// _alertCallRadius 内の Sleeping 状態の他の BatAI を起こす。
+    /// Alerted → Chasing 遷移時に一度だけ呼ばれる。
+    /// </summary>
+    private void CallNearbyBats()
+    {
+        var hits = Physics.OverlapSphere(transform.position, _alertCallRadius);
+        foreach (var hit in hits)
+        {
+            var bat = hit.GetComponent<BatAI>();
+            if (bat == null || bat == this) continue;
+            bat.WakeUp();
+        }
+    }
+
+    /// <summary>
+    /// 外部（仲間の群れ呼び出し）から起こされたときの処理。
+    /// Sleeping 状態のときのみ Alerted へ遷移する。
+    /// </summary>
+    public void WakeUp()
+    {
+        if (CurrentState == BatState.Sleeping)
+            SetState(BatState.Alerted);
     }
 
     // ─────────────── 攻撃 ───────────────
@@ -312,7 +365,12 @@ public class BatAI : MonoBehaviour
         Vector3 dir = (flatDest - transform.position);
         if (dir.sqrMagnitude < 0.001f) return;
 
-        transform.position += dir.normalized * _chaseSpeed * Time.deltaTime;
+        // 回避機動: 個体固有の速度揺らぎ＋横揺れで群れが一列に並ばないようにする
+        float swerve = Mathf.Sin(Time.time * _swerveFrequency) * 0.5f;
+        Vector3 move = dir.normalized * (_chaseSpeed * _chaseSpeedMultiplier)
+                     + transform.right * swerve;
+
+        transform.position += move * Time.deltaTime;
         FaceDirection(dir.normalized);
     }
 
