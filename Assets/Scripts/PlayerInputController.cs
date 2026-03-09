@@ -42,11 +42,12 @@ public class PlayerInputController : MonoBehaviour
         HandleTorch();
         HandleDebug();
 
-        // Normal 状態のみ移動・ジャンプを受け付ける
+        // Normal 状態のみ移動・ジャンプ・しゃがみを受け付ける
         if (!IsNormalState()) return;
 
         HandleMovement();
         HandleJump();
+        HandleCrouch();
     }
 
     // ─────────────── 状態チェック ───────────────
@@ -71,6 +72,14 @@ public class PlayerInputController : MonoBehaviour
         if (!Input.GetButtonDown("Jump")) return;
         Debug.Log("[Jump] Jump input detected");
         playerMovement.Jump();
+    }
+
+    private void HandleCrouch()
+    {
+        if (Input.GetKeyDown(KeyCode.LeftControl))
+            playerMovement.SetCrouch(true);
+        else if (Input.GetKeyUp(KeyCode.LeftControl))
+            playerMovement.SetCrouch(false);
     }
 
     private void HandleTorch()
