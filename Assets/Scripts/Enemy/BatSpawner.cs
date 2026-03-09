@@ -24,11 +24,11 @@ public class BatSpawner : MonoBehaviour
     [Header("🦇 スポーン設定")]
     [Tooltip("最大スポーン数")]
     [Range(1, 20)]
-    [SerializeField] private int _maxBats = 5;
+    [SerializeField] private int _maxBats = 8;
 
     [Tooltip("コウモリ間の最小距離（m）")]
     [Range(5f, 30f)]
-    [SerializeField] private float _minDistanceBetweenBats = 10f;
+    [SerializeField] private float _minDistanceBetweenBats = 8f;
 
     [Tooltip("スタート地点からの安全半径（m）")]
     [Range(10f, 40f)]
