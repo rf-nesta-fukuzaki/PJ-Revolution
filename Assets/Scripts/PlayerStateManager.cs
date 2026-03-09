@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -89,6 +90,25 @@ public class PlayerStateManager : MonoBehaviour
     public void RequestStateChange(PlayerState newState)
     {
         SetState(newState);
+    }
+
+    /// <summary>
+    /// duration 秒間 Interacting 状態にしてから Normal へ戻す。
+    /// 落下ダメージなど短い行動制限に使用する。
+    /// Downed 中は適用しない。
+    /// </summary>
+    public void ApplyStun(float duration)
+    {
+        if (CurrentState == PlayerState.Downed) return;
+        StartCoroutine(StunCoroutine(duration));
+    }
+
+    private IEnumerator StunCoroutine(float duration)
+    {
+        SetState(PlayerState.Interacting);
+        yield return new WaitForSeconds(duration);
+        if (CurrentState == PlayerState.Interacting)
+            SetState(PlayerState.Normal);
     }
 
     // ─────────────── 状態遷移ハンドラ ───────────────
