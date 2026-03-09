@@ -47,6 +47,13 @@ public class PlayerInteractor : MonoBehaviour
 
     // ─────────────── 内部処理 ───────────────
 
+    // ─────────────── 公開 API ───────────────
+
+    /// <summary>現在のインタラクト対象のプロンプトテキストを返す（対象なしは null）。</summary>
+    public string CurrentPromptText => _currentTarget?.GetPromptText();
+
+    // ─────────────── 内部処理 ───────────────
+
     private void DetectInteractable()
     {
         Ray ray = _camera != null
