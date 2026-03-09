@@ -261,4 +261,7 @@ public class LizardSpawner : MonoBehaviour
     {
         UnregisterPlayer(playerObj);
     }
+
+    /// <summary>DepthManager から深度遷移時に最大スポーン数を更新する。</summary>
+    public void SetMaxLizards(int count) => _maxLizards = count;
 }

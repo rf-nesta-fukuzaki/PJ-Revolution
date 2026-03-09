@@ -1,10 +1,17 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// ゲーム全体の状態（探索中 / 脱出成功 / 全員ダウン）を管理する Singleton。
+/// ゲーム全体の状態（探索中 / 深度遷移中 / 脱出成功 / 全員ダウン）を管理する Singleton。
 /// EscapeGate から NotifyEscape() が呼ばれるか、全プレイヤーのダウンを検出して状態遷移する。
+///
+/// [深度遷移]
+///   CurrentDepth &lt; 3 のとき NotifyEscape() は DepthTransition 状態に移行し、
+///   _depthTransitionDelay 秒後に DepthManager.AdvanceDepth() → CaveGenerator.Generate() を
+///   実行して次の深度の洞窟を生成する。
+///   CurrentDepth == 3 のとき EscapeSuccess（最終クリア）に遷移する。
 ///
 /// [ソロ前提実装]
 ///   プレイヤーは 1 人として動作確認する。
@@ -22,6 +29,12 @@ public class GameManager : MonoBehaviour
     [Header("ゲーム設定")]
     [Tooltip("全員ダウン判定の遅延秒数（誤判定防止）")]
     [SerializeField] private float ダウン判定遅延 = 1.5f;
+
+    [Tooltip("深度遷移演出の待機時間（秒）")]
+    [SerializeField] private float _depthTransitionDelay = 3f;
+
+    [Header("参照")]
+    [SerializeField] private CaveGenerator _caveGenerator;
 
     // ─── 公開プロパティ ──────────────────────────────────────────────────
 
@@ -61,6 +74,9 @@ public class GameManager : MonoBehaviour
             return;
         }
         Instance = this;
+
+        if (_caveGenerator == null)
+            _caveGenerator = FindFirstObjectByType<CaveGenerator>();
     }
 
     private void Start()
@@ -87,7 +103,8 @@ public class GameManager : MonoBehaviour
 
     /// <summary>
     /// EscapeGate からプレイヤーが脱出ゲートに触れたときに呼ぶ。
-    /// ソロ実装では即 EscapeSuccess へ遷移する。
+    /// - CurrentDepth &lt; 3: DepthTransition 状態に遷移し、演出後に次の深度へ進む。
+    /// - CurrentDepth == 3: 最終クリアとして EscapeSuccess へ遷移する。
     /// </summary>
     /// <param name="player">脱出したプレイヤーの GameObject（null も許容）</param>
     public void NotifyEscape(GameObject player)
@@ -95,7 +112,19 @@ public class GameManager : MonoBehaviour
         if (CurrentState != GameState.Exploring) return;
 
         Debug.Log($"[GameManager] プレイヤーが脱出しました: {player?.name}");
-        ChangeState(GameState.EscapeSuccess);
+
+        var depthMgr = DepthManager.Instance;
+        if (depthMgr != null && depthMgr.CurrentDepth < 3)
+        {
+            // 最終深度未達: 次の深度へ遷移
+            ChangeState(GameState.DepthTransition);
+            StartCoroutine(DepthTransitionCoroutine());
+        }
+        else
+        {
+            // 最終深度（3）または DepthManager なし: 最終クリア
+            ChangeState(GameState.EscapeSuccess);
+        }
     }
 
     /// <summary>
@@ -118,6 +147,37 @@ public class GameManager : MonoBehaviour
             FindObjectsByType<PlayerStateManager>(FindObjectsSortMode.None));
 
         Debug.Log($"[GameManager] プレイヤーキャッシュ更新: {_playerManagers.Count} 人");
+    }
+
+    // ─── 深度遷移コルーチン ───────────────────────────────────────────────
+
+    /// <summary>
+    /// 演出時間待機 → DepthManager.AdvanceDepth() でパラメータ更新
+    /// → CaveGenerator.Generate() で洞窟再生成 → Exploring 状態に復帰する。
+    /// </summary>
+    private IEnumerator DepthTransitionCoroutine()
+    {
+        Debug.Log($"[GameManager] 深度遷移開始。{_depthTransitionDelay} 秒後に次の洞窟を生成します。");
+
+        yield return new WaitForSeconds(_depthTransitionDelay);
+
+        // パラメータを次の深度に更新（チャンク数・スポーン数を変更）
+        DepthManager.Instance?.AdvanceDepth();
+
+        // 洞窟を再生成（OnCaveGenerated で BatSpawner 等も再スポーンされる）
+        if (_caveGenerator != null)
+        {
+            _caveGenerator.Generate();
+            Debug.Log($"[GameManager] Depth {DepthManager.Instance?.CurrentDepth} の洞窟を再生成しました。");
+        }
+        else
+        {
+            Debug.LogWarning("[GameManager] CaveGenerator が見つかりません。洞窟を再生成できませんでした。");
+        }
+
+        // プレイヤーキャッシュを更新して探索再開
+        RefreshPlayerCache();
+        ChangeState(GameState.Exploring);
     }
 
     // ─── 内部処理 ────────────────────────────────────────────────────────
@@ -171,7 +231,8 @@ public class GameManager : MonoBehaviour
         Debug.Log($"[GameManager] 状態遷移: {CurrentState} → {newState}");
         CurrentState = newState;
 
-        // ゲーム終了時はタイムスケールを 0 にしてゲームを停止する
+        // ゲーム終了時（AllDowned / EscapeSuccess）はタイムスケールを 0 にして停止する。
+        // DepthTransition はゲーム継続中なのでタイムスケールを変更しない。
         if (newState == GameState.AllDowned || newState == GameState.EscapeSuccess)
             Time.timeScale = 0f;
 
@@ -194,4 +255,7 @@ public enum GameState
 
     /// <summary>全プレイヤーがダウンして敗北</summary>
     AllDowned,
+
+    /// <summary>中間深度の脱出後、次の深度洞窟を生成中の遷移状態</summary>
+    DepthTransition,
 }
