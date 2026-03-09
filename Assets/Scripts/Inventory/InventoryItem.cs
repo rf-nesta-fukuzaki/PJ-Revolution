@@ -37,4 +37,7 @@ public class InventoryItem : ScriptableObject
 
     [Tooltip("使用時に消費されるか")]
     public bool IsConsumable;
+
+    [Tooltip("消費アイテムの効果種別（IsConsumable == true のときのみ参照）")]
+    public ResourceItemType ConsumableEffect;
 }

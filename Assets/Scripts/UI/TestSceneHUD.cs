@@ -9,6 +9,7 @@ using UnityEngine.SceneManagement;
 /// [表示内容]
 ///   - 左下: HP / 酸素 / 空腹 / 燃料 バー（低下時点滅）
 ///   - 中央下: インタラクトプロンプト
+///   - Tab キー: インベントリパネルをトグル（Exploring 状態のときのみ）
 ///   - ゲーム終了時: 画面中央にリザルトオーバーレイ（R リトライ / Q 終了）
 /// </summary>
 public class TestSceneHUD : MonoBehaviour
@@ -18,6 +19,7 @@ public class TestSceneHUD : MonoBehaviour
     private SurvivalStats    _stats;
     private TorchSystem      _torch;
     private PlayerInteractor _interactor;
+    private InventorySystem  _inventory;
 
     // ─────────────── テクスチャ / スタイル ───────────────
 
@@ -26,6 +28,8 @@ public class TestSceneHUD : MonoBehaviour
     private GUIStyle  _promptStyle;
     private GUIStyle  _resultTitleStyle;
     private GUIStyle  _resultBodyStyle;
+    private GUIStyle  _invTitleStyle;
+    private GUIStyle  _slotLabelStyle;
 
     // ─────────────── バー定数 ───────────────
 
@@ -35,11 +39,25 @@ public class TestSceneHUD : MonoBehaviour
     private const int Margin     = 10;
     private const int LabelWidth = 44;
 
+    // ─────────────── インベントリ定数 ───────────────
+
+    private const int InvWidth    = 640;
+    private const int InvHeight   = 400;
+    private const int SlotSize    = 60;
+    private const int SlotCols    = 8;
+    private const int MaxSlots    = 32;
+    private const int SlotPadding = 4;
+
     // ─────────────── リザルト状態 ───────────────
 
     private GameState _gameState = GameState.Exploring;
     private float     _resultElapsedTime;
     private int       _resultGems;
+
+    // ─────────────── インベントリ状態 ───────────────
+
+    private bool _showInventory;
+    private int  _selectedSlot;
 
     // ─────────────── Unity Lifecycle ───────────────
 
@@ -58,32 +76,54 @@ public class TestSceneHUD : MonoBehaviour
         _stats      = FindFirstObjectByType<SurvivalStats>();
         _torch      = FindFirstObjectByType<TorchSystem>();
         _interactor = FindFirstObjectByType<PlayerInteractor>();
+        _inventory  = FindFirstObjectByType<InventorySystem>();
 
         _texWhite = new Texture2D(1, 1);
         _texWhite.SetPixel(0, 0, Color.white);
         _texWhite.Apply();
 
-        // 既にゲーム終了状態で開始している場合に対応（シーンリロード直後などは通常ない）
         if (GameManager.Instance != null)
             _gameState = GameManager.Instance.CurrentState;
     }
 
     private void Update()
     {
-        // Time.timeScale = 0 でも Input.GetKeyDown は動作する
-        if (_gameState == GameState.Exploring) return;
-
-        if (Input.GetKeyDown(KeyCode.R))
+        // Tab: インベントリトグル（Exploring 中のみ）
+        if (_gameState == GameState.Exploring && Input.GetKeyDown(KeyCode.Tab))
         {
-            Time.timeScale = 1f;
-            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+            _showInventory = !_showInventory;
+            Time.timeScale = _showInventory ? 0f : 1f;
         }
-        else if (Input.GetKeyDown(KeyCode.Q))
+
+        // インベントリ表示中: 1〜8 キーでスロット使用
+        if (_showInventory && _inventory != null)
         {
-            Application.Quit();
+            for (int i = 0; i < 8; i++)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha1 + i))
+                {
+                    _selectedSlot = i;
+                    UseItemAtSlot(i);
+                    break;
+                }
+            }
+        }
+
+        // ゲーム終了時: R リトライ / Q 終了
+        if (_gameState != GameState.Exploring)
+        {
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                Time.timeScale = 1f;
+                SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+            }
+            else if (Input.GetKeyDown(KeyCode.Q))
+            {
+                Application.Quit();
 #if UNITY_EDITOR
-            UnityEditor.EditorApplication.isPlaying = false;
+                UnityEditor.EditorApplication.isPlaying = false;
 #endif
+            }
         }
     }
 
@@ -100,6 +140,9 @@ public class TestSceneHUD : MonoBehaviour
             DrawHUD();
             DrawResultOverlay();
         }
+
+        if (_showInventory)
+            DrawInventory();
     }
 
     // ─────────────── HUD 描画 ───────────────
@@ -129,21 +172,141 @@ public class TestSceneHUD : MonoBehaviour
         }
     }
 
+    // ─────────────── インベントリ描画 ───────────────
+
+    private void DrawInventory()
+    {
+        float cx    = (Screen.width  - InvWidth)  * 0.5f;
+        float cy    = (Screen.height - InvHeight) * 0.5f;
+        var   panel = new Rect(cx, cy, InvWidth, InvHeight);
+
+        // 半透明黒背景
+        DrawRect(panel, new Color(0f, 0f, 0f, 0.75f));
+
+        // タイトル
+        float cw  = _inventory != null ? _inventory.CurrentWeight : 0f;
+        float mw  = _inventory != null ? _inventory.MaxWeight     : 0f;
+        string title = $"インベントリ（重量: {cw:F1}/{mw:F1} kg）";
+        GUI.Label(new Rect(cx + 10f, cy + 10f, InvWidth - 20f, 30f), title, _invTitleStyle);
+
+        // スロット描画
+        var slots = _inventory != null ? _inventory.Slots : null;
+        int count = slots != null ? Mathf.Min(slots.Count, MaxSlots) : 0;
+
+        for (int i = 0; i < MaxSlots; i++)
+        {
+            int col = i % SlotCols;
+            int row = i / SlotCols;
+
+            float sx = cx + SlotPadding + col * (SlotSize + SlotPadding);
+            float sy = cy + 50f + SlotPadding + row * (SlotSize + SlotPadding);
+            var   sr = new Rect(sx, sy, SlotSize, SlotSize);
+
+            // スロット背景
+            bool isSelected = (i == _selectedSlot);
+            DrawRect(sr, new Color(0.2f, 0.2f, 0.2f, 0.85f));
+
+            // 選択ハイライト（黄色枠）
+            if (isSelected)
+            {
+                DrawBorder(sr, Color.yellow, 2);
+            }
+
+            if (i < count)
+            {
+                var slot = slots[i];
+
+                // アイコン
+                if (slot.Item.Icon != null)
+                {
+                    GUI.DrawTexture(
+                        new Rect(sx + 2f, sy + 2f, SlotSize - 4f, SlotSize - 20f),
+                        slot.Item.Icon.texture);
+                }
+
+                // アイテム名（短縮: 最大4文字）
+                string shortName = slot.Item.ItemName.Length > 4
+                    ? slot.Item.ItemName.Substring(0, 4)
+                    : slot.Item.ItemName;
+
+                // カウント
+                string slotText = slot.Count > 1
+                    ? $"{shortName}\n×{slot.Count}"
+                    : shortName;
+
+                GUI.Label(new Rect(sx + 2f, sy + SlotSize - 18f, SlotSize - 4f, 18f),
+                          slotText, _slotLabelStyle);
+            }
+        }
+
+        // 操作ガイド
+        GUI.Label(
+            new Rect(cx + 10f, cy + InvHeight - 30f, InvWidth - 20f, 24f),
+            "[ 1〜8 ] 使用　　[ Tab ] 閉じる",
+            _slotLabelStyle);
+    }
+
+    // ─────────────── アイテム使用処理 ───────────────
+
+    private void UseItemAtSlot(int slotIndex)
+    {
+        if (_inventory == null) return;
+        var slots = _inventory.Slots;
+        if (slotIndex < 0 || slotIndex >= slots.Count) return;
+
+        var slot = slots[slotIndex];
+        if (!slot.Item.IsConsumable)
+        {
+            Debug.Log($"[TestSceneHUD] '{slot.Item.ItemName}' は使用できないアイテムです。");
+            return;
+        }
+
+        if (!_inventory.TryRemoveItem(slot.Item))
+        {
+            Debug.Log($"[TestSceneHUD] '{slot.Item.ItemName}' の取り出しに失敗しました。");
+            return;
+        }
+
+        switch (slot.Item.ConsumableEffect)
+        {
+            case ResourceItemType.Food:
+                if (_stats != null) _stats.ApplyStatModification(StatType.Hunger, 30f);
+                Debug.Log($"[TestSceneHUD] 食料使用: 空腹 +30");
+                break;
+
+            case ResourceItemType.OxygenTank:
+                if (_stats != null) _stats.ApplyStatModification(StatType.Oxygen, 50f);
+                Debug.Log($"[TestSceneHUD] 酸素タンク使用: 酸素 +50");
+                break;
+
+            case ResourceItemType.Medkit:
+                if (_stats != null) _stats.ApplyStatModification(StatType.Health, 40f);
+                Debug.Log($"[TestSceneHUD] 医療キット使用: HP +40");
+                break;
+
+            case ResourceItemType.FuelCanister:
+                if (_torch != null) _torch.RefillFuel(30f);
+                Debug.Log($"[TestSceneHUD] 燃料カニスター使用: 燃料 +30");
+                break;
+
+            default:
+                Debug.Log($"[TestSceneHUD] '{slot.Item.ItemName}' は使用処理が未定義です。");
+                break;
+        }
+    }
+
     // ─────────────── リザルトオーバーレイ描画 ───────────────
 
     private void DrawResultOverlay()
     {
-        // 半透明背景
         DrawRect(new Rect(0f, 0f, Screen.width, Screen.height), new Color(0f, 0f, 0f, 0.6f));
 
         float cx = Screen.width  * 0.5f;
         float cy = Screen.height * 0.5f;
 
-        // タイトル
         bool isSuccess = _gameState == GameState.EscapeSuccess;
         string title   = isSuccess ? "脱出成功！" : "ゲームオーバー...";
 
-        // sin 点滅（Time.unscaledTime を使う: timeScale = 0 でも動く）
         float blink = (Mathf.Sin(Time.unscaledTime * 3f) + 1f) * 0.5f;
         _resultTitleStyle.normal.textColor = isSuccess
             ? new Color(1f, 1f, 0.2f, 0.6f + blink * 0.4f)
@@ -151,13 +314,11 @@ public class TestSceneHUD : MonoBehaviour
 
         GUI.Label(new Rect(cx - 200f, cy - 80f, 400f, 60f), title, _resultTitleStyle);
 
-        // 探索時間
         int minutes = (int)(_resultElapsedTime / 60f);
         int seconds = (int)(_resultElapsedTime % 60f);
         string body = $"探索時間: {minutes:D2}:{seconds:D2}\n宝石: {_resultGems} 個";
         GUI.Label(new Rect(cx - 200f, cy - 10f, 400f, 60f), body, _resultBodyStyle);
 
-        // リトライ / 終了プロンプト
         GUI.Label(
             new Rect(cx - 200f, cy + 60f, 400f, 40f),
             "[ R ] リトライ　　[ Q ] 終了",
@@ -173,22 +334,18 @@ public class TestSceneHUD : MonoBehaviour
         int x = Margin;
         int y = startY + index * (BarHeight + BarSpacing);
 
-        // 30% 以下で点滅（Time.unscaledTime: timeScale=0 でも動作）
         if (ratio <= 0.3f)
         {
             float blink = Mathf.Abs(Mathf.Sin(Time.unscaledTime * 4f));
             color = new Color(color.r, color.g, color.b, blink);
         }
 
-        // ラベル
         GUI.Label(new Rect(x, y, LabelWidth, BarHeight), label, _labelStyle);
 
         int barX = x + LabelWidth;
 
-        // 背景（暗灰色）
         DrawRect(new Rect(barX, y, BarWidth, BarHeight), new Color(0.2f, 0.2f, 0.2f, 0.8f));
 
-        // 前景
         if (ratio > 0f)
             DrawRect(new Rect(barX, y, BarWidth * ratio, BarHeight), color);
     }
@@ -198,6 +355,14 @@ public class TestSceneHUD : MonoBehaviour
         GUI.color = color;
         GUI.DrawTexture(rect, _texWhite);
         GUI.color = Color.white;
+    }
+
+    private void DrawBorder(Rect rect, Color color, int thickness)
+    {
+        DrawRect(new Rect(rect.x,                       rect.y,                        rect.width,  thickness), color);
+        DrawRect(new Rect(rect.x,                       rect.y + rect.height - thickness, rect.width, thickness), color);
+        DrawRect(new Rect(rect.x,                       rect.y,                        thickness,   rect.height), color);
+        DrawRect(new Rect(rect.x + rect.width - thickness, rect.y,                    thickness,   rect.height), color);
     }
 
     // ─────────────── スタイル初期化 ───────────────
@@ -232,6 +397,20 @@ public class TestSceneHUD : MonoBehaviour
             fontSize  = 20,
             fontStyle = FontStyle.Bold,
             alignment = TextAnchor.MiddleCenter,
+            normal    = { textColor = Color.white },
+        };
+
+        _invTitleStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize  = 15,
+            fontStyle = FontStyle.Bold,
+            normal    = { textColor = Color.white },
+        };
+
+        _slotLabelStyle = new GUIStyle(GUI.skin.label)
+        {
+            fontSize  = 11,
+            alignment = TextAnchor.LowerCenter,
             normal    = { textColor = Color.white },
         };
     }
