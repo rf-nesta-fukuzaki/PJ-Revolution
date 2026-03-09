@@ -44,6 +44,8 @@ public class FirstPersonLook : MonoBehaviour
     private float _yaw;
 
     private PlayerStateManager _stateManager;
+    private PlayerMovement     _playerMovement;
+    private float              _cameraYOffset;
 
     private GUIStyle _hintStyle;
     private bool     _skipMouseInput;
@@ -52,7 +54,8 @@ public class FirstPersonLook : MonoBehaviour
 
     private void Awake()
     {
-        _stateManager = GetComponent<PlayerStateManager>();
+        _stateManager   = GetComponent<PlayerStateManager>();
+        _playerMovement = GetComponent<PlayerMovement>();
         AutoFindReferences();
     }
 
@@ -74,6 +77,13 @@ public class FirstPersonLook : MonoBehaviour
             ApplyMouseLook();
 
         _skipMouseInput = false;
+
+        // 段差乗り越え時のカメラカクつき補正
+        float step = _playerMovement != null ? _playerMovement.ConsumeStepOffset() : 0f;
+        if (step > 0f) _cameraYOffset -= step;                                   // 体が上がった分を一時的に相殺
+        _cameraYOffset = Mathf.Lerp(_cameraYOffset, 0f, Time.deltaTime * 15f);  // 滑らかに元の位置へ戻す
+        if (cameraRig != null)
+            cameraRig.localPosition = new Vector3(0f, _cameraYOffset, 0f);
     }
 
     // ─────────────── OnGUI（ヒント表示） ───────────────
