@@ -129,6 +129,9 @@ public class TestSceneHUD : MonoBehaviour
 
     private void OnGUI()
     {
+        // HUDCanvas が存在する場合は OnGUI HUD をスキップ
+        if (FindFirstObjectByType<Canvas>() != null) return;
+
         if (_labelStyle == null) InitStyles();
 
         if (_gameState == GameState.Exploring)
