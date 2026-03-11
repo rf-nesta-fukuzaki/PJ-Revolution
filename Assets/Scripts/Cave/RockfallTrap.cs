@@ -54,7 +54,8 @@ public class RockfallTrap : MonoBehaviour
     {
         if (_triggered) return;
 
-        var hits = Physics.OverlapSphere(transform.position, _triggerRadius);
+        int playerLayer = LayerMask.GetMask("Player");
+        var hits = Physics.OverlapSphere(transform.position, _triggerRadius, playerLayer);
         foreach (var hit in hits)
         {
             if (!hit.CompareTag("Player")) continue;
@@ -156,7 +157,8 @@ public class FallingRock : MonoBehaviour
         _hasHit = true;
 
         // 範囲内の SurvivalStats を持つオブジェクトにダメージ
-        var hits = Physics.OverlapSphere(transform.position, HitRadius);
+        int playerLayer = LayerMask.GetMask("Player");
+        var hits = Physics.OverlapSphere(transform.position, HitRadius, playerLayer);
         foreach (var hit in hits)
         {
             var stats = hit.GetComponent<SurvivalStats>();

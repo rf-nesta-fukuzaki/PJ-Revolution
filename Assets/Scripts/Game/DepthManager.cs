@@ -119,6 +119,12 @@ public class DepthManager : MonoBehaviour
             _lizardSpawner = FindFirstObjectByType<LizardSpawner>();
     }
 
+    private void Start()
+    {
+        ApplyConfig(GetCurrentConfig());
+        Debug.Log($"[DepthManager] 初期深度 {CurrentDepth} のパラメータを適用しました。");
+    }
+
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
