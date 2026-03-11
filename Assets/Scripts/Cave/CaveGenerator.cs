@@ -220,6 +220,17 @@ public class CaveGenerator : MonoBehaviour
         foreach (var chunk in _chunks)
             chunk.RebuildMesh(noiseSettings.isoLevel);
 
+        // 全チャンクのレイヤーを Ground に設定
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        if (groundLayer >= 0)
+        {
+            foreach (var chunk in _chunks)
+            {
+                if (chunk != null)
+                    chunk.gameObject.layer = groundLayer;
+            }
+        }
+
         if (sw != null)
         {
             sw.Stop();

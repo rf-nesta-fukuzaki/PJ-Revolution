@@ -78,20 +78,17 @@ GameObject:
   - component: {fileID: 1050390539026599587}
   - component: {fileID: 3966466425316693781}
   - component: {fileID: 5000701826222389321}
-  - component: {fileID: 72346934340375405}
-  - component: {fileID: 1005421726249406788}
   - component: {fileID: -999851296555062675}
   - component: {fileID: 4138386956538503187}
   - component: {fileID: 5790318454698431756}
   - component: {fileID: 6289947037539616446}
-  - component: {fileID: 6816402956402198981}
   - component: {fileID: 8180626397892928625}
   - component: {fileID: 9142275692718316962}
   - component: {fileID: 5757861122505875151}
   - component: {fileID: 2156101383242297674}
-  - component: {fileID: 4882539105614667812}
   - component: {fileID: 6744717329632894645}
   - component: {fileID: 5672450796376621697}
+  - component: {fileID: 4200156873269649476}
   m_Layer: 0
   m_Name: PlayerPrefab
   m_TagString: Untagged
@@ -131,7 +128,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 3729409572
+  GlobalObjectIdHash: 4234787623
   InScenePlacedSourceGlobalObjectIdHash: 4234787623
   DeferredDespawnTick: 0
   Ownership: 1
@@ -269,13 +266,36 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1e95d1cbade314f90b12d21ff1a81d48, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
-  moveSpeed: 5
-  jumpForce: 8
-  groundLayer:
+  _moveSpeed: 6
+  _airControlMultiplier: 0.15
+  _jumpForce: 7
+  _coyoteTime: 0.1
+  _fallMultiplier: 2.5
+  _lowJumpMultiplier: 2
+  _gentleSlopeMax: 20
+  _moderateSlopeMax: 35
+  _steepSlopeMax: 50
+  _slideAcceleration: 12
+  _maxSlideSpeed: 15
+  _stepHeight: 0.3
+  _stepSmooth: 8
+  _crouchSpeedMultiplier: 0.45
+  _crouchHeight: 1
+  _crouchTransitionSpeed: 10
+  _proneSpeedMultiplier: 0.2
+  _proneHeight: 0.5
+  _safeFallSpeed: 10
+  _fatalFallSpeed: 25
+  _fallDamageMultiplier: 3
+  _fallStunDuration: 0.5
+  _groundCheckRadius: 0.3
+  _groundCheckDistance: 0.2
+  _groundLayer:
     serializedVersion: 2
-    m_Bits: 8
-  groundCheckDistance: 0.15
-  jumpCooldownDuration: 0.1
+    m_Bits: 4294967295
+  _debugSlopeAngle: 0
+  _debugFriction: 0
+  _debugJump: 0
 --- !u!114 &5000701826222389321
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -290,54 +310,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerInputController
   playerMovement: {fileID: 0}
   torchSystem: {fileID: 0}
-  networkPlayer: {fileID: 0}
-  networkTorchAdapter: {fileID: 0}
   debugRefillAmount: 50
---- !u!114 &72346934340375405
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4147954579862684553}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: df54b14afaea349a7932899cf4047a27, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NetworkPlayer
-  ShowTopMostFoldoutHeaderGroup: 1
-  cameraRig: {fileID: 4368435618621430118}
-  inputController: {fileID: 0}
-  playerMovement: {fileID: 0}
-  torchPivot: {fileID: 0}
-  PitchAngle:
-    m_InternalValue: 0
---- !u!114 &1005421726249406788
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4147954579862684553}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ae52c8fecbd2a4a84a42304e2358c53b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NetworkSurvivalStats
-  ShowTopMostFoldoutHeaderGroup: 1
-  decayOxygen: 2
-  decayHunger: 1
-  damageRate: 5
-  depthThreshold: -20
-  depthOxygenMultiplier: 1.5
-  Health:
-    m_InternalValue: 100
-  Oxygen:
-    m_InternalValue: 100
-  Hunger:
-    m_InternalValue: 100
-  IsDowned:
-    m_InternalValue: 0
 --- !u!114 &-999851296555062675
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -350,7 +323,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b953c0f16028340f78a2f5653b689c3b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerInteractor
-  ShowTopMostFoldoutHeaderGroup: 1
   interactRange: 3
   interactMask:
     serializedVersion: 2
@@ -367,7 +339,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3fa3db4befab647c7aa9c1869abeef39, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FirstPersonLook
-  ShowTopMostFoldoutHeaderGroup: 1
   sensitivityX: 2
   sensitivityY: 2
   cameraRig: {fileID: 5884240424882363678}
@@ -385,13 +356,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2bceebae540a848b9a27ec13edf851a9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerClimbing
-  ShowTopMostFoldoutHeaderGroup: 1
+  _initialRopeCount: 3
   climbSpeed: 3
   exitJumpSpeed: 6
   staminaDrainPerSecond: 8
   topExitThreshold: 0.3
-  IsClimbing:
-    m_InternalValue: 0
 --- !u!114 &6289947037539616446
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -404,168 +373,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5c51a815256b14fc7ba0f098c5c61e36, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerStateManager
-  ShowTopMostFoldoutHeaderGroup: 1
   antiEmbedForce: 0.5
-  CurrentState:
-    m_InternalValue: 0
---- !u!114 &6816402956402198981
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4147954579862684553}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 00f1cf86e3a8d4480918756753237d35, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PlayerCosmetics
-  ShowTopMostFoldoutHeaderGroup: 1
-  _database: {fileID: 0}
-  _hatSlot: {fileID: 0}
-  _pickaxeSlot: {fileID: 0}
-  _torchSkinSlot: {fileID: 0}
-  _accessorySlot: {fileID: 0}
-  EquippedHat:
-    m_InternalValue:
-      utf8LengthInBytes: 0
-      bytes:
-        offset0000:
-          byte0000: 0
-          byte0001: 0
-          byte0002: 0
-          byte0003: 0
-          byte0004: 0
-          byte0005: 0
-          byte0006: 0
-          byte0007: 0
-          byte0008: 0
-          byte0009: 0
-          byte0010: 0
-          byte0011: 0
-          byte0012: 0
-          byte0013: 0
-          byte0014: 0
-          byte0015: 0
-        byte0016: 0
-        byte0017: 0
-        byte0018: 0
-        byte0019: 0
-        byte0020: 0
-        byte0021: 0
-        byte0022: 0
-        byte0023: 0
-        byte0024: 0
-        byte0025: 0
-        byte0026: 0
-        byte0027: 0
-        byte0028: 0
-        byte0029: 0
-  EquippedPickaxe:
-    m_InternalValue:
-      utf8LengthInBytes: 0
-      bytes:
-        offset0000:
-          byte0000: 0
-          byte0001: 0
-          byte0002: 0
-          byte0003: 0
-          byte0004: 0
-          byte0005: 0
-          byte0006: 0
-          byte0007: 0
-          byte0008: 0
-          byte0009: 0
-          byte0010: 0
-          byte0011: 0
-          byte0012: 0
-          byte0013: 0
-          byte0014: 0
-          byte0015: 0
-        byte0016: 0
-        byte0017: 0
-        byte0018: 0
-        byte0019: 0
-        byte0020: 0
-        byte0021: 0
-        byte0022: 0
-        byte0023: 0
-        byte0024: 0
-        byte0025: 0
-        byte0026: 0
-        byte0027: 0
-        byte0028: 0
-        byte0029: 0
-  EquippedTorchSkin:
-    m_InternalValue:
-      utf8LengthInBytes: 0
-      bytes:
-        offset0000:
-          byte0000: 0
-          byte0001: 0
-          byte0002: 0
-          byte0003: 0
-          byte0004: 0
-          byte0005: 0
-          byte0006: 0
-          byte0007: 0
-          byte0008: 0
-          byte0009: 0
-          byte0010: 0
-          byte0011: 0
-          byte0012: 0
-          byte0013: 0
-          byte0014: 0
-          byte0015: 0
-        byte0016: 0
-        byte0017: 0
-        byte0018: 0
-        byte0019: 0
-        byte0020: 0
-        byte0021: 0
-        byte0022: 0
-        byte0023: 0
-        byte0024: 0
-        byte0025: 0
-        byte0026: 0
-        byte0027: 0
-        byte0028: 0
-        byte0029: 0
-  EquippedAccessory:
-    m_InternalValue:
-      utf8LengthInBytes: 0
-      bytes:
-        offset0000:
-          byte0000: 0
-          byte0001: 0
-          byte0002: 0
-          byte0003: 0
-          byte0004: 0
-          byte0005: 0
-          byte0006: 0
-          byte0007: 0
-          byte0008: 0
-          byte0009: 0
-          byte0010: 0
-          byte0011: 0
-          byte0012: 0
-          byte0013: 0
-          byte0014: 0
-          byte0015: 0
-        byte0016: 0
-        byte0017: 0
-        byte0018: 0
-        byte0019: 0
-        byte0020: 0
-        byte0021: 0
-        byte0022: 0
-        byte0023: 0
-        byte0024: 0
-        byte0025: 0
-        byte0026: 0
-        byte0027: 0
-        byte0028: 0
-        byte0029: 0
 --- !u!108 &8180626397892928625
 Light:
   m_ObjectHideFlags: 0
@@ -771,20 +579,6 @@ MonoBehaviour:
   flickerIntervalMin: 0.05
   flickerIntervalMax: 0.2
   flickerIntensityMin: 0.5
---- !u!114 &4882539105614667812
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4147954579862684553}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2d7ce856c21504d0f918d1df5118c8ff, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NetworkTorchAdapter
-  ShowTopMostFoldoutHeaderGroup: 1
-  torchSystem: {fileID: 0}
 --- !u!114 &6744717329632894645
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -797,7 +591,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 538fcb82e7dc74c60ae870fe534d11aa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ProximityAudioSource
-  ShowTopMostFoldoutHeaderGroup: 1
   _baseVolume: 1
   _dryReverbLevel: -10000
   _wetReverbLevel: 0
@@ -824,6 +617,35 @@ MonoBehaviour:
   _stepBaseInterval: 0.5
   _minStepInterval: 0.2
   _stepThreshold: 0.3
+--- !u!114 &4200156873269649476
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4147954579862684553}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalLightData
+  m_UsePipelineSettings: 1
+  m_AdditionalLightsShadowResolutionTier: 2
+  m_CustomShadowLayers: 0
+  m_LightCookieSize: {x: 1, y: 1}
+  m_LightCookieOffset: {x: 0, y: 0}
+  m_SoftShadowQuality: 0
+  m_RenderingLayersMask:
+    serializedVersion: 0
+    m_Bits: 1
+  m_ShadowRenderingLayersMask:
+    serializedVersion: 0
+    m_Bits: 1
+  m_Version: 4
+  m_LightLayerMask: 1
+  m_ShadowLayerMask: 1
+  m_RenderingLayers: 1
+  m_ShadowRenderingLayers: 1
 --- !u!1 &4368435618621430118
 GameObject:
   m_ObjectHideFlags: 0
@@ -1158,7 +980,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 538fcb82e7dc74c60ae870fe534d11aa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ProximityAudioSource
-  ShowTopMostFoldoutHeaderGroup: 1
   _baseVolume: 1
   _dryReverbLevel: -10000
   _wetReverbLevel: 0
@@ -1228,7 +1049,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2be4da1cbf4414f618b751437a55c3b8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DownedReviveInteractable
-  ShowTopMostFoldoutHeaderGroup: 1
   reviveHpAmount: 30
   downedPrompt: "[E] \u6551\u52A9\u3059\u308B"
 --- !u!1 &7136242678393380296
@@ -1243,7 +1063,6 @@ GameObject:
   - component: {fileID: 8985076237301040568}
   - component: {fileID: 2106715644123946988}
   - component: {fileID: 2142346936087559994}
-  - component: {fileID: 8508778948277308174}
   m_Layer: 0
   m_Name: TorchPivot
   m_TagString: Untagged
@@ -1380,20 +1199,6 @@ MonoBehaviour:
   flickerIntervalMin: 0.05
   flickerIntervalMax: 0.2
   flickerIntensityMin: 0.5
---- !u!114 &8508778948277308174
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7136242678393380296}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2d7ce856c21504d0f918d1df5118c8ff, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NetworkTorchAdapter
-  ShowTopMostFoldoutHeaderGroup: 1
-  torchSystem: {fileID: 0}
 --- !u!1 &8129776773731396264
 GameObject:
   m_ObjectHideFlags: 0
