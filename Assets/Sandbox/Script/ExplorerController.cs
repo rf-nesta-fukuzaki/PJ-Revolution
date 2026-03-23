@@ -1,61 +1,108 @@
 using UnityEngine;
 
 /// <summary>
-/// Sandbox シーン用 Explorer WASD 移動コントローラー（Blend Tree 対応版）。
-/// - Animator に float 型パラメーター "Speed"（0.0〜1.0）を SmoothDamp で滑らかに渡す。
-/// - ExplorerCameraLook と組み合わせて Explorer ルートにアタッチする。
+/// Sandbox シーン用 Explorer WASD 移動 + Sprint + Jump コントローラー。
+/// Animator パラメーター:
+///   float   Speed       (0-1) : State Speed Multiplier。0=凍結(Idle再現)、1=通常再生
+///   float   SpeedBlend  (0-1) : Blend Tree 選択。0=Walk、1=Run
+///   trigger JumpTrigger       : Jump ステートへの遷移
+///   bool    IsGrounded        : 接地状態（Jump→MovementBT 戻り条件）
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 public class ExplorerController : MonoBehaviour
 {
-    [Header("移動")]
-    [SerializeField] private float _moveSpeed = 5f;
+    [Header("移動速度")]
+    [SerializeField] private float _walkSpeed   = 5f;
+    [SerializeField] private float _sprintSpeed = 10f;
 
-    [Header("アニメーション")]
-    [Tooltip("Speed パラメーターが 0⇔1 に変化するまでの時間（秒）。小さいほど俊敏。")]
-    [SerializeField] private float _animSmoothTime = 0.1f;
+    [Header("ジャンプ")]
+    [SerializeField] private float _jumpForce = 6f;
+
+    [Header("接地判定")]
+    [Tooltip("Rigidbody 中心からの下向きオフセット（CapsuleCollider の底面に合わせて調整）")]
+    [SerializeField] private float     _groundCheckOffsetY = -0.9f;
+    [SerializeField] private float     _groundCheckRadius  = 0.3f;
+    [SerializeField] private LayerMask _groundLayer;
+
+    [Header("アニメーション補間")]
+    [SerializeField] private float _animSmoothTime  = 0.1f;
+    [SerializeField] private float _blendSmoothTime = 0.1f;
 
     private Rigidbody _rb;
     private Animator  _animator;
-    private Vector3   _moveInput;
 
-    private float _currentSpeed;   // Animator に渡す現在値（SmoothDamp で補間）
-    private float _speedVelocity;  // SmoothDamp 内部ステート
+    private Vector3 _moveInput;
+    private bool    _isSprinting;
+    private bool    _jumpRequested;
+    private bool    _isGrounded;
 
-    private static readonly int SpeedHash = Animator.StringToHash("Speed");
+    private float _currentSpeed;
+    private float _speedVelocity;
+    private float _currentBlend;
+    private float _blendVelocity;
+
+    private static readonly int SpeedHash       = Animator.StringToHash("Speed");
+    private static readonly int SpeedBlendHash  = Animator.StringToHash("SpeedBlend");
+    private static readonly int JumpTriggerHash = Animator.StringToHash("JumpTrigger");
+    private static readonly int IsGroundedHash  = Animator.StringToHash("IsGrounded");
 
     private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
         _rb.freezeRotation = true;
-
-        // FBX モデル子階層の Animator を自動取得
         _animator = GetComponentInChildren<Animator>();
     }
 
     private void Update()
     {
-        float h = Input.GetAxisRaw("Horizontal"); // A/D
-        float v = Input.GetAxisRaw("Vertical");   // W/S
+        // 接地判定
+        Vector3 origin = _rb.position + Vector3.up * _groundCheckOffsetY;
+        _isGrounded = Physics.CheckSphere(origin, _groundCheckRadius,
+                                          _groundLayer, QueryTriggerInteraction.Ignore);
 
-        // Explorer 本体の向きに合わせた相対移動ベクトル（XZ 平面）
-        _moveInput = (transform.right * h + transform.forward * v).normalized;
+        // 移動入力
+        float h = Input.GetAxisRaw("Horizontal");
+        float v = Input.GetAxisRaw("Vertical");
+        _moveInput   = (transform.right * h + transform.forward * v).normalized;
+        _isSprinting = _moveInput.sqrMagnitude > 0.01f && Input.GetKey(KeyCode.LeftShift);
 
-        // 目標 Speed: 入力があれば 1.0、なければ 0.0
+        // ジャンプ入力（接地時のみ受付）
+        if (Input.GetKeyDown(KeyCode.Space) && _isGrounded)
+            _jumpRequested = true;
+
+        // Animator: Speed（State Speed Multiplier）
         float targetSpeed = _moveInput.sqrMagnitude > 0.01f ? 1f : 0f;
-
-        // SmoothDamp で滑らかに補間して Animator へ渡す
-        _currentSpeed = Mathf.SmoothDamp(
-            _currentSpeed, targetSpeed, ref _speedVelocity, _animSmoothTime);
-
+        _currentSpeed = Mathf.SmoothDamp(_currentSpeed, targetSpeed,
+                                          ref _speedVelocity, _animSmoothTime);
         _animator?.SetFloat(SpeedHash, _currentSpeed);
+
+        // Animator: SpeedBlend（Walk / Run ブレンド）
+        float targetBlend = _isSprinting ? 1f : 0f;
+        _currentBlend = Mathf.SmoothDamp(_currentBlend, targetBlend,
+                                          ref _blendVelocity, _blendSmoothTime);
+        _animator?.SetFloat(SpeedBlendHash, _currentBlend);
+
+        // Animator: IsGrounded
+        _animator?.SetBool(IsGroundedHash, _isGrounded);
     }
 
     private void FixedUpdate()
     {
-        if (_moveInput.sqrMagnitude < 0.01f) return;
+        // ジャンプ（物理フレームで実行）
+        if (_jumpRequested)
+        {
+            _jumpRequested = false;
+            // Y 速度をリセットしてから AddForce（着地直後の残留速度を除去）
+            Vector3 vel = _rb.linearVelocity;
+            vel.y = 0f;
+            _rb.linearVelocity = vel;
+            _rb.AddForce(Vector3.up * _jumpForce, ForceMode.Impulse);
+            _animator?.SetTrigger(JumpTriggerHash);
+        }
 
-        Vector3 target = _rb.position + _moveInput * (_moveSpeed * Time.fixedDeltaTime);
-        _rb.MovePosition(target);
+        // 水平移動
+        if (_moveInput.sqrMagnitude < 0.01f) return;
+        float speed = _isSprinting ? _sprintSpeed : _walkSpeed;
+        _rb.MovePosition(_rb.position + _moveInput * (speed * Time.fixedDeltaTime));
     }
 }
