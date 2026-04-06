@@ -1,65 +1,42 @@
 using UnityEngine;
 
 /// <summary>
-/// 旧 Input System (Input.GetAxis / GetButton) を使ってプレイヤーの入力を受け取り、
-/// PlayerMovement / TorchSystem を直接呼び出すコントローラー。
-///
-/// [ステートマシン対応]
-///   - Update の先頭で PlayerStateManager.CurrentState を確認する。
-///   - Normal 以外の状態（Climbing / Downed）は移動・ジャンプ入力を送信しない。
+/// 旧 Input System でプレイヤー入力を受け取り PlayerMovement / GrappleHook を制御する。
 /// </summary>
 [RequireComponent(typeof(PlayerMovement))]
 public class PlayerInputController : MonoBehaviour
 {
     [Header("参照設定")]
-    [Tooltip("制御対象の PlayerMovement。省略時は同一GameObject から自動取得")]
     [SerializeField] private PlayerMovement playerMovement;
-
-    [Tooltip("制御対象の TorchSystem。子 GameObject に配置時は指定")]
-    [SerializeField] private TorchSystem torchSystem;
-
-    [Header("デバッグ設定")]
-    [Tooltip("F キー押下で補充する燃料量")]
-    [SerializeField] private float debugRefillAmount = 50f;
-
-    // ─────────────── 内部参照 ───────────────
+    [SerializeField] private GrappleHook grappleHook;
 
     private PlayerStateManager _stateManager;
-
-    // ─────────────── Unity Lifecycle ───────────────
 
     private void Awake()
     {
         if (playerMovement == null)
             playerMovement = GetComponent<PlayerMovement>();
+        if (grappleHook == null)
+            grappleHook = GetComponentInChildren<GrappleHook>();
 
         _stateManager = GetComponent<PlayerStateManager>();
     }
 
     private void Update()
     {
-        // たいまつ・デバッグは状態に関わらず常に処理する
-        HandleTorch();
-        HandleDebug();
-
-        // Normal 状態のみ移動・ジャンプ・しゃがみを受け付ける
-        if (!IsNormalState()) return;
+        if (!IsNormalOrSwinging()) return;
 
         HandleMovement();
         HandleJump();
-        HandleCrouch();
-        HandleProne();
+        HandleRope();
     }
 
-    // ─────────────── 状態チェック ───────────────
-
-    private bool IsNormalState()
+    private bool IsNormalOrSwinging()
     {
         if (_stateManager == null) return true;
-        return _stateManager.CurrentState == PlayerState.Normal;
+        var s = _stateManager.CurrentState;
+        return s == PlayerState.Normal || s == PlayerState.Swinging;
     }
-
-    // ─────────────── 入力処理 ───────────────
 
     private void HandleMovement()
     {
@@ -70,34 +47,33 @@ public class PlayerInputController : MonoBehaviour
 
     private void HandleJump()
     {
-        if (!Input.GetButtonDown("Jump")) return;
-        Debug.Log("[Jump] Jump input detected");
-        playerMovement.Jump();
+        if (Input.GetButtonDown("Jump"))
+        {
+            playerMovement.Jump();
+            playerMovement.JumpHold();
+        }
+        if (Input.GetButtonUp("Jump"))
+            playerMovement.JumpRelease();
     }
 
-    private void HandleCrouch()
+    private void HandleRope()
     {
-        if (Input.GetKeyDown(KeyCode.LeftControl))
-            playerMovement.SetCrouch(true);
-        else if (Input.GetKeyUp(KeyCode.LeftControl))
-            playerMovement.SetCrouch(false);
+        if (grappleHook == null) return;
+
+        // 左クリック: スイング
+        if (Input.GetMouseButtonDown(0))
+            FireRope();
+
+        // 右クリック: 引っ張り
+        if (Input.GetMouseButtonDown(1))
+            PullRope();
+
+        // R キー: ロープ解放
+        if (Input.GetKeyDown(KeyCode.R))
+            ReleaseRope();
     }
 
-    private void HandleProne()
-    {
-        if (!Input.GetKeyDown(KeyCode.C)) return;
-        playerMovement.SetProne(!playerMovement.IsProne);
-    }
-
-    private void HandleTorch()
-    {
-        if (!Input.GetMouseButtonDown(1)) return;
-        torchSystem?.ToggleTorch();
-    }
-
-    private void HandleDebug()
-    {
-        if (!Input.GetKeyDown(KeyCode.F)) return;
-        torchSystem?.RefillFuel(debugRefillAmount);
-    }
+    public void FireRope()  => grappleHook?.FireSwing();
+    public void PullRope()  => grappleHook?.FirePull();
+    public void ReleaseRope() => grappleHook?.Release();
 }

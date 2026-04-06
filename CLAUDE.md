@@ -1,245 +1,572 @@
-# CLAUDE.md
+# CLAUDE.md — Peak Idiots
+## ドタバタ山岳 Co-op ロープアクション
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+---
 
-## Project Overview
+## ⚠️ 最重要ルール（必ず守ること）
 
-Unity 6 (6000.3.8f1) プロジェクト。Universal Render Pipeline (URP 17.3.0) を使用。
-プロジェクト名: **P-REVO-CCC** — シングルプレイ専用サバイバルゲーム（NGO 除去済み、全コンポーネント MonoBehaviour ベース）。
+1. **確認なしで実装を進める** — ユーザーへの質問は禁止。迷ったらこのドキュメントの判断基準に従う
+2. **Step順に実行** — Step 1 から順番に。完了基準を満たしてから次へ進む
+3. **エラーは自分で修正** — ビルドエラー・NullReference・物理の不具合はすべて自分で直す
+4. **外部アセット不要** — Unity標準プリミティブ・マテリアル・AudioClipで代替する
+5. **各Step完了時に git commit** — コミットメッセージは英語で `feat: Step{N} - {内容}` 形式
+6. **Unity 6.3 URP** — URPのAPIを使うこと。Built-in Render Pipelineは使わない
 
-## Unity Version
+---
 
-Unity 6000.3.8f1 — この正確なバージョンで開く必要がある（`ProjectSettings/ProjectVersion.txt` 参照）。
+## ゲーム概要
 
-## Build & Test Commands
+| 項目 | 内容 |
+|------|------|
+| タイトル | Peak Idiots（仮） |
+| ジャンル | Co-op 山岳探索ロープアクション |
+| プレイ人数 | 1〜4人（Co-op対応、まずソロ動作を確認） |
+| 視点 | 一人称（FPS） |
+| トーン | カジュアル・コミカル（失敗が笑える） |
+| コアメカニクス | 物理ロープ（スイング＋引っ張り）で山を登る |
+| ゴール | 山頂到達。ルート開拓・隠し要素あり |
+| 参考 | RV There It のロープ物理（慣性・重力・伸縮のリアルさ） |
 
-```bash
-# コマンドラインビルド (バッチモード)
-Unity -quit -batchmode -projectPath . -buildTarget <platform> -executeMethod BuildScript.Build
+---
 
-# Edit Mode テスト実行
-Unity -quit -batchmode -projectPath . -runTests -testPlatform EditMode -testResults results.xml
+## リポジトリ情報
 
-# Play Mode テスト実行
-Unity -quit -batchmode -projectPath . -runTests -testPlatform PlayMode -testResults results.xml
+- **URL**: https://github.com/rf-nesta-fukuzaki/PJ-Revolution.git
+- **ブランチ**: main
+- **Unity**: 6.3 URP
 
-# 特定テストのみ実行
-Unity -quit -batchmode -projectPath . -runTests -testFilter <TestClassName.MethodName>
+### 既存コードの扱い方針
+
+| ファイル | 対応 |
+|---------|------|
+| `Assets/Scripts/PlayerMovement.cs` | ベース流用・大幅改造（ロープ中の挙動追加） |
+| `Assets/Scripts/PlayerInputController.cs` | 流用・ロープ操作入力を追加 |
+| `Assets/Scripts/FirstPersonLook.cs` | 流用・Update→LateUpdateに変更 |
+| `Assets/Scripts/PlayerStateManager.cs` | 流用・Swinging/Climbingステート追加 |
+| `Assets/Scripts/SurvivalStats.cs` | **削除** — サバイバル要素不要 |
+| `Assets/Scripts/TorchSystem.cs` | **削除** — 洞窟要素不要 |
+| `Assets/Scripts/SimpleSpawner.cs` | **削除** — 不要 |
+| Marching Cubes 関連スクリプト | **全削除** — 洞窟生成不要 |
+| NGO関連コード | **全削除** — 後のStepで再統合 |
+
+---
+
+## アーキテクチャ設計
+
+### 新規作成スクリプト一覧
+
 ```
-
-テストフレームワーク: Unity Test Framework v1.6.0 (NUnit ベース) + Performance Testing v3.2.0
-テストファイルはまだ存在しない。追加する場合は `Assets/Tests/` に配置する。
-
-## Architecture
-
-### スクリプト構成 (`Assets/Scripts/`)
-
-```
-Scripts/
-├── PlayerMovement.cs          # Rigidbody 物理移動、登攀モード切替 (SetClimbingMode)
-│                              # SetMoveSpeed(float) / SetJumpForce(float) — アップグレード専用セッター
-├── PlayerInputController.cs   # 入力ハブ (WASD/ジャンプ/たいまつ)
-├── PlayerStateManager.cs      # キャラクター状態管理（移動・登攀・インタラクト連携）
-│                              # CurrentState プロパティ (PlayerState enum)
-├── FirstPersonLook.cs         # マウス視点・カーソルロック
-├── SurvivalStats.cs           # HP/酸素/空腹/ダウン状態管理。
-│                              # public float Health/Oxygen/Hunger { get; private set; }
-│                              # public bool IsDowned { get; private set; }
-│                              # イベント: OnHealthChanged(float,float) / OnOxygenChanged /
-│                              #          OnHungerChanged / OnIsDownedChanged(bool,bool) / OnDowned
-│                              # API: ApplyStatModification(StatType, float)
-│                              # SetMaxHealth/SetMaxOxygen/SetMaxHunger(float) — アップグレード専用セッター
-│                              # StatType enum はここで定義
-├── TorchSystem.cs             # 燃料消費・光強度・明滅エフェクト。SetMaxFuel(float) でアップグレード可能
-├── UIManager.cs               # 燃料ゲージ・HP/酸素/空腹表示、インタラクトプロンプト
-│                              # BindToPlayer(TorchSystem, SurvivalStats) で紐付け
-├── GameManager.cs             # ゲーム状態管理（進行・勝敗判定）Singleton
-├── ResultUI.cs                # リザルト画面 UI 制御
-├── EscapeGate.cs              # 脱出ゲート判定（洞窟クリア条件）
-├── Game/
-│   ├── SimpleSpawner.cs       # CaveGenerator.OnCaveGenerated 後にプレイヤーを
-│   │                          # StartWorldPosition へ移動させる。
-│   │                          # Inspector: _caveGenerator / _playerTransform を設定
-│   ├── DepthManager.cs        # 階層マップ管理 Singleton (Depth 1-3)。AdvanceDepth() で
-│   │                          # CaveGenerator/BatSpawner/LizardSpawner にパラメータを反映。
-│   │                          # OnDepthChanged(int) イベントを持つ
-│   ├── UpgradeSystem.cs       # 恒久アップグレード Singleton。宝石消費・PlayerPrefs 保存。
-│   │                          # TryUpgrade(id) / ApplyAllUpgrades() / GetLevel(id)
-│   ├── UpgradeDefinition.cs   # ScriptableObject。UpgradeId/DisplayName/MaxLevel/GemCostPerLevel/UpgradeType
-│   │                          # [CreateAssetMenu] で生成。UpgradeType enum もここで定義
-│   └── DailyChallenge.cs      # static クラス。GetDailySeed() / IsDailyMode / SaveScore() / GetBestScore()
-├── Climbing/
-│   ├── PlayerClimbing.cs       # ロープ登攀 (IsClimbing bool プロパティ)、スタミナ消費
-│   └── RopeController.cs       # ロープ設置 (IsDeployed bool プロパティ)、LineRenderer
-├── Cave/
-│   ├── CaveGenerator.cs        # 洞窟生成統合コンポーネント（Cellular2D / MarchingCubes3D を
-│   │                           # Inspector で切替）。Generate() 末尾で CaveContentPlacer を呼ぶ。
-│   │                           # 公開 API: UsedSeed / StartWorldPosition / GoalCenterPosition /
-│   │                           # Chunks / NoiseConfig / CenterOffset
-│   │                           # SetChunkCounts(x,y,z) / SetSeedOverride(int) / GenerateCave(seed)
-│   ├── CaveContentPlacer.cs    # 洞窟生成後にクリスタル・食料・キノコを自動配置。
-│   │                           # System.Random(seed) 使用（UnityEngine.Random 禁止）。
-│   │                           # 床面検出は CaveChunk.GetScalar() によるスカラー場直接参照
-│   │                           # （上からの Raycast は天井の岩で止まり床面に届かないため不使用）
-│   ├── TunnelCarver.cs         # 縦穴・横穴を彫刻するトンネル生成。seed + 99999 でシャッフル
-│   ├── DepthEnvironment.cs     # Y 座標に応じたアンビエント・フォグ変化（深度環境演出）
-│   ├── RockfallTrap.cs         # 落石トラップ（天井不可視トリガー + FallingRock 着弾ダメージ）
-│   │                           # Update で OverlapSphere 検出 → RockfallSequence コルーチン
-│   ├── RockfallPlacer.cs       # 天井スカラー場検出で落石トラップを自動配置。seed + 55555
-│   ├── GlowCrystal.cs          # Point Light を sin カーブでパルス明滅させるクリスタル制御
-│   ├── CaveVisualizer.cs       # 洞窟の可視化（Gizmos）
-│   ├── MeshGenerator.cs        # ブロックメッシュ生成（2D 洞窟用）
-│   ├── NoiseSettings.cs        # Serializable struct（ノイズパラメータ、isoLevel を含む）
-│   ├── MarchingCubesTable.cs   # 256 パターン定数テーブル（Paul Bourke）
-│   ├── CaveNoiseGenerator.cs   # 3D Perlin Noise + 重力バイアス（床形成を促進）
-│   └── CaveChunk.cs            # 16×16×16 チャンク単位の Marching Cubes Mesh 生成。
-│                               # GetScalar(lx,ly,lz) で空洞判定が可能
-├── Interaction/
-│   ├── IInteractable.cs            # Interact(GameObject interactor) と GetPromptText() のインターフェース
-│   ├── ResourceItemType.cs         # enum: Food/OxygenTank/Medkit/FuelCanister
-│   ├── PlayerInteractor.cs         # Raycast 検出。直接 _currentTarget.Interact(gameObject) 呼び出し
-│   ├── ResourceItem.cs             # MonoBehaviour アイテム（Destroy で消える）
-│   ├── PlacedResourceItem.cs       # MonoBehaviour アイテム（Instantiate 配置、Destroy で消える）
-│   │                               # Collider が必須。なければ PlayerInteractor の Raycast が当たらない。
-│   ├── CollectibleGem.cs           # MonoBehaviour 宝石。Interact() で GameManager.AddGem() を呼び Destroy。
-│   └── DownedReviveInteractable.cs # ダウン中プレイヤーへのアダプター。IsDowned==true のときのみ
-│                                   # プロンプトを返す。PlayerPrefab 子オブジェクトにアタッチして使用。
-├── Enemy/
-│   ├── BatAI.cs               # コウモリ型 AI ステートマシン (Sleeping→Alerted→Chasing→Attacking→Fleeing)。
-│   │                          # Transform を直接操作（NavMesh 不使用）。
-│   │                          # CallNearbyBats() / WakeUp() で群れ呼び出し対応
-│   ├── BatPerception.cs       # 感知ロジック（起床/追尾/攻撃/退散の距離判定）。BatAI から利用される。
-│   │                          # AddTarget/RemoveTarget でプレイヤー参照を管理。
-│   ├── BatSpawner.cs          # コウモリを天井スカラー場検出でスポーン。seed + 12345 シャッフル。
-│   │                          # RegisterPlayerExternal(GameObject) / SetMaxBats(int) で外部制御可。
-│   ├── LizardAI.cs            # トカゲ型地上 AI (Sleeping→Alerted→Chasing→Attacking→Fleeing→Returning)。
-│   │                          # Raycast Y スナップで床面追従。しゃがみ/匍匐で chase 速度 ×1.5。
-│   │                          # [RequireComponent(typeof(BatPerception))] で BatPerception を再利用
-│   └── LizardSpawner.cs       # 床面スカラー場検出でトカゲをスポーン。seed + 77777 シャッフル。
-│                              # RegisterPlayerExternal(GameObject) / SetMaxLizards(int) で外部制御可。
+Assets/Scripts/
+├── Player/
+│   ├── PlayerMovement.cs        (既存を大幅改造)
+│   ├── PlayerInputController.cs (既存を改造)
+│   ├── FirstPersonLook.cs       (既存を改造)
+│   ├── PlayerStateManager.cs    (既存を改造)
+│   └── ClimbingController.cs    (新規)
+├── Rope/
+│   ├── RopeSystem.cs            (新規・最重要)
+│   ├── GrappleHook.cs           (新規)
+│   └── RopeRenderer.cs          (新規)
+├── World/
+│   ├── MountainGenerator.cs     (新規)
+│   ├── CheckpointSystem.cs      (新規)
+│   └── SummitGoal.cs            (新規)
+├── UI/
+│   ├── HudManager.cs            (新規)
+│   └── TimerDisplay.cs          (新規)
 ├── Audio/
-│   ├── FootstepAudio.cs        # ProximityAudioSource 経由で足音 SE を再生。速度連動間隔。
-│   ├── ProximityAudioManager.cs # シーン全体のプレイヤー近接音声を一括管理。距離減衰・エコー。
-│   └── ProximityAudioSource.cs  # MonoBehaviour。個別プレイヤー音源、3D スペーシャル・リバーブ制御。
-├── Cosmetics/
-│   ├── CosmeticDatabase.cs     # ScriptableObject。コスメアイテム定義一覧（Hat/Pickaxe/TorchSkin/Accessory）。
-│   ├── CosmeticShopUI.cs       # コスメショップ UI（カテゴリ切替・購入・装備）。
-│   ├── PlayerCosmetics.cs      # MonoBehaviour。装備 ID をローカル string で管理
-│   │                           # (EquippedHat/Pickaxe/TorchSkin/Accessory プロパティ)。
-│   └── PlayerCosmeticSaveData.cs # Singleton。PlayerPrefs ベースの宝石数・解放済みアイテム保存。
-│                                  # SpendGems(int) → UpgradeSystem から宝石消費に使用
-├── Inventory/
-│   ├── InventorySystem.cs      # MonoBehaviour。重量制限付きスロット管理。
-│   │                           # TryAddItem / TryRemoveItem / HasItem / SetMaxWeight(float)
-│   ├── InventoryItem.cs        # ScriptableObject。ItemName/Weight/MaxStack/Icon/ConsumableEffect
-│   └── ItemDatabase.cs         # ScriptableObject。InventoryItem 一覧の登録・検索
-├── Editor/
-│   └── PrefabApplyHelper.cs    # Editor 専用: プレハブ変更適用ヘルパー。
-└── UI/
-    ├── HUDAnimator.cs          # コルーチンベース HUD 演出（点滅・フラッシュ・ビネット）。
-    │                           # BindToPlayer(SurvivalStats, TorchSystem) で紐付け
-    ├── LobbyUI.cs              # ロビー画面（ソロ開始のみ）。
-    ├── OptionsUI.cs            # マウス感度・音量・解像度設定（PlayerPrefs 保存）。
-    ├── PauseManager.cs         # ESC キーによる一時停止 UI 制御（PauseManager.IsPaused 静的プロパティ）。
-    ├── TitleScreenUI.cs        # タイトル画面（Start/DailyChallenge/Options/Quit）。
-    │                           # DailyChallenge ボタン: IsDailyMode=true + SetSeedOverride() 後に Playing へ遷移
-    └── UIFlowController.cs     # Singleton。UIScreen (Title/Lobby/Playing/Result/CosmeticShop) 管理。
+│   └── AudioManager.cs          (新規)
+└── Game/
+    ├── GameManager.cs           (新規)
+    └── CoopManager.cs           (新規・後のStep)
 ```
 
-### 主要アセット
+---
 
-- **シーン**: `Assets/Scenes/SampleScene.unity`（メインシーン）
-- **プレハブ**:
-  - `Assets/Prefab/PlayerPrefab.prefab` / `RopePrefab.prefab`
-  - `Assets/Prefab/Enemy/BatPrefab.prefab`
-  - `Assets/Prefab/Cave/GlowCrystalPrefab.prefab` / `CrystalPrefab.prefab`
-  - `Assets/Prefab/Item/`: `FoodItem.prefab` / `Food.prefab` / `Mushroom.prefab` / `OxygenItem.prefab` / `MedkitItem.prefab` / `FuelCanister.prefab` / `CollectibleGem.prefab` / `CrystalBlue.prefab` / `CrystalPurple.prefab` / `CrystalOrange.prefab`
+## 物理ロープ設計仕様（RopeSystem.cs の実装指針）
 
-### PlayerPrefab コンポーネント階層
+RV There It のロープを参考にした物理ロープ。以下を必ず実装する。
+
+### ロープの物理モデル
+- **実装方式**: Verlet積分によるロープシミュレーション（`LineRenderer` + `GameObject[]` ノード配列）
+- **ノード数**: 16〜24個（パフォーマンスと見た目のバランス）
+- **制約解決**: 各フレームで隣接ノード間の距離制約を10回イテレーションで解く
+- **重力**: 各ノードに `Physics.gravity` を適用
+- **風の影響**: わずかなランダム揺れを加えてリアル感を出す
+
+### ロープの2つの使い方
+
+**① スイング（Swing）**
+- 左クリック（またはRトリガー）でロープを発射
+- 岩・木・地形にヒットしたらアンカーポイントを設定
+- プレイヤーはアンカーを支点に振り子運動
+- ロープ長を短くする（巻き取る）入力あり
+- スイング中は空中制御を制限（慣性を活かす）
+
+**② 引っ張り（Pull）**
+- 右クリック（またはLトリガー）で引っ張りモード
+- 岩・木・Co-opプレイヤーにヒットしたら引っ張る
+- 引っ張り力: 500N（Rigidbodyに `AddForce`）
+- 自分も引き寄せられる（質量比で力を分配）
+
+### GrappleHook.cs の仕様
+- Raycastで照準方向に発射（最大距離: 30m）
+- ヒット可能タグ: `Grappable`（岩・木・地形・他プレイヤー）
+- ヒット不可: `Player`（自分自身）
+- ヒット演出: パーティクル + SE
+
+---
+
+## シーン構成
 
 ```
-PlayerPrefab (Root)
-├── Rigidbody, CapsuleCollider
-├── PlayerMovement / PlayerInputController / FirstPersonLook
-├── PlayerStateManager / SurvivalStats
-├── PlayerInteractor / PlayerClimbing
-├── PlayerCosmetics
-├── CameraRig (子オブジェクト)
-│   └── Camera + AudioListener  ← 複数存在すると Unity 警告
-└── TorchPivot (子オブジェクト)
-    └── Light / TorchSystem
+Scenes/
+├── MainMenu      (タイトル・スタートボタン)
+├── TestScene     (現在の開発用シーン → Mountain01に改名)
+└── Mountain01    (メインゲームシーン)
 ```
 
-### コンテンツ配置システム
+### Mountain01 シーン構成
 
-`CaveGenerator` と同じ GameObject に `CaveContentPlacer` をアタッチする。`Generate()` 末尾で自動呼び出しされ、Inspector の `[ContextMenu("Regenerate Cave")]` 再実行でも配置がリセット・再実行される。
+```
+[Hierarchy]
+├── GameManager
+├── AudioManager
+├── Mountain
+│   ├── Terrain (ProceduralMesh or Unity Terrain)
+│   ├── RockFormations (Grappableタグ付き)
+│   ├── Trees (Grappableタグ付き)
+│   └── Summit (SummitGoalコンポーネント)
+├── Player
+│   ├── PlayerMovement
+│   ├── PlayerInputController
+│   ├── FirstPersonLook
+│   ├── GrappleHook
+│   └── RopeSystem
+├── Checkpoints
+│   ├── Checkpoint_01
+│   ├── Checkpoint_02
+│   └── Checkpoint_03
+├── UI
+│   ├── HUD Canvas
+│   └── TimerDisplay
+└── Lighting
+    ├── Directional Light
+    └── Sky Volume (URP)
+```
 
-**床面検出の重要な設計制約**:
-3D モードで上から下への `Physics.Raycast` は洞窟の天井（岩の上面）でヒットして止まり、洞窟床面に届かない。そのため `CaveChunk.GetScalar(lx, ly, lz)` でスカラー場を直接参照し、「空洞（`< isoLevel`）の直下が岩（`>= isoLevel`）」となるセルを床面と判定する方式を採用している。
+---
 
-**左偏り修正**:
-チャンクを x=0 から順に処理すると maxCrystals の上限が左側で消費されてしまう。全候補を先に収集し Fisher-Yates シャッフル（`System.Random` 使用）してから配置することで均一分布を実現している。
+## Step 1: クリーンアップ＆プロジェクトセットアップ
 
-**OnCaveGenerated イベントのサブスクライバー**:
-`CaveGenerator.OnCaveGenerated` は `CaveContentPlacer`・`BatSpawner`・`LizardSpawner`・`RockfallPlacer`・`SimpleSpawner` がサブスクライブする。洞窟生成完了後に依存処理を追加する場合は必ずこのイベントを使う（`Generate()` 直後に直接呼ぶと配置・スポーンの順序が壊れる）。
+### 作業内容
 
-### インベントリシステム
+1. **不要ファイルの削除**
+   - `SurvivalStats.cs` を削除
+   - `TorchSystem.cs` を削除
+   - `SimpleSpawner.cs` を削除
+   - Marching Cubes関連スクリプトを全削除（ファイル名に "Marching", "Cave", "Voxel" を含むもの）
+   - 削除後にコンパイルエラーがあれば全て修正する
 
-`InventorySystem` はプレイヤーの所持アイテムをスロット単位で管理する（最大重量 `_maxWeight = 30f`）。`InventoryItem`（ScriptableObject）にはアイテム名・重量・最大スタック数・消費エフェクト種別が定義される。アイテム拾得時は `TryAddItem(item)` で重量チェックを行い、インベントリから使用する際は `TryRemoveItem` + `ApplyStatModification` / `RefillFuel` などを組み合わせて実装する（`TestSceneHUD` の `UseItemAtSlot` 参照）。
+2. **フォルダ構成を整理**
+   - `Assets/Scripts/Player/` フォルダを作成
+   - `Assets/Scripts/Rope/` フォルダを作成
+   - `Assets/Scripts/World/` フォルダを作成
+   - `Assets/Scripts/UI/` フォルダを作成
+   - `Assets/Scripts/Audio/` フォルダを作成
+   - `Assets/Scripts/Game/` フォルダを作成
+   - 既存スクリプトを適切なフォルダに移動
 
-### 階層マップシステム (Depth 1-3)
+3. **Tagの追加**
+   - `Grappable` タグをプロジェクトに追加（Edit > Project Settings > Tags and Layers）
+   - `Checkpoint` タグを追加
 
-`DepthManager` Singleton が Depth 1-3 を管理する。`GameManager.NotifyEscape()` が `DepthTransition` 状態に遷移し、`DepthTransitionCoroutine` が次の処理を行う:
-1. `DepthManager.AdvanceDepth()` → `CaveGenerator.SetChunkCounts()` / `BatSpawner.SetMaxBats()` / `LizardSpawner.SetMaxLizards()` にパラメータを反映
-2. `CaveGenerator.Generate()` で新しい洞窟を再生成
-3. `GameManager.RefreshPlayerCache()` でプレイヤーキャッシュを更新し `Exploring` に戻る
+4. **URP設定確認**
+   - URP Asset が設定されていることを確認
+   - Universal Render Pipeline がGraphics Settingsに設定されていることを確認
 
-### 恒久アップグレード
+### 完了基準
+- [ ] コンパイルエラーが0件
+- [ ] フォルダ構成が上記通りに整理されている
+- [ ] `Grappable` タグが存在する
+- [ ] git commit 済み
 
-`UpgradeSystem` Singleton が `UpgradeDefinition`（ScriptableObject）の一覧を管理する。PlayerPrefs キー命名規則は `"Upgrade_{UpgradeId}"`（例: `"Upgrade_max_health"`）。宝石消費は `PlayerCosmeticSaveData.SpendGems(int)` 経由。`ApplyAllUpgrades()` は `GameManager` が `Exploring` 状態に遷移するたびに自動呼び出しされる。
+---
 
-### インタラクション設計
+## Step 2: プレイヤー基本移動の改善
 
-`IInteractable.Interact(GameObject interactor)` シグネチャ。`PlayerInteractor` は MonoBehaviour で、`_currentTarget.Interact(gameObject)` を直接呼ぶ。
+### 作業内容
 
-### 入力
+既存の `PlayerMovement.cs` を以下の仕様で全面書き換えする。
 
-Input System パッケージ (1.18.0) がインストールされているが、スクリプトは**旧 Input API**（`Input.GetAxis`, `Input.GetKeyDown` 等）を使用している。`Assets/Scripts/InputSystem_Actions.inputactions` は現状未使用。
+**PlayerMovement.cs 仕様:**
 
-### レンダリング
+```csharp
+// 必須パラメータ
+[Header("Movement")]
+float moveSpeed = 5f;
+float acceleration = 20f;       // 加速度（慣性あり）
+float deceleration = 15f;       // 減速度
+float airControlFactor = 0.3f;  // 空中制御係数
 
-- URP デュアルレンダラー構成: `Assets/Settings/PC_RPAsset.asset` (高品質) と `Assets/Settings/Mobile_RPAsset.asset` (最適化版)
-- ポストプロセシング: `Assets/Settings/DefaultVolumeProfile.asset`
+[Header("Jump")]
+float jumpForce = 6f;
+float coyoteTime = 0.12f;       // コヨーテタイム
+float jumpBufferTime = 0.1f;    // ジャンプバッファ
+float fallMultiplier = 2.5f;    // 落下時の追加重力倍率
+float lowJumpMultiplier = 2f;   // 低ジャンプ時の追加重力倍率
 
-### 主要パッケージ
+[Header("Ground Check")]
+float groundCheckRadius = 0.3f;
+LayerMask groundLayer;          // 未設定時は自レイヤー以外を自動設定
 
-- **Input System** (1.18.0): インストール済みだが未移行
-- **AI Navigation** (2.0.10): パスファインディング
-- **Timeline** (1.8.10): シネマティクス / アニメーションシーケンス
-- **Visual Scripting** (1.9.9): ビジュアルプログラミング
-- **uGUI** (2.0.0): UI フレームワーク
+[Header("Slope")]
+float maxSlopeAngle = 45f;      // これ以上の斜面でスライド
 
-## Notes
+[Header("Step Climb")]
+float stepHeight = 0.4f;        // 登れる段差の最大高さ
+float stepSmooth = 0.1f;        // ステップ補正のスムーズ係数
 
-- C# スクリプトを編集する際は対応する `.meta` ファイルを手動で変更しない
-- Editor 専用スクリプトは `Editor/` サブフォルダに配置する
-- ScriptableObject を設定データの格納に使用するパターン
-- `.claudeignore` でバイナリアセット (png, jpg, fbx 等)、Library/, Temp/, Build/ を除外済み
-- 配置・生成に使うランダムは必ず `new System.Random(seed)` を使う（`UnityEngine.Random` は再現性がなく禁止）
-- `PlacedResourceItem` を使う Prefab には Collider が必須（なければ E キーが反応しない）
-- ロープ登攀の状態遷移: `isKinematic = true` をセット**してから**ロープへのスナップ処理を行うこと（逆順だとプレイヤーが壁に埋まる）。正確な切替順序: 「通常 → 登攀」は `velocity = zero` → `isKinematic = true`。「登攀 → 通常」は `isKinematic = false` → `AddForce(up, VelocityChange)`（micro-lift で壁埋まり防止）
-- `SurvivalStats.ApplyStatModification(StatType, float)` はステータスを直接変更するときに使う（`ResourceItem`, `BatAI`, `DownedReviveInteractable` から呼ばれる）
-- `BatSpawner.RegisterPlayerExternal(GameObject)` / `UnregisterPlayerExternal(GameObject)` でプレイヤーを手動登録・解除できる
-- `BatSpawner` の天井候補シャッフルには `new System.Random(UsedSeed + 12345)` でシードオフセットを与える。`CaveContentPlacer`（オフセットなし）と同じ乱数列になると重複配置になるため
-- `GameManager.RefreshPlayerCache()` はプレイヤーが動的スポーンされた後に呼ぶこと。スポーン時に自動呼び出しはされない
-- `GameManager.AddGem(int)` は `CollectibleGem.Interact()` から呼ばれる。`CollectedGems` プロパティで合計収集数を参照可能
-- `UIFlowController.GoTo(UIScreen)` が Canvas 表示の唯一の権限。他スクリプトから Canvas の `SetActive()` を直接呼ばないこと（状態不整合になる）。Options は `ToggleOptions()` / `SetOptionsVisible(bool)` を使う
-- `UIFlowController` は `DontDestroyOnLoad` を設定していないため、シーンリロード時に再取得が必要（現状は1シーン設計のため意図的）
-- `CosmeticDatabase` の各カテゴリには `_isDefault = true` のアイテムが最低 1 つ必要（`PlayerCosmeticSaveData.LoadData()` がデフォルトを初期適用するため）
-- `PlayerCosmetics` は PlayerPrefab ルートにアタッチし、各スロット（`_hatSlot` / `_pickaxeSlot` / `_torchSkinSlot` / `_accessorySlot`）を Inspector で設定する
-- スポーナーのシードオフセット一覧: `CaveContentPlacer` +0、`BatSpawner` +12345、`LizardSpawner` +77777、`RockfallPlacer` +55555、`TunnelCarver` +99999（乱数列の重複配置を防ぐため各スポーナーは異なるオフセットを使う）
-- `DepthManager.AdvanceDepth()` の呼び出し順序: `AdvanceDepth()` → `SetChunkCounts` / `SetMaxBats` / `SetMaxLizards` → `CaveGenerator.Generate()`（必ず DepthTransitionCoroutine 経由で呼ぶ）
-- `DailyChallenge.GetDailySeed()` の計算: `DateTime.UtcNow.ToString("yyyyMMdd").GetHashCode()`（同日は同シード。UTC 基準なので日付変わりはタイムゾーン依存なし）
-- `PlayerMovement.SetMoveSpeed()` / `SetJumpForce()` はアップグレード専用セッター。直接呼ばず `UpgradeSystem.ApplyAllUpgrades()` 経由で使う
-- `LizardAI` は `[RequireComponent(typeof(BatPerception))]` で BatPerception を再利用する。LizardSpawner の `RegisterPlayer()` は `BatPerception.AddTarget()` を呼んでプレイヤーを登録する
-- `RockfallPlacer` は `RockfallTrap.SetRockPrefab(GameObject)` で岩 Prefab を転送する（Reflection 不使用）
+// 公開プロパティ（FirstPersonLookから参照）
+public float SmoothStepOffset { get; private set; }
+public bool IsGrounded { get; private set; }
+public bool IsSwinging { get; set; }   // RopeSystemから設定される
+```
+
+**PlayerInputController.cs 改造内容:**
+- `JumpRelease()` メソッドを追加（Input System の canceled イベントに接続）
+- `FireRope()` — 左クリック/Rトリガー → GrappleHook.FireSwing() を呼ぶ
+- `PullRope()` — 右クリック/Lトリガー → GrappleHook.FirePull() を呼ぶ
+- `ReleaseRope()` — ロープ解放入力 → GrappleHook.Release() を呼ぶ
+
+**FirstPersonLook.cs 改造内容:**
+- `Update` → `LateUpdate` に変更
+- `PlayerMovement.SmoothStepOffset` を参照してカメラローカルYを補正
+
+**PlayerStateManager.cs 改造内容:**
+- ステート追加: `Swinging`, `Climbing`, `Falling`
+- 各ステートの遷移条件を定義
+
+### 完了基準
+- [ ] WASDで慣性のある移動ができる
+- [ ] スペースでジャンプできる（コヨーテタイム・バッファあり）
+- [ ] 段差を自動で登れる
+- [ ] コンパイルエラーが0件
+- [ ] git commit 済み
+
+---
+
+## Step 3: 物理ロープシステム実装（最重要Step）
+
+### 作業内容
+
+`Assets/Scripts/Rope/RopeSystem.cs` を新規作成する。
+
+**RopeSystem.cs 完全仕様:**
+
+```
+クラス: RopeSystem : MonoBehaviour
+
+フィールド:
+  [Header("Rope Physics")]
+  int ropeNodeCount = 20          // ロープのノード数
+  float segmentLength = 0.5f      // 各セグメントの自然長
+  float ropeStiffness = 0.8f      // 制約の硬さ (0〜1)
+  int constraintIterations = 10   // 制約解決のイテレーション数
+  float ropeMass = 0.1f           // 各ノードの質量
+  float damping = 0.99f           // 速度の減衰（空気抵抗）
+  float windStrength = 0.05f      // 風による揺れの強さ
+
+  [Header("Swing")]
+  float maxRopeLength = 30f       // ロープの最大長
+  float reelSpeed = 3f            // 巻き取り速度 (m/s)
+  float swingForce = 10f          // スイング時のプレイヤーへの力
+
+  [Header("Pull")]
+  float pullForce = 500f          // 引っ張り力 (N)
+  float maxPullDistance = 25f     // 引っ張りの最大距離
+
+  [Header("References")]
+  LineRenderer lineRenderer       // Inspectorで設定
+  Transform ropeStartPoint        // ロープの根元（カメラ前方）
+
+メソッド:
+  void SimulateRope()             // Verlet積分でロープ物理を更新
+  void SolveConstraints()         // ノード間の距離制約を解く
+  void ApplyPlayerForce()         // スイング時にプレイヤーへ力を加える
+  void UpdateLineRenderer()       // LineRendererにノード位置を反映
+  
+  public void AttachSwing(Vector3 anchorPoint)  // スイングアンカーを設定
+  public void AttachPull(Rigidbody target)       // 引っ張りターゲットを設定
+  public void Release()                          // ロープを解放
+  public void ReelIn(float amount)               // ロープを巻き取る
+  
+  bool IsAttached { get; }        // ロープが接続中か
+  RopeMode CurrentMode { get; }  // Swing or Pull
+
+enum RopeMode { None, Swing, Pull }
+```
+
+**GrappleHook.cs 完全仕様:**
+
+```
+クラス: GrappleHook : MonoBehaviour
+
+フィールド:
+  float maxGrappleDistance = 30f
+  LayerMask grappableLayer        // "Grappable" タグのレイヤー
+  float hookSpeed = 50f           // フック飛翔速度（演出用）
+  GameObject hookProjectilePrefab // フックの見た目（なければSphere Primitiveで代替）
+
+メソッド:
+  public void FireSwing()   // カメラ正面方向にRaycast → ヒットしたらRopeSystem.AttachSwing()
+  public void FirePull()    // カメラ正面方向にRaycast → ヒットしたらRopeSystem.AttachPull()
+  public void Release()     // RopeSystem.Release() を呼ぶ
+
+  void OnDrawGizmos()       // ロープの射程範囲をGizmosで表示（開発用）
+```
+
+**RopeRenderer.cs 仕様:**
+- LineRendererの設定（太さ0.02〜0.05m、グラデーションで先端を細く）
+- ロープのマテリアル（URP/Lit、茶色 or ベージュ）
+- ロープ接続時のパーティクル演出（スパーク or 砂埃）
+
+### 完了基準
+- [ ] 左クリックでロープを発射できる
+- [ ] `Grappable` タグのついた岩・地形にロープが引っかかる
+- [ ] 引っかかった状態でスイング（振り子運動）ができる
+- [ ] 右クリックで引っ張りモードが動作する
+- [ ] ロープがLineRendererで視覚的に表示される
+- [ ] ロープ解放で通常移動に戻る
+- [ ] コンパイルエラーが0件
+- [ ] git commit 済み
+
+---
+
+## Step 4: 山の地形生成
+
+### 作業内容
+
+`Assets/Scripts/World/MountainGenerator.cs` を新規作成する。
+
+**地形設計:**
+
+```
+山の構造:
+  - 高さ: 約200m
+  - 形状: 不規則な岩山（Unity Terrainを使う）
+  - ルート: 明確なメインルート + 隠しルート2〜3本
+  - チェックポイント: 3〜4箇所（Checkpoint01〜04）
+  - 山頂: 旗が立っている（SummitGoalコンポーネント）
+
+地形生成方法:
+  Unity Terrain を使用（Procedural Mesh は使わない）
+  - TerrainData をコードで生成
+  - Perlin Noiseで高さマップを生成
+  - 岩場エリア: Terrain Detail Meshとして配置
+  - Grappableタグ付きの岩オブジェクトを地形上にランダム配置（最低50個）
+  - 木オブジェクト（Grappableタグ付き）を適度に配置（最低30本）
+```
+
+**MountainGenerator.cs 仕様:**
+```
+void GenerateTerrain()     // Perlin Noiseで高さマップ生成
+void PlaceRocks()          // Grappableタグ付き岩を配置
+void PlaceTrees()          // Grappableタグ付き木を配置
+void PlaceCheckpoints()    // チェックポイントを配置
+void PlaceSummit()         // 山頂ゴールを配置
+```
+
+**CheckpointSystem.cs 仕様:**
+- プレイヤーがチェックポイントに触れたら記録
+- 死亡（落下）時に最後のチェックポイントからリスポーン
+- HUDにチェックポイント通過を表示
+
+**SummitGoal.cs 仕様:**
+- プレイヤーが山頂に到達したらゲームクリア
+- クリアタイムを記録・表示
+- "SUMMIT REACHED!" のUIを表示
+
+### 完了基準
+- [ ] 山の地形が生成される
+- [ ] Grappableな岩・木が50個以上配置されている
+- [ ] チェックポイントが3〜4個ある
+- [ ] 山頂にゴールがある
+- [ ] ロープで岩に引っかかって登れる
+- [ ] git commit 済み
+
+---
+
+## Step 5: UI実装
+
+### 作業内容
+
+**HudManager.cs 仕様:**
+```
+表示要素:
+  - タイマー（経過時間 mm:ss.ff形式）
+  - 現在チェックポイント表示（"Checkpoint 2/4"）
+  - ロープ状態インジケーター（接続中 / 未接続）
+  - 十字線（クロスヘア）
+  - ロープ射程範囲インジケーター（Grappableオブジェクトを照準したとき強調）
+  - ミニマップ or 高度計（プレイヤーの高度を表示）
+  - "SUMMIT REACHED!" クリア画面（タイム表示 + リトライボタン）
+```
+
+**TimerDisplay.cs:**
+- ゲーム開始から山頂到達までの時間を計測
+- mm:ss.ff 形式で表示
+- 山頂到達時に停止・ベストタイムをPlayerPrefsに保存
+
+**照準インジケーター:**
+- 通常時: 小さな白い十字
+- Grappableを照準中: 輪が現れる（色: 緑）
+- ロープ接続中: 輪が塗りつぶされる（色: オレンジ）
+
+### 完了基準
+- [ ] タイマーが動いている
+- [ ] チェックポイント進捗が表示される
+- [ ] ロープ照準インジケーターが動作する
+- [ ] クリア画面が表示される
+- [ ] git commit 済み
+
+---
+
+## Step 6: サウンド実装
+
+### 作業内容
+
+**AudioManager.cs 仕様（シングルトン）:**
+```csharp
+// BGM
+void PlayBGM(AudioClip clip, float volume = 0.5f)
+void StopBGM()
+
+// SE（Placeholder — AudioClipが無ければコードで波形生成）
+void PlaySE(string name)
+  // "rope_fire"    — ロープ発射音
+  // "rope_attach"  — ロープ接触音
+  // "rope_swing"   — スイング中の風切り音（ループ）
+  // "footstep"     — 足音
+  // "jump"         — ジャンプ音
+  // "land"         — 着地音
+  // "checkpoint"   — チェックポイント通過音
+  // "summit"       — 山頂到達のファンファーレ
+```
+
+**AudioClipがない場合の代替:**
+- `AudioClip` を `AudioClip.Create()` でコードから生成（サイン波 or ノイズ）
+- BGMは `AudioSource` にProceduralなサイン波シーケンスを流す
+
+### 完了基準
+- [ ] ロープ発射・接続時にSEが鳴る
+- [ ] 足音・ジャンプ・着地にSEがある
+- [ ] 山頂到達時に演出音がある
+- [ ] git commit 済み
+
+---
+
+## Step 7: ポリッシュ・ゲームフィール改善
+
+### 作業内容
+
+1. **ロープ物理のチューニング**
+   - スイングの勢いが気持ちよく感じるまでパラメータ調整
+   - ロープが岩に引っかかる瞬間のカメラシェイクを追加（0.1秒・振幅0.1）
+   - スイング中の風切りエフェクト（LineRendererの太さを速度に連動）
+
+2. **視覚的ポリッシュ**
+   - 岩・地形のマテリアルをURP/Litで整える（グレー・茶色系）
+   - 空のURP Volume設定（昼間の山の青空）
+   - フォグ（遠景に薄霧）
+   - プレイヤーの影
+
+3. **ゲームフィール**
+   - 落下死判定（Y < -10 でチェックポイントにリスポーン）
+   - リスポーン演出（フェードアウト→フェードイン）
+   - スイング成功時の軽い画面揺れ
+   - 山頂到達時のパーティクル（紙吹雪 or 星）
+
+4. **パフォーマンス**
+   - ターゲット: 60fps（PC）
+   - `Application.targetFrameRate = 60`
+   - カメラのFarClipPlane: 500m（山の全景が見える距離）
+
+### 完了基準
+- [ ] スイングが「気持ちいい」と感じるレベルに調整されている
+- [ ] 落下→リスポーンが機能する
+- [ ] 60fps動作
+- [ ] git commit 済み
+
+---
+
+## Step 8: Co-op準備とビルド
+
+### 作業内容
+
+1. **Co-op基盤（ローカルマルチの準備）**
+   - `CoopManager.cs` を作成
+   - PlayerPrefabを2〜4人分インスタンス化できる準備
+   - 各プレイヤーが独立したカメラ・ロープを持てる構造に
+   - ※ネットワーク（NGO）統合はこのStepではやらない。ローカルのみでOK
+
+2. **MainMenuシーン**
+   - タイトルロゴ（テキストでOK）
+   - "PLAY" ボタン → Mountain01シーンをロード
+   - "QUIT" ボタン
+
+3. **ビルド設定**
+   - Build Settings にシーンを追加（MainMenu, Mountain01）
+   - Windows x64 でビルド
+   - `Builds/PeakIdiots_v0.1/` に出力
+
+4. **README.md を作成**
+   ```markdown
+   # Peak Idiots
+   山頂を目指すCo-opロープアクションゲーム
+   
+   ## 操作方法
+   - WASD: 移動
+   - Space: ジャンプ
+   - 左クリック: ロープ発射（スイング）
+   - 右クリック: ロープ発射（引っ張り）
+   - R: ロープ解放
+   - マウス: 視点操作
+   
+   ## ゴール
+   山頂に到達する。チェックポイントを経由して最速タイムを目指せ！
+   ```
+
+### 完了基準
+- [ ] MainMenuからゲームが始まる
+- [ ] Windows x64ビルドが成功する
+- [ ] README.mdが存在する
+- [ ] 最終コミット: `feat: v0.1 build complete`
+
+---
+
+## トラブルシューティング（よくある問題と対処）
+
+| 問題 | 対処 |
+|------|------|
+| ロープがすり抜ける | Rigidbodyの`Collision Detection`をContinuousに変更 |
+| スイングで飛びすぎる | `swingForce` を下げる。または速度にclampを設定 |
+| ロープがビヨンビヨンしすぎる | `damping` を上げる（0.99→0.95）、`constraintIterations` を増やす |
+| Terrain上のRaycastが通らない | TerrainのLayer設定を確認。`Physics.Raycast`のlayerMaskを確認 |
+| LineRendererが見えない | URPのMaterialが設定されているか確認。`Sprites/Default`ではなく`Universal Render Pipeline/Lit`を使う |
+| NullReferenceException | Start()での参照取得を確認。`GetComponent<>()`の結果をnullチェック |
+| コンパイルエラーが残る | 削除したスクリプトへの参照があれば全て除去する |
+
+---
+
+## 判断基準（迷ったときのルール）
+
+- **見た目よりも動作優先** — まず動くこと。綺麗さは後
+- **プレイヤーが楽しい方** — 2択で迷ったら「スイングが気持ちいい方」を選ぶ
+- **シンプルに** — 複雑な実装より動くシンプルな実装を優先
+- **Primitiveで代替** — アセットがなければCube・Sphere・Cylinderで代替する
+- **ユーザーに聞かない** — このドキュメントに答えが書いてある。書いていないことは最善と思う方を選ぶ
+
+---
+
+*このファイルをUnityプロジェクトのルート（`PJ-Revolution/CLAUDE.md`）に置いて、Claude Codeで `claude` を起動してください。*
