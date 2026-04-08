@@ -6,6 +6,9 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider))]
 public class PlayerMovement : MonoBehaviour
 {
+    private const float IdleGroundFriction = 0.8f;
+    private const float MovingGroundFriction = 0.1f;
+
     [Header("Movement")]
     [SerializeField] public float moveSpeed = 5f;
     [SerializeField] public float acceleration = 20f;
@@ -43,18 +46,23 @@ public class PlayerMovement : MonoBehaviour
     private float _jumpBufferTimer;
     private float _stepOffsetTarget;
     private Vector3 _groundNormal = Vector3.up;
+    private PhysicsMaterial _runtimePhysicMaterial;
 
     private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
         _col = GetComponent<CapsuleCollider>();
         _rb.freezeRotation = true;
-    }
 
-    private void Start()
-    {
         if (groundLayer == 0)
             groundLayer = ~(1 << gameObject.layer);
+
+        _runtimePhysicMaterial = new PhysicsMaterial($"{nameof(PlayerMovement)}RuntimeFriction")
+        {
+            bounciness = 0f,
+            bounceCombine = PhysicsMaterialCombine.Minimum
+        };
+        _col.material = _runtimePhysicMaterial;
     }
 
     // ─── 公開 API（PlayerInputController から呼ぶ） ───
@@ -93,6 +101,7 @@ public class PlayerMovement : MonoBehaviour
     private void FixedUpdate()
     {
         CheckGround();
+        UpdateFrictionMaterial();
         HandleMovement();
         HandleJump();
         HandleGravityModifier();
@@ -150,6 +159,29 @@ public class PlayerMovement : MonoBehaviour
         float accel = targetVelocity.magnitude > 0.1f ? acceleration : deceleration;
 
         _rb.AddForce((targetVelocity - currentHoriz) * accel * control, ForceMode.Acceleration);
+    }
+
+    private void UpdateFrictionMaterial()
+    {
+        if (_runtimePhysicMaterial == null)
+            return;
+
+        if (!IsGrounded)
+        {
+            _runtimePhysicMaterial.dynamicFriction = 0f;
+            _runtimePhysicMaterial.staticFriction = 0f;
+            _runtimePhysicMaterial.frictionCombine = PhysicsMaterialCombine.Minimum;
+            return;
+        }
+
+        bool hasMoveInput = _moveInput.sqrMagnitude > 0.01f;
+        float friction = hasMoveInput ? MovingGroundFriction : IdleGroundFriction;
+
+        _runtimePhysicMaterial.dynamicFriction = friction;
+        _runtimePhysicMaterial.staticFriction = friction;
+        _runtimePhysicMaterial.frictionCombine = hasMoveInput
+            ? PhysicsMaterialCombine.Minimum
+            : PhysicsMaterialCombine.Maximum;
     }
 
     private void HandleJump()

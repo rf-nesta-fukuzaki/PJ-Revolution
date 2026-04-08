@@ -9,19 +9,19 @@ public class RopeSystem : MonoBehaviour
     [Header("Rope Physics")]
     [SerializeField] private int ropeNodeCount = 20;
     [SerializeField] private float segmentLength = 0.5f;
-    [SerializeField] private float ropeStiffness = 0.8f;
+    [SerializeField] private float ropeStiffness = 0.6f;
     [SerializeField] private int constraintIterations = 10;
     [SerializeField] private float ropeMass = 0.1f;
-    [SerializeField] private float damping = 0.99f;
+    [SerializeField] private float damping = 0.98f;
     [SerializeField] private float windStrength = 0.05f;
 
     [Header("Swing")]
-    [SerializeField] private float maxRopeLength = 30f;
+    [SerializeField] private float maxRopeLength = 50f;
     [SerializeField] private float reelSpeed = 3f;
-    [SerializeField] private float swingForce = 10f;
+    [SerializeField] private float swingForce = 25f;
 
     [Header("Pull")]
-    [SerializeField] private float pullForce = 500f;
+    [SerializeField] private float pullForce = 800f;
     [SerializeField] private float maxPullDistance = 25f;
 
     [Header("References")]
@@ -43,6 +43,12 @@ public class RopeSystem : MonoBehaviour
     {
         _playerRb = GetComponentInParent<Rigidbody>();
         _stateManager = GetComponentInParent<PlayerStateManager>();
+
+        ropeStiffness = 0.6f;
+        damping = 0.98f;
+        maxRopeLength = 50f;
+        swingForce = 25f;
+        pullForce = 800f;
 
         InitNodes();
         SetupLineRenderer();

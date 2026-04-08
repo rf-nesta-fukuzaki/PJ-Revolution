@@ -6,8 +6,8 @@ using UnityEngine;
 public class GrappleHook : MonoBehaviour
 {
     [Header("Settings")]
-    [SerializeField] private float maxGrappleDistance = 30f;
-    [SerializeField] private LayerMask grappableLayer;
+    [SerializeField] private float maxGrappleDistance = 50f;
+    [SerializeField] private LayerMask grappableLayer = ~0;
     [SerializeField] private float hookSpeed = 50f;
 
     [Header("References")]
@@ -27,9 +27,7 @@ public class GrappleHook : MonoBehaviour
 
     private void Start()
     {
-        // grappableLayer が設定されていない場合は全レイヤーを対象にする
-        if (grappableLayer == 0)
-            grappableLayer = ~0;
+        grappableLayer = ~0;
     }
 
     // ─── 公開 API ───
@@ -81,26 +79,58 @@ public class GrappleHook : MonoBehaviour
     {
         Transform origin = firePoint != null ? firePoint : (_cam != null ? _cam.transform : transform);
         Ray ray = new Ray(origin.position, origin.forward);
+        RaycastHit[] hits = Physics.RaycastAll(ray, maxGrappleDistance, ~0, QueryTriggerInteraction.Ignore);
 
-        if (Physics.Raycast(ray, out hit, maxGrappleDistance, grappableLayer))
+        if (hits.Length == 0)
         {
-            // 自分自身には当たらない
-            if (hit.collider.gameObject == transform.root.gameObject)
+            hit = default;
+            return false;
+        }
+
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+        RaycastHit? fallbackHit = null;
+        foreach (RaycastHit candidate in hits)
+        {
+            if (!IsValidAnchor(candidate))
+                continue;
+
+            if (candidate.collider.CompareTag("Grappable"))
             {
-                hit = default;
-                return false;
+                hit = candidate;
+                return true;
             }
+
+            if (!fallbackHit.HasValue)
+                fallbackHit = candidate;
+        }
+
+        if (fallbackHit.HasValue)
+        {
+            hit = fallbackHit.Value;
             return true;
         }
+
+        hit = default;
         return false;
     }
 
     // スコープ照準中に Grappable を検出しているか（HudManager から参照）
     public bool IsAimingAtGrappable()
     {
-        Transform origin = firePoint != null ? firePoint : (_cam != null ? _cam.transform : transform);
-        Ray ray = new Ray(origin.position, origin.forward);
-        return Physics.Raycast(ray, maxGrappleDistance, grappableLayer);
+        return TryGetHitPoint(out _);
+    }
+
+    private bool IsValidAnchor(RaycastHit hit)
+    {
+        Collider collider = hit.collider;
+        if (collider == null)
+            return false;
+
+        if (collider.transform.root == transform.root)
+            return false;
+
+        return ((1 << collider.gameObject.layer) & grappableLayer.value) != 0;
     }
 
     private void OnDrawGizmos()
