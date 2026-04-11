@@ -6,8 +6,10 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider))]
 public class PlayerMovement : MonoBehaviour
 {
-    private const float IdleGroundFriction = 0.8f;
-    private const float MovingGroundFriction = 0.1f;
+    private const float IdleGroundFriction = 1.35f;
+    private const float MovingGroundFriction = 0.08f;
+    private const float GroundSnapForce = 80f;
+    private const float AntiSlideDamping = 20f;
 
     [Header("Movement")]
     [SerializeField] public float moveSpeed = 5f;
@@ -46,23 +48,36 @@ public class PlayerMovement : MonoBehaviour
     private float _jumpBufferTimer;
     private float _stepOffsetTarget;
     private Vector3 _groundNormal = Vector3.up;
+    private Vector3 _groundDownhill = Vector3.zero;
+    private float _groundSlopeAngle;
     private PhysicsMaterial _runtimePhysicMaterial;
 
     private void Awake()
     {
-        _rb = GetComponent<Rigidbody>();
-        _col = GetComponent<CapsuleCollider>();
+        EnsureReferences();
+    }
+
+    private bool EnsureReferences()
+    {
+        _rb ??= GetComponent<Rigidbody>();
+        _col ??= GetComponent<CapsuleCollider>();
+        if (_rb == null || _col == null) return false;
+
         _rb.freezeRotation = true;
-
         if (groundLayer == 0)
-            groundLayer = ~(1 << gameObject.layer);
+            groundLayer = Physics.AllLayers;
 
-        _runtimePhysicMaterial = new PhysicsMaterial($"{nameof(PlayerMovement)}RuntimeFriction")
+        if (_runtimePhysicMaterial == null)
         {
-            bounciness = 0f,
-            bounceCombine = PhysicsMaterialCombine.Minimum
-        };
-        _col.material = _runtimePhysicMaterial;
+            _runtimePhysicMaterial = new PhysicsMaterial($"{nameof(PlayerMovement)}RuntimeFriction")
+            {
+                bounciness = 0f,
+                bounceCombine = PhysicsMaterialCombine.Minimum
+            };
+            _col.material = _runtimePhysicMaterial;
+        }
+
+        return true;
     }
 
     // ─── 公開 API（PlayerInputController から呼ぶ） ───
@@ -100,9 +115,12 @@ public class PlayerMovement : MonoBehaviour
 
     private void FixedUpdate()
     {
+        if (!EnsureReferences()) return;
+
         CheckGround();
         UpdateFrictionMaterial();
         HandleMovement();
+        HandleSlopeStickiness();
         HandleJump();
         HandleGravityModifier();
         HandleStepClimb();
@@ -117,25 +135,35 @@ public class PlayerMovement : MonoBehaviour
 
     private void CheckGround()
     {
-        float halfHeight = _col.height / 2f - _col.radius;
+        float halfHeight = Mathf.Max(0f, _col.height * 0.5f - _col.radius);
+        float probeRadius = Mathf.Min(groundCheckRadius, _col.radius * 0.95f);
+        Vector3 center = transform.position + _col.center;
+        Vector3 origin = center + Vector3.up * halfHeight;
+
         bool hit = Physics.SphereCast(
-            transform.position,
-            groundCheckRadius,
+            origin,
+            probeRadius,
             Vector3.down,
             out RaycastHit hitInfo,
-            halfHeight + 0.15f,
-            groundLayer
+            halfHeight + probeRadius + 0.12f,
+            groundLayer,
+            QueryTriggerInteraction.Ignore
         );
 
         IsGrounded = hit;
         if (hit)
         {
             _groundNormal = hitInfo.normal;
+            _groundSlopeAngle = Vector3.Angle(_groundNormal, Vector3.up);
+            Vector3 downhill = Vector3.ProjectOnPlane(Vector3.down, _groundNormal);
+            _groundDownhill = downhill.sqrMagnitude > 0.0001f ? downhill.normalized : Vector3.zero;
             _coyoteTimer = coyoteTime;
         }
         else
         {
             _groundNormal = Vector3.up;
+            _groundSlopeAngle = 0f;
+            _groundDownhill = Vector3.zero;
         }
     }
 
@@ -152,9 +180,19 @@ public class PlayerMovement : MonoBehaviour
             ? Vector3.ProjectOnPlane(cam.right, Vector3.up).normalized
             : transform.right;
 
-        Vector3 targetVelocity = (forward * _moveInput.y + right * _moveInput.x) * moveSpeed;
+        Vector3 desiredMove = forward * _moveInput.y + right * _moveInput.x;
+        if (desiredMove.sqrMagnitude > 1f)
+            desiredMove.Normalize();
 
-        Vector3 currentHoriz = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
+        bool walkableSlope = IsGrounded && _groundSlopeAngle <= maxSlopeAngle;
+        if (walkableSlope && desiredMove.sqrMagnitude > 0.0001f)
+            desiredMove = Vector3.ProjectOnPlane(desiredMove, _groundNormal).normalized;
+
+        Vector3 targetVelocity = desiredMove * moveSpeed;
+
+        Vector3 currentHoriz = walkableSlope
+            ? Vector3.ProjectOnPlane(_rb.linearVelocity, _groundNormal)
+            : new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
         float control = IsGrounded ? 1f : airControlFactor;
         float accel = targetVelocity.magnitude > 0.1f ? acceleration : deceleration;
 
@@ -174,14 +212,45 @@ public class PlayerMovement : MonoBehaviour
             return;
         }
 
+        bool walkableSlope = _groundSlopeAngle <= maxSlopeAngle;
         bool hasMoveInput = _moveInput.sqrMagnitude > 0.01f;
-        float friction = hasMoveInput ? MovingGroundFriction : IdleGroundFriction;
+
+        float friction = walkableSlope
+            ? (hasMoveInput ? MovingGroundFriction : IdleGroundFriction)
+            : 0.15f;
 
         _runtimePhysicMaterial.dynamicFriction = friction;
         _runtimePhysicMaterial.staticFriction = friction;
+        if (!walkableSlope)
+        {
+            _runtimePhysicMaterial.frictionCombine = PhysicsMaterialCombine.Minimum;
+            return;
+        }
+
         _runtimePhysicMaterial.frictionCombine = hasMoveInput
             ? PhysicsMaterialCombine.Minimum
             : PhysicsMaterialCombine.Maximum;
+    }
+
+    private void HandleSlopeStickiness()
+    {
+        if (!IsGrounded) return;
+        if (_groundSlopeAngle <= 0.01f || _groundSlopeAngle > maxSlopeAngle) return;
+
+        _rb.AddForce(-_groundNormal * GroundSnapForce, ForceMode.Acceleration);
+
+        if (_moveInput.sqrMagnitude > 0.01f) return;
+        if (_groundDownhill.sqrMagnitude < 0.0001f) return;
+
+        float downhillSpeed = Vector3.Dot(_rb.linearVelocity, _groundDownhill);
+        if (downhillSpeed <= 0f) return;
+
+        _rb.AddForce(-_groundDownhill * downhillSpeed * AntiSlideDamping, ForceMode.Acceleration);
+
+        // 入力していないときは下り成分を打ち消してズリ落ちを抑える。
+        Vector3 velocity = _rb.linearVelocity;
+        velocity -= _groundDownhill * downhillSpeed;
+        _rb.linearVelocity = velocity;
     }
 
     private void HandleJump()
@@ -224,7 +293,7 @@ public class PlayerMovement : MonoBehaviour
         if (Physics.Raycast(originHigh, moveDir, 0.4f, groundLayer)) return;
 
         // 段差を乗り越える
-        _rb.position += Vector3.up * stepSmooth;
+        _rb.MovePosition(_rb.position + Vector3.up * stepSmooth);
         SmoothStepOffset -= stepSmooth;
     }
 

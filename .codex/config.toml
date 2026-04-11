@@ -1,0 +1,38 @@
+# Project-local Codex MCP stability settings
+
+[mcp_servers.unity_mcp]
+command = "/Users/R00088/.unity/relay/relay_mac_arm64.app/Contents/MacOS/relay_mac_arm64"
+args = ["--mcp"]
+enabled = true
+startup_timeout_sec = 60
+tool_timeout_sec = 240
+
+[mcp_servers.unity_mcp.tools.Unity_ManageEditor]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_ManageScene]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_ManageGameObject]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_RunCommand]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_GetConsoleLogs]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_ReadConsole]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_GetUserGuidelines]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_ReadResource]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_ListResources]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_GetProjectData]
+approval_mode = "approve"
