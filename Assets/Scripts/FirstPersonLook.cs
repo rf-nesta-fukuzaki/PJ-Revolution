@@ -19,7 +19,10 @@ public class FirstPersonLook : MonoBehaviour
 
     private float _pitch;
     private float _yaw;
+    private Quaternion _targetBodyRotation = Quaternion.identity;
+    private bool _hasPendingBodyRotation;
 
+    private Rigidbody _rb;
     private PlayerStateManager _stateManager;
     private PlayerMovement _playerMovement;
     private float _cameraYOffset;
@@ -30,6 +33,7 @@ public class FirstPersonLook : MonoBehaviour
 
     private void Awake()
     {
+        _rb = GetComponent<Rigidbody>();
         _stateManager = GetComponent<PlayerStateManager>();
         _playerMovement = GetComponent<PlayerMovement>();
         AutoFindReferences();
@@ -37,7 +41,8 @@ public class FirstPersonLook : MonoBehaviour
 
     private void Start()
     {
-        _yaw = transform.eulerAngles.y;
+        _yaw = _rb != null ? _rb.rotation.eulerAngles.y : transform.eulerAngles.y;
+        _targetBodyRotation = Quaternion.Euler(0f, _yaw, 0f);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
@@ -64,6 +69,19 @@ public class FirstPersonLook : MonoBehaviour
             if (cameraRig != null)
                 cameraRig.localPosition = new Vector3(0f, _cameraBaseY + _cameraYOffset + stepOffset, 0f);
         }
+    }
+
+    private void FixedUpdate()
+    {
+        if (!_hasPendingBodyRotation)
+            return;
+
+        if (_rb != null && !_rb.isKinematic)
+            _rb.MoveRotation(_targetBodyRotation);
+        else
+            transform.rotation = _targetBodyRotation;
+
+        _hasPendingBodyRotation = false;
     }
 
     private void OnGUI()
@@ -93,7 +111,8 @@ public class FirstPersonLook : MonoBehaviour
         float mouseY = Input.GetAxis("Mouse Y") * sensitivityY;
 
         _yaw += mouseX;
-        transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+        _targetBodyRotation = Quaternion.Euler(0f, _yaw, 0f);
+        _hasPendingBodyRotation = true;
 
         _pitch -= mouseY;
         _pitch = Mathf.Clamp(_pitch, -90f, 90f);
@@ -112,7 +131,7 @@ public class FirstPersonLook : MonoBehaviour
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
             _skipMouseInput = true;
-            _yaw = transform.eulerAngles.y;
+            _yaw = _rb != null ? _rb.rotation.eulerAngles.y : transform.eulerAngles.y;
             return;
         }
 
@@ -122,7 +141,7 @@ public class FirstPersonLook : MonoBehaviour
             {
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
-                _yaw = transform.eulerAngles.y;
+                _yaw = _rb != null ? _rb.rotation.eulerAngles.y : transform.eulerAngles.y;
             }
             return;
         }
