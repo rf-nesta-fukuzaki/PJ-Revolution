@@ -7,6 +7,7 @@ using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.TextCore;
 using UnityEngine.UI;
 
 public sealed class TitleSceneEditModeTests
@@ -15,7 +16,6 @@ public sealed class TitleSceneEditModeTests
     private const string ConfigAssetPath = "Assets/Resources/Title/DefaultTitleSceneConfig.asset";
     private const string TmpSettingsPath = "Assets/TextMesh Pro/Resources/TMP Settings.asset";
     private const string TitleRoundedFontPath = "Assets/UI/Title/Fonts/TitleRef_RoundedBold SDF.asset";
-    private const string NotoFallbackFontPath = "Assets/UI/Title/NotoSansJP_Rebuilt SDF.asset";
     private const string ButtonBoardTexturePath = "Assets/UI/Title/ButtonBoard_Source_FixedOpaque.png";
     private const string ControllerTypeName = "CozyCaveTitleController";
 
@@ -192,55 +192,37 @@ public sealed class TitleSceneEditModeTests
     public void TmpSettings_DefaultFontAndFallback_AreAssigned()
     {
         Object settings = AssetDatabase.LoadMainAssetAtPath(TmpSettingsPath);
-        Object notoFallback = AssetDatabase.LoadMainAssetAtPath(NotoFallbackFontPath);
         SerializedObject settingsSerialized = new SerializedObject(settings);
         SerializedProperty defaultFont = settingsSerialized.FindProperty("m_defaultFontAsset");
         SerializedProperty fallbackFonts = settingsSerialized.FindProperty("m_fallbackFontAssets");
 
         Assert.That(settings, Is.Not.Null, $"Missing TMP Settings asset: {TmpSettingsPath}");
-        Assert.That(notoFallback, Is.Not.Null, $"Missing fallback font asset: {NotoFallbackFontPath}");
         Assert.That(defaultFont, Is.Not.Null, "TMP Settings default font property is missing.");
         Assert.That(defaultFont.objectReferenceValue, Is.Not.Null, "TMP Settings default font is not assigned.");
         Assert.That(fallbackFonts, Is.Not.Null, "TMP Settings fallback list property is missing.");
-
-        bool hasNotoFallback = false;
-        for (int i = 0; i < fallbackFonts.arraySize; i++)
-        {
-            SerializedProperty entry = fallbackFonts.GetArrayElementAtIndex(i);
-            if (entry.objectReferenceValue == notoFallback)
-            {
-                hasNotoFallback = true;
-                break;
-            }
-        }
-
-        Assert.That(hasNotoFallback, Is.True, "TMP Settings fallback list must include NotoSansJP_Rebuilt SDF.");
     }
 
     [Test]
-    public void TitleRoundedFont_HasJapaneseFallback()
+    public void TitleRoundedFont_DoesNotUseFallbackFonts()
     {
         Object titleRounded = AssetDatabase.LoadMainAssetAtPath(TitleRoundedFontPath);
-        Object notoFallback = AssetDatabase.LoadMainAssetAtPath(NotoFallbackFontPath);
         SerializedObject titleSerialized = new SerializedObject(titleRounded);
         SerializedProperty fallbackFonts = titleSerialized.FindProperty("m_FallbackFontAssetTable");
 
         Assert.That(titleRounded, Is.Not.Null, $"Missing title rounded font asset: {TitleRoundedFontPath}");
-        Assert.That(notoFallback, Is.Not.Null, $"Missing fallback font asset: {NotoFallbackFontPath}");
         Assert.That(fallbackFonts, Is.Not.Null, "Title rounded font fallback list property is null.");
+        Assert.That(fallbackFonts.arraySize, Is.EqualTo(0), "Title rounded font should not depend on fallback fonts.");
+    }
 
-        bool hasNotoFallback = false;
-        for (int i = 0; i < fallbackFonts.arraySize; i++)
-        {
-            SerializedProperty entry = fallbackFonts.GetArrayElementAtIndex(i);
-            if (entry.objectReferenceValue == notoFallback)
-            {
-                hasNotoFallback = true;
-                break;
-            }
-        }
+    [Test]
+    public void TitleRoundedFont_StaticCharacterTable_DoesNotContainJapaneseCodePoints()
+    {
+        TMP_FontAsset titleRounded = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TitleRoundedFontPath);
+        Assert.That(titleRounded, Is.Not.Null, $"Missing title rounded font asset: {TitleRoundedFontPath}");
+        Assert.That(titleRounded.characterTable, Is.Not.Null, "characterTable is null.");
 
-        Assert.That(hasNotoFallback, Is.True, "Title rounded font fallback must include NotoSansJP_Rebuilt SDF.");
+        bool hasJapaneseGlyph = titleRounded.characterTable.Any(character => IsJapaneseCodePoint(character.unicode));
+        Assert.That(hasJapaneseGlyph, Is.False, "Title rounded font should contain only non-Japanese static glyphs.");
     }
 
     [Test]
@@ -251,6 +233,67 @@ public sealed class TitleSceneEditModeTests
 
         bool isInvalid = InvokeIsFontAtlasLikelyInvalid(titleRounded);
         Assert.That(isInvalid, Is.False, "Title rounded font atlas should be valid after rebuild.");
+    }
+
+    [Test]
+    public void TitleRoundedFont_GlyphRects_AreNotSolidOpaqueBlocks()
+    {
+        TMP_FontAsset titleRounded = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TitleRoundedFontPath);
+        Assert.That(titleRounded, Is.Not.Null, $"Missing title rounded font asset: {TitleRoundedFontPath}");
+        Assert.That(titleRounded.atlasTexture, Is.Not.Null, "Title rounded font atlas texture is missing.");
+
+        Texture2D atlas = titleRounded.atlasTexture;
+        bool foundGradientAlpha = false;
+        int inspectedGlyphRects = 0;
+
+        foreach (Glyph glyph in titleRounded.glyphTable)
+        {
+            GlyphRect rect = glyph.glyphRect;
+            if (rect.width <= 0 || rect.height <= 0)
+            {
+                continue;
+            }
+
+            inspectedGlyphRects++;
+            float minAlpha = 1f;
+            float maxAlpha = 0f;
+            int sampleX = Mathf.Clamp(rect.width, 1, 8);
+            int sampleY = Mathf.Clamp(rect.height, 1, 8);
+
+            for (int y = 0; y < sampleY; y++)
+            {
+                float py = rect.y + ((y + 0.5f) * rect.height / sampleY);
+                for (int x = 0; x < sampleX; x++)
+                {
+                    float px = rect.x + ((x + 0.5f) * rect.width / sampleX);
+                    Color sampled = atlas.GetPixelBilinear(px / atlas.width, py / atlas.height);
+                    minAlpha = Mathf.Min(minAlpha, sampled.a);
+                    maxAlpha = Mathf.Max(maxAlpha, sampled.a);
+                }
+            }
+
+            if (minAlpha < 0.95f && maxAlpha > 0.05f)
+            {
+                foundGradientAlpha = true;
+                break;
+            }
+        }
+
+        Assert.That(inspectedGlyphRects, Is.GreaterThan(0), "No glyph rects were inspected.");
+        Assert.That(foundGradientAlpha, Is.True, "Glyph rects look like solid alpha blocks (tofu-prone atlas).");
+    }
+
+    [Test]
+    public void TitleConfig_PreloadCharacters_AreAsciiOnly()
+    {
+        Object config = AssetDatabase.LoadMainAssetAtPath(ConfigAssetPath);
+        Assert.That(config, Is.Not.Null, $"Missing config asset: {ConfigAssetPath}");
+
+        string preloadCharacters = ReadStringField(config, "preloadCharacters");
+        Assert.That(preloadCharacters, Is.Not.Null, "preloadCharacters is null.");
+
+        bool hasJapanese = preloadCharacters.Any(IsJapaneseCodePoint);
+        Assert.That(hasJapanese, Is.False, "Title config preloadCharacters should not include Japanese characters.");
     }
 
     [Test]
@@ -351,5 +394,20 @@ public sealed class TitleSceneEditModeTests
                 go != null &&
                 go.scene.path == TitleScenePath &&
                 go.name == objectName);
+    }
+
+    private static bool IsJapaneseCodePoint(char value)
+    {
+        return IsJapaneseCodePoint((uint)value);
+    }
+
+    private static bool IsJapaneseCodePoint(uint value)
+    {
+        return
+            (value >= 0x3040 && value <= 0x309F) || // Hiragana
+            (value >= 0x30A0 && value <= 0x30FF) || // Katakana
+            (value >= 0x31F0 && value <= 0x31FF) || // Katakana Phonetic Extensions
+            (value >= 0x4E00 && value <= 0x9FFF) || // CJK Unified Ideographs
+            (value >= 0x3400 && value <= 0x4DBF);   // CJK Extension A
     }
 }

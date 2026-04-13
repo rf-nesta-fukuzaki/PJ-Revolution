@@ -51,19 +51,19 @@ TitleScene は以下の3層で構成されています。
 ## 3. TMP表示不具合の根因と対策
 
 ### 根因
-- `TitleRef_RoundedBold SDF` のアトラスが全面不透明（opaqueRatio=1.000）となり、起動時に不正アトラス扱いされていた。
-- その結果、`CozyCaveTitleController` の安全化処理で毎回 `NotoSansJP_Rebuilt SDF` へ差し替えられ、見た目の崩れと□化リスクが残っていた。
+- `TitleRef_RoundedBold SDF` のアトラスが壊れており、グリフ矩形が実質的にブロック描画される状態だった。
+- その結果、TitleScene テキストが編集直後や再生時に四角化（豆腐化）しやすい状態になっていた。
 
 ### 対策
-1. `TitleRef_RoundedBold SDF` を動的アトラス再構築（`ClearFontAssetData` + `TryAddCharacters`）し、正常なグリフテーブルへ復旧。
-2. `TitleRef_RoundedBold_Fixed.mat` / `TitleRef_RoundedBold_Footer.mat` の `_MainTex` を復旧後アトラスへ再バインド。
-3. `TitleScece.unity` の `readableFallbackFontAsset` を復旧済みタイトルフォントへ変更（Noto は fallback テーブルで保持）。
-4. 起動時プリウォームは継続し、必要グリフを先読みして初回描画欠けを予防。
+1. `TitleRef_RoundedBold SDF` を英字専用文字セットで動的アトラス再構築（`ClearFontAssetData` + `TryAddCharacters`）し、正常なSDFへ復旧。
+2. `TitleSceneConfig.DefaultPreloadCharacters` から日本語文字を除去し、英字運用へ統一。
+3. `TitleRef_RoundedBold SDF` の fallback 依存を除去し、TitleScene では英字フォント単体で表示を完結。
+4. `TMP Settings` の fallback 依存を外し、日本語フォントへの自動切り替えを行わない方針へ変更。
 
 ## 4. セットアップ手順
 
 1. `Assets/Resources/Title/DefaultTitleSceneConfig.asset` を設定。
-2. `Assets/TextMesh Pro/Resources/TMP Settings.asset` の fallback に `NotoSansJP_Rebuilt SDF` が含まれていることを確認。
+2. `Assets/UI/Title/Fonts/TitleRef_RoundedBold SDF.asset` が英字専用文字セットで再構築済みであることを確認。
 3. `TitleScece.unity` 上の `CozyCaveTitleController` が有効であることを確認。
 4. 再生して、メニュー文字が四角化せず表示されることを確認。
 

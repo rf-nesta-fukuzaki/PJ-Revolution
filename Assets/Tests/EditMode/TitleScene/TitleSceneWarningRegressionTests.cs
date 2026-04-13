@@ -11,7 +11,6 @@ public sealed class TitleSceneWarningRegressionTests
 {
     private const string TitleScenePath = "Assets/Scenes/TitleScece.unity";
     private const string PreferredTitleFontPath = "Assets/UI/Title/Fonts/TitleRef_RoundedBold SDF.asset";
-    private const string NotoFallbackFontPath = "Assets/UI/Title/NotoSansJP_Rebuilt SDF.asset";
 
     [Test]
     public void ResolveReadableFallbackFont_ReturnsHealthyPreferredFont()
@@ -29,9 +28,6 @@ public sealed class TitleSceneWarningRegressionTests
     [Test]
     public void ResolveReadableFallbackFont_WhenPreferredIsNull_ReturnsValidFallback()
     {
-        TMP_FontAsset notoFallback = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(NotoFallbackFontPath);
-        Assert.That(notoFallback, Is.Not.Null, $"Missing fallback font asset: {NotoFallbackFontPath}");
-
         TMP_FontAsset resolved = InvokeResolveReadableFallbackFont(null);
         Assert.That(resolved, Is.Not.Null, "Resolved fallback should not be null when preferred is null.");
         Assert.That(InvokeIsFontAtlasLikelyInvalid(resolved), Is.False, "Resolved fallback should have a valid atlas.");
