@@ -1,4 +1,3 @@
-using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -22,7 +21,6 @@ public class HudManager : MonoBehaviour
     [SerializeField] private Image crosshairDot;
     [SerializeField] private GameObject summitPanel;
     [SerializeField] private TextMeshProUGUI summitTimeText;
-    [SerializeField] private Image fadePanel;
     [SerializeField] private TextMeshProUGUI messageText;
 
     [Header("Crosshair Colors")]
@@ -140,25 +138,8 @@ public class HudManager : MonoBehaviour
         }
     }
 
-    public void FadeOut() => StartCoroutine(FadeCoroutine(1f, 0.5f));
-    public void FadeIn()  => StartCoroutine(FadeCoroutine(0f, 0.5f));
-
-    private IEnumerator FadeCoroutine(float target, float duration)
-    {
-        if (fadePanel == null) yield break;
-        fadePanel.gameObject.SetActive(true);
-        float start = fadePanel.color.a;
-        float t = 0f;
-        while (t < duration)
-        {
-            t += Time.deltaTime;
-            float a = Mathf.Lerp(start, target, t / duration);
-            fadePanel.color = new Color(0f, 0f, 0f, a);
-            yield return null;
-        }
-        fadePanel.color = new Color(0f, 0f, 0f, target);
-        if (target <= 0f) fadePanel.gameObject.SetActive(false);
-    }
+    public void FadeOut() => IrisTransition.Instance.IrisOut();
+    public void FadeIn()  => IrisTransition.Instance.IrisIn();
 
     // ─── 自動生成 ───
 
@@ -201,9 +182,6 @@ public class HudManager : MonoBehaviour
         // クロスヘア
         if (crosshairDot == null) crosshairDot = CreateCrosshairDot(parent);
         if (crosshairRing == null) crosshairRing = CreateCrosshairRing(parent);
-
-        // フェードパネル
-        if (fadePanel == null) fadePanel = CreateFadePanel(parent);
 
         // クリアパネル
         if (summitPanel == null) CreateSummitPanel(parent);
@@ -259,20 +237,6 @@ public class HudManager : MonoBehaviour
         return img;
     }
 
-    private Image CreateFadePanel(Transform parent)
-    {
-        var go = new GameObject("FadePanel");
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero;
-        rt.anchorMax = Vector2.one;
-        rt.sizeDelta = Vector2.zero;
-        var img = go.AddComponent<Image>();
-        img.color = new Color(0f, 0f, 0f, 0f);
-        go.SetActive(false);
-        return img;
-    }
-
     private void CreateSummitPanel(Transform parent)
     {
         var panel = new GameObject("SummitPanel");
@@ -312,8 +276,7 @@ public class HudManager : MonoBehaviour
         brt.anchoredPosition = new Vector2(0f, 20f);
         btnGo.AddComponent<Image>().color = new Color(0.2f, 0.6f, 0.2f);
         var btn = btnGo.AddComponent<Button>();
-        btn.onClick.AddListener(() => UnityEngine.SceneManagement.SceneManager.LoadScene(
-            UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex));
+        btn.onClick.AddListener(() => IrisTransition.Instance.ReloadScene());
 
         var btnText = new GameObject("Text");
         btnText.transform.SetParent(btnGo.transform, false);
