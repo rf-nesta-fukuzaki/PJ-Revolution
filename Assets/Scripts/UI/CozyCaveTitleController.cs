@@ -687,12 +687,7 @@ public sealed class CozyCaveTitleController : MonoBehaviour
     private void StartGame(string sceneName)
     {
         _startTransitionSequence?.Kill();
-        _startTransitionSequence = TitleSceneViewFacade.CreateSceneStartTransition(
-            sceneFadeCanvasGroup,
-            startTransitionDuration,
-            startTransitionFlashAlpha,
-            _resolvedUseUnscaledTime,
-            () => _sceneNavigator.Load(sceneName));
+        IrisTransition.Instance.LoadScene(sceneName);
     }
 
     private void ToggleSinglePanel(GameObject target, GameObject other)
