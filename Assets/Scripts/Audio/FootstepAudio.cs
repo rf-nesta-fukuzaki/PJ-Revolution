@@ -37,7 +37,8 @@ public class FootstepAudio : MonoBehaviour
         if (isGrounded && speed >= stepThreshold)
         {
             _stepTimer += Time.deltaTime;
-            float interval = stepInterval * Mathf.Clamp(3f / Mathf.Max(speed, 1f), 0.2f, 1f);
+            float runMultiplier = speed >= runSpeedThreshold ? 0.75f : 1f;
+            float interval = stepInterval * runMultiplier * Mathf.Clamp(3f / Mathf.Max(speed, 1f), 0.2f, 1f);
             if (_stepTimer >= interval)
             {
                 _stepTimer = 0f;

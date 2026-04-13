@@ -245,7 +245,7 @@ public class RopeSystem : MonoBehaviour
         if (!IsAttached) return;
 
         // E キー: ロープ巻き取り
-        if (Input.GetKey(KeyCode.E))
+        if (InputStateReader.ReelPressed())
             ReelIn(reelSpeed);
     }
 }

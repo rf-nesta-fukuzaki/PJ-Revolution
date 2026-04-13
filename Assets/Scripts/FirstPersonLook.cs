@@ -107,8 +107,9 @@ public class FirstPersonLook : MonoBehaviour
 
     private void ApplyMouseLook()
     {
-        float mouseX = Input.GetAxis("Mouse X") * sensitivityX;
-        float mouseY = Input.GetAxis("Mouse Y") * sensitivityY;
+        Vector2 lookDelta = InputStateReader.ReadLookDelta();
+        float mouseX = lookDelta.x * sensitivityX;
+        float mouseY = lookDelta.y * sensitivityY;
 
         _yaw += mouseX;
         _targetBodyRotation = Quaternion.Euler(0f, _yaw, 0f);
@@ -126,7 +127,7 @@ public class FirstPersonLook : MonoBehaviour
         bool isSwinging = _stateManager != null &&
                           _stateManager.CurrentState == PlayerState.Swinging;
 
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (InputStateReader.EscapePressedThisFrame())
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
@@ -146,7 +147,7 @@ public class FirstPersonLook : MonoBehaviour
             return;
         }
 
-        if (Input.GetMouseButtonDown(0) && Cursor.lockState == CursorLockMode.None)
+        if (InputStateReader.PrimaryPointerPressedThisFrame() && Cursor.lockState == CursorLockMode.None)
         {
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
                 return;

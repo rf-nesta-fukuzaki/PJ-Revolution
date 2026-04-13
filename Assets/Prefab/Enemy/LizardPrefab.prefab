@@ -10,8 +10,6 @@ GameObject:
   m_Component:
   - component: {fileID: 2531765204556163736}
   - component: {fileID: 3520071698006670243}
-  - component: {fileID: 6551144021773313242}
-  - component: {fileID: 783261586755311216}
   m_Layer: 9
   m_Name: LizardPrefab
   m_TagString: Enemy
@@ -57,50 +55,3 @@ CapsuleCollider:
   m_Height: 1
   m_Direction: 1
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &6551144021773313242
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8114646485721383517}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b4e1a44096b27445cbd760d4a23ad1e3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LizardAI
-  _chaseSpeed: 3
-  _fleeSpeed: 4
-  _returnSpeed: 2
-  _crouchChaseMultiplier: 1.5
-  _groundSnapDistance: 2
-  _attackRange: 1.8
-  _attackCooldown: 2
-  _attackDamage: 10
-  _fleeRadius: 4
-  _fleeDistance: 15
-  _alertDuration: 1.5
-  _fleeResumeDelay: 2
-  _debugCurrentState: 0
---- !u!114 &783261586755311216
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8114646485721383517}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b3e46e510d4be487ebd0152b64f7d26b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::BatPerception
-  _wakeUpRadius: 8
-  _lightWakeUpRadius: 12
-  _debugNearestDistance: 0
-  _debugNearestTorchDistance: 0
-  "\u8D77\u5E8A\u8DDD\u96E2": 8
-  "\u63A5\u8FD1\u8D77\u5E8A\u8DDD\u96E2": 5
-  "\u8FFD\u5C3E\u958B\u59CB\u8DDD\u96E2": 10
-  "\u653B\u6483\u8DDD\u96E2": 2
-  "\u9000\u6563\u8DDD\u96E2": 3
-  "\u8996\u91CE\u89D2\u534A\u5206": 90

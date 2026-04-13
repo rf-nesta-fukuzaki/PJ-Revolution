@@ -36,3 +36,21 @@ approval_mode = "approve"
 
 [mcp_servers.unity_mcp.tools.Unity_GetProjectData]
 approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_Camera_Capture]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_FindProjectAssets]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_ManageAsset]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_PackageManager_ExecuteAction]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_CreateScript]
+approval_mode = "approve"
+
+[mcp_servers.unity_mcp.tools.Unity_DeleteScript]
+approval_mode = "approve"

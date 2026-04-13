@@ -12,7 +12,6 @@ GameObject:
   - component: {fileID: 9074207975464066799}
   - component: {fileID: 3006175652658934257}
   - component: {fileID: 2939183487955589663}
-  - component: {fileID: 3088931834342156741}
   m_Layer: 0
   m_Name: CollectibleGem
   m_TagString: Untagged
@@ -114,20 +113,6 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &3088931834342156741
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8468618812674913309}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b3cf3ea0b089649e5bbe8cb7589e71a5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CollectibleGem
-  gemValue: 1
-  promptText: "[E] \u5B9D\u77F3\u3092\u53CE\u96C6\u3059\u308B"
 --- !u!1 &9115015106845513870
 GameObject:
   m_ObjectHideFlags: 0

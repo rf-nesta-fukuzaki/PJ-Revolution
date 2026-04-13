@@ -11,7 +11,7 @@ public class PauseManager : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) && Cursor.lockState == CursorLockMode.Locked)
+        if (InputStateReader.EscapePressedThisFrame() && Cursor.lockState == CursorLockMode.Locked)
             TogglePause();
     }
 
