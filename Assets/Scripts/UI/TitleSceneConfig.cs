@@ -4,8 +4,7 @@ using UnityEngine;
 public sealed class TitleSceneConfig : ScriptableObject
 {
     public const string DefaultPreloadCharacters =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !?.,:;+-*/()[]{}<>_@#$%^&=|'\"`~©" +
-        "ゲーム開始オプション終了協力洞窟探検サバイバル設定戻るクレジット";
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 !?.,:;+-*/()[]{}<>_@#$%^&=|'\"`~©";
 
     [Header("Scene")]
     public string startSceneName = "TestScene";

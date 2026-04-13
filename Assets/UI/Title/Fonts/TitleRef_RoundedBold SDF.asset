@@ -1471,21 +1471,6 @@ MonoBehaviour:
     m_Scale: 1
     m_AtlasIndex: 0
     m_ClassDefinitionType: 0
-  - m_Index: 171
-    m_Metrics:
-      m_Width: 73.171875
-      m_Height: 13.140625
-      m_HorizontalBearingX: 8.484375
-      m_HorizontalBearingY: 12.125
-      m_HorizontalAdvance: 90
-    m_GlyphRect:
-      m_X: 447
-      m_Y: 995
-      m_Width: 74
-      m_Height: 15
-    m_Scale: 1
-    m_AtlasIndex: 0
-    m_ClassDefinitionType: 0
   - m_Index: 139
     m_Metrics:
       m_Width: 67.328125
@@ -1494,8 +1479,8 @@ MonoBehaviour:
       m_HorizontalBearingY: 65.515625
       m_HorizontalAdvance: 66.625
     m_GlyphRect:
-      m_X: 464
-      m_Y: 890
+      m_X: 493
+      m_Y: 97
       m_Width: 68
       m_Height: 68
     m_Scale: 1
@@ -1877,10 +1862,6 @@ MonoBehaviour:
   - m_ElementType: 1
     m_Unicode: 126
     m_GlyphIndex: 97
-    m_Scale: 1
-  - m_ElementType: 1
-    m_Unicode: 8230
-    m_GlyphIndex: 171
     m_Scale: 1
   - m_ElementType: 1
     m_Unicode: 169
@@ -2269,12 +2250,8 @@ MonoBehaviour:
     m_Y: 985
     m_Width: 67
     m_Height: 38
-  - m_X: 437
-    m_Y: 985
-    m_Width: 93
-    m_Height: 34
-  - m_X: 454
-    m_Y: 880
+  - m_X: 483
+    m_Y: 87
     m_Width: 87
     m_Height: 87
   m_FreeGlyphRects:
@@ -2474,6 +2451,10 @@ MonoBehaviour:
     m_Y: 738
     m_Width: 65
     m_Height: 3
+  - m_X: 496
+    m_Y: 738
+    m_Width: 527
+    m_Height: 285
   - m_X: 391
     m_Y: 206
     m_Width: 28
@@ -2482,10 +2463,10 @@ MonoBehaviour:
     m_Y: 294
     m_Width: 604
     m_Height: 12
-  - m_X: 511
-    m_Y: 87
-    m_Width: 512
-    m_Height: 219
+  - m_X: 497
+    m_Y: 516
+    m_Width: 526
+    m_Height: 507
   - m_X: 412
     m_Y: 465
     m_Width: 48
@@ -2506,10 +2487,6 @@ MonoBehaviour:
     m_Y: 191
     m_Width: 570
     m_Height: 15
-  - m_X: 483
-    m_Y: 87
-    m_Width: 540
-    m_Height: 119
   - m_X: 216
     m_Y: 505
     m_Width: 80
@@ -2526,58 +2503,58 @@ MonoBehaviour:
     m_Y: 453
     m_Width: 549
     m_Height: 12
-  - m_X: 517
-    m_Y: 87
-    m_Width: 506
-    m_Height: 323
+  - m_X: 525
+    m_Y: 453
+    m_Width: 498
+    m_Height: 570
+  - m_X: 420
+    m_Y: 880
+    m_Width: 603
+    m_Height: 1
   - m_X: 420
     m_Y: 827
     m_Width: 10
     m_Height: 21
+  - m_X: 454
+    m_Y: 880
+    m_Width: 569
+    m_Height: 143
+  - m_X: 458
+    m_Y: 848
+    m_Width: 565
+    m_Height: 175
+  - m_X: 437
+    m_Y: 985
+    m_Width: 586
+    m_Height: 38
   - m_X: 0
     m_Y: 1022
     m_Width: 370
     m_Height: 1
-  - m_X: 437
-    m_Y: 1019
-    m_Width: 586
-    m_Height: 4
-  - m_X: 420
-    m_Y: 880
-    m_Width: 34
-    m_Height: 1
-  - m_X: 496
-    m_Y: 738
-    m_Width: 527
-    m_Height: 142
   - m_X: 528
     m_Y: 0
     m_Width: 495
-    m_Height: 880
-  - m_X: 530
-    m_Y: 967
-    m_Width: 493
-    m_Height: 56
-  - m_X: 541
+    m_Height: 87
+  - m_X: 528
+    m_Y: 174
+    m_Width: 495
+    m_Height: 849
+  - m_X: 570
     m_Y: 0
-    m_Width: 482
+    m_Width: 453
     m_Height: 1023
-  - m_X: 497
-    m_Y: 516
-    m_Width: 526
-    m_Height: 364
-  - m_X: 525
-    m_Y: 453
-    m_Width: 498
-    m_Height: 427
-  - m_X: 454
-    m_Y: 967
-    m_Width: 569
-    m_Height: 18
-  - m_X: 458
-    m_Y: 848
-    m_Width: 565
+  - m_X: 511
+    m_Y: 174
+    m_Width: 512
+    m_Height: 132
+  - m_X: 483
+    m_Y: 174
+    m_Width: 540
     m_Height: 32
+  - m_X: 517
+    m_Y: 174
+    m_Width: 506
+    m_Height: 236
   m_FontFeatureTable:
     m_MultipleSubstitutionRecords: []
     m_LigatureSubstitutionRecords: []
@@ -2585,8 +2562,7 @@ MonoBehaviour:
     m_MarkToBaseAdjustmentRecords: []
     m_MarkToMarkAdjustmentRecords: []
   m_ShouldReimportFontFeatures: 0
-  m_FallbackFontAssetTable:
-  - {fileID: 11400000, guid: daaef5feba47c45ffa52076ae145571f, type: 2}
+  m_FallbackFontAssetTable: []
   m_FontWeightTable:
   - regularTypeface: {fileID: 0}
     italicTypeface: {fileID: 0}
@@ -2640,6 +2616,5 @@ MonoBehaviour:
   m_glyphInfoList: []
   m_KerningTable:
     kerningPairs: []
-  fallbackFontAssets:
-  - {fileID: 11400000, guid: daaef5feba47c45ffa52076ae145571f, type: 2}
+  fallbackFontAssets: []
   atlas: {fileID: 2800000, guid: d728a12fbe3149b2a6891a338d3deda4, type: 3}

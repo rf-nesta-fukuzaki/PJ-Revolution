@@ -1,13 +1,21 @@
-- Canvas - Title (InstanceID: 49082) | Pos: (486.00, 273.50, 0.00) | State: Active
-  - TitleScreenUI (InstanceID: 49766) | Pos: (-960.00, -539.67, 0.00) | State: Active
-  - Background (InstanceID: 49684) | Pos: (0.00, 0.00, 0.00) | State: Active
-  - TitleLogo (InstanceID: 49810) | Pos: (0.00, 440.12, 0.00) | State: Active [TMP_Text: Cozy Cave Crew]
-  - Subtitle (InstanceID: 48966) | Pos: (0.00, 360.12, 0.00) | State: Active [TMP_Text: 協力洞窟探検サバイバル]
-  - ButtonGroup (InstanceID: 49434) | Pos: (0.00, -30.00, 0.00) | State: Active
-    - StartButton (InstanceID: 49318) | Pos: (0.00, 90.00, 0.00) | State: Active
-      - Text (InstanceID: 49714) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: ゲーム開始]
-    - OptionsButton (InstanceID: 49368) | Pos: (0.00, 0.00, 0.00) | State: Active
-      - Text (InstanceID: 48834) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: オプション]
-    - QuitButton (InstanceID: 48740) | Pos: (0.00, -90.00, 0.00) | State: Active
-      - Text (TMP) (InstanceID: 49454) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: ゲーム終了]
-  - VersionText (InstanceID: 49824) | Pos: (939.78, -520.12, 0.00) | State: Active [TMP_Text: Early Access v0.1]
+- Canvas - Title (InstanceID: 62564) | Pos: (0.00, 0.00, 90.00) | State: Active
+  - BG_Root (InstanceID: 62554) | Pos: (0.00, 0.00, 0.00) | State: Active
+    - BG_Darken (InstanceID: 62522) | Pos: (0.00, 0.00, 0.00) | State: Active
+  - Menu_Root (InstanceID: 62628) | Pos: (0.00, 0.00, 0.00) | State: Active
+    - MenuLayout (InstanceID: 62532) | Pos: (0.00, 40.00, 0.00) | State: Active
+      - Btn_StartGame (InstanceID: 62662) | Pos: (9.00, 110.00, 0.00) | State: Active
+        - Label (InstanceID: 62636) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: START GAME]
+      - Btn_Settings (InstanceID: 62484) | Pos: (9.00, -40.00, 0.00) | State: Active
+        - Label (InstanceID: 62598) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: SETTINGS]
+      - Btn_Credits (InstanceID: 62646) | Pos: (9.00, -190.00, 0.00) | State: Active
+        - Label (InstanceID: 62686) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: CREDITS]
+      - Btn_Exit (InstanceID: 62608) | Pos: (9.00, -345.00, 0.00) | State: Active
+        - Label (InstanceID: 62718) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: EXIT]
+  - SettingsPanel (InstanceID: 62704) | Pos: (0.00, 0.00, 0.00) | State: Inactive
+    - Text (InstanceID: 62546) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: SETTINGS\nComing soon]
+  - CreditsPanel (InstanceID: 62676) | Pos: (0.00, 0.00, 0.00) | State: Inactive
+    - Text (InstanceID: 62696) | Pos: (0.00, 0.00, 0.00) | State: Active [TMP_Text: CREDITS\nCozy Cave Crew Team]
+  - Footer_Root (InstanceID: 62622) | Pos: (0.00, -539.96, 0.00) | State: Active
+    - VersionText (InstanceID: 62500) | Pos: (0.00, 48.00, 0.00) | State: Active [TMP_Text: VERSION 1.0.0]
+    - CopyrightText (InstanceID: 62588) | Pos: (0.00, 18.00, 0.00) | State: Active [TMP_Text: © 2026 REVOLUTION GAMES INC.]
+  - FX_SceneFadeOverlay (InstanceID: 62536) | Pos: (0.00, 0.00, 0.00) | State: Active
