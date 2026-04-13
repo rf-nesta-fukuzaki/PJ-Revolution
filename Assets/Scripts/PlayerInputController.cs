@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 旧 Input System でプレイヤー入力を受け取り PlayerMovement / GrappleHook を制御する。
+/// New Input System でプレイヤー入力を受け取り PlayerMovement / GrappleHook を制御する。
 /// </summary>
 [RequireComponent(typeof(PlayerMovement))]
 public class PlayerInputController : MonoBehaviour
@@ -40,19 +40,18 @@ public class PlayerInputController : MonoBehaviour
 
     private void HandleMovement()
     {
-        float h = Input.GetAxisRaw("Horizontal");
-        float v = Input.GetAxisRaw("Vertical");
-        playerMovement.Move(new Vector2(h, v));
+        Vector2 moveInput = InputStateReader.ReadMoveVectorRaw();
+        playerMovement.Move(moveInput);
     }
 
     private void HandleJump()
     {
-        if (Input.GetButtonDown("Jump"))
+        if (InputStateReader.JumpPressedThisFrame())
         {
             playerMovement.Jump();
             playerMovement.JumpHold();
         }
-        if (Input.GetButtonUp("Jump"))
+        if (InputStateReader.JumpReleasedThisFrame())
             playerMovement.JumpRelease();
     }
 
@@ -61,15 +60,15 @@ public class PlayerInputController : MonoBehaviour
         if (grappleHook == null) return;
 
         // 左クリック: スイング
-        if (Input.GetMouseButtonDown(0))
+        if (InputStateReader.PrimaryPointerPressedThisFrame())
             FireRope();
 
         // 右クリック: 引っ張り
-        if (Input.GetMouseButtonDown(1))
+        if (InputStateReader.SecondaryPointerPressedThisFrame())
             PullRope();
 
         // R キー: ロープ解放
-        if (Input.GetKeyDown(KeyCode.R))
+        if (InputStateReader.ReleaseRopePressedThisFrame())
             ReleaseRope();
     }
 

@@ -35,7 +35,9 @@ public class CheckpointSystem : MonoBehaviour
         {
             _playerTransform = player.transform;
             _playerRb = player.GetComponent<Rigidbody>();
-            _defaultRespawnPosition = _playerTransform.position;
+            // インスペクタ上の開始位置を「最終リスポーン位置」とみなし、
+            // 内部ではオフセット適用前の基準座標を保持する。
+            _defaultRespawnPosition = _playerTransform.position - Vector3.up * respawnHeightOffset;
         }
     }
 
