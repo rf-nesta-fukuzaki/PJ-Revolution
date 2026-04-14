@@ -1,6 +1,5 @@
 using System;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Peak Idiots のゲーム状態管理シングルトン。
@@ -36,13 +35,13 @@ public class GameManager : MonoBehaviour
     public void RetryGame()
     {
         Time.timeScale = 1f;
-        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        IrisTransition.Instance.ReloadScene();
     }
 
     public void GoToMainMenu()
     {
         Time.timeScale = 1f;
-        SceneManager.LoadScene("MainMenu");
+        IrisTransition.Instance.LoadScene("MainMenu");
     }
 
     private void ChangeState(GameState newState)

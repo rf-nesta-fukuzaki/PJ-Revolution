@@ -309,6 +309,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CheckpointSystem
   respawnDelay: 1.5
   fallDeathY: -20
+  respawnHeightOffset: 2
+  respawnGroundProbeHeight: 120
+  respawnGroundProbeDistance: 300
 --- !u!4 &365690668
 Transform:
   m_ObjectHideFlags: 0
@@ -753,11 +756,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 949002332}
-  - component: {fileID: 949002331}
-  - component: {fileID: 949002330}
-  - component: {fileID: 949002329}
-  - component: {fileID: 949002328}
-  - component: {fileID: 949002333}
   m_Layer: 0
   m_Name: CaveSystem
   m_TagString: Untagged
@@ -765,98 +763,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &949002328
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 949002327}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9189b3802c4514689b7069d40d0c6b7d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SimpleSpawner
-  _caveGenerator: {fileID: 949002330}
-  _playerTransform: {fileID: 1916425196}
-  _resetVelocity: 1
-  _spawnHeightOffset: 1.5
-  _raycastStartOffset: 20
-  _raycastMaxDistance: 100
---- !u!114 &949002329
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 949002327}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 08519d0d8e3d64669a0b5598b3c43820, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CaveContentPlacer
-  crystalDensity: 15
-  foodDensity: 8
-  mushroomDensity: 6
-  crystalPrefabs:
-  - {fileID: 6067396198288509339, guid: 6e8996aa7924c489ab333821323f9f00, type: 3}
-  - {fileID: 1133399849730174625, guid: 5abd7cc981fa24e93bd458bfa55c1517, type: 3}
-  - {fileID: 1133399849730174625, guid: 59d2baa5c9ba1454896be6cb03e7aa9e, type: 3}
-  - {fileID: 1133399849730174625, guid: 1fb0af9f7519c415a820e8d3b7371529, type: 3}
-  foodPrefab: {fileID: 7905170012910929621, guid: 28ad9378423b242918da7cd9cf843424, type: 3}
-  mushroomPrefab: {fileID: 7905170012910929621, guid: 4c975a4d34444400da732bce170519b6, type: 3}
-  startExcludeRadius: 12
-  minSpacing: 3
-  maxCrystals: 80
-  maxFood: 30
-  maxMushrooms: 20
-  _generator: {fileID: 0}
---- !u!114 &949002330
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 949002327}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ffbcdc2e443ef4128bce0f0877174a52, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CaveGenerator
-  chunkCountX: 8
-  chunkCountY: 4
-  chunkCountZ: 8
-  cellSize3D: 1
-  noiseSettings:
-    scale: 0.04
-    octaveCount: 4
-    persistence: 0.5
-    isoLevel: 0.5
-    gravityBias: 0.3
-    seed: 0
-  startRadius: 8
-  goalRadius: 6
-  caveMaterial: {fileID: 2100000, guid: 021751b236b40470ea87144931d16033, type: 2}
-  showGenerationTime: 1
-  <UsedSeed>k__BackingField: 0
-  <StartWorldPosition>k__BackingField: {x: 0, y: 0, z: 0}
-  <CenterOffset>k__BackingField: {x: 0, y: 0, z: 0}
-  <GoalCenterPosition>k__BackingField: {x: 0, y: 0, z: 0}
-  _chunkRoot: {fileID: 0}
-  _networkControlled: 0
-  _overrideSeed: 0
---- !u!114 &949002331
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 949002327}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f537261d2c4c6461e88834413fbafa66, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::MeshGenerator
 --- !u!4 &949002332
 Transform:
   m_ObjectHideFlags: 0
@@ -872,25 +778,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &949002333
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 949002327}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 37ffc16868af742f9b15d7909497a7e3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::BatSpawner
-  _maxBats: 5
-  _minDistanceBetweenBats: 10
-  _safeRadiusFromStart: 20
-  _batPrefab: {fileID: 1049663417583727117, guid: d2b64ca5ff5474c6c92364f0b0e73f48, type: 3}
-  _caveGenerator: {fileID: 949002330}
-  _debugSpawnedCount: 0
-  _debugPlayerCount: 0
 --- !u!134 &1049400079
 PhysicsMaterial:
   m_ObjectHideFlags: 0
@@ -1468,7 +1355,7 @@ Transform:
   m_GameObject: {fileID: 1824166258}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: -100, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1645,7 +1532,6 @@ MonoBehaviour:
   grappableLayer:
     serializedVersion: 2
     m_Bits: 0
-  hookSpeed: 50
   ropeSystem: {fileID: 0}
   firePoint: {fileID: 0}
 --- !u!1 &1916425181
@@ -1662,17 +1548,13 @@ GameObject:
   - component: {fileID: 1916425193}
   - component: {fileID: 1916425192}
   - component: {fileID: 1916425191}
-  - component: {fileID: 1916425190}
   - component: {fileID: 1916425189}
-  - component: {fileID: 1916425188}
   - component: {fileID: 1916425187}
   - component: {fileID: 1916425186}
   - component: {fileID: 1916425185}
-  - component: {fileID: 1916425184}
   - component: {fileID: 1916425183}
   - component: {fileID: 1916425182}
   - component: {fileID: 1916425197}
-  - component: {fileID: 1916425198}
   m_Layer: 0
   m_Name: Player
   m_TagString: Player
@@ -1792,23 +1674,6 @@ MonoBehaviour:
   stepInterval: 0.4
   stepThreshold: 0.3
   runSpeedThreshold: 4
---- !u!114 &1916425184
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1916425181}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 538fcb82e7dc74c60ae870fe534d11aa, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ProximityAudioSource
-  _baseVolume: 1
-  _dryReverbLevel: -10000
-  _wetReverbLevel: 0
-  _audioSource: {fileID: 0}
-  _reverbFilter: {fileID: 0}
 --- !u!164 &1916425185
 AudioReverbFilter:
   m_ObjectHideFlags: 0
@@ -1945,31 +1810,6 @@ MonoBehaviour:
   sensitivityY: 2
   cameraRig: {fileID: 1940811854}
   hintFontSize: 18
---- !u!114 &1916425188
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1916425181}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b0f1d3201b811420fa80ae70892d9c06, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::TorchSystem
-  maxFuel: 100
-  fuelConsumptionRate: 5
-  maxIntensity: 3
-  maxRange: 10
-  flickerThreshold: 0.2
-  flickerIntervalMin: 0.05
-  flickerIntervalMax: 0.2
-  flickerIntensityMin: 0.5
-  torchLight: {fileID: 0}
-  currentFuel: 0
-  isLit: 1
-  isFlickering: 0
-  externalControl: 0
 --- !u!108 &1916425189
 Light:
   m_ObjectHideFlags: 0
@@ -2035,23 +1875,6 @@ Light:
   m_LightUnit: 1
   m_LuxAtDistance: 1
   m_EnableSpotReflector: 1
---- !u!114 &1916425190
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1916425181}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b953c0f16028340f78a2f5653b689c3b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PlayerInteractor
-  interactRange: 3
-  interactMask:
-    m_Bits: 4294967295
-  _ui: {fileID: 0}
-  _camera: {fileID: 0}
 --- !u!114 &1916425191
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2154,9 +1977,9 @@ Rigidbody:
   m_ImplicitTensor: 1
   m_UseGravity: 1
   m_IsKinematic: 0
-  m_Interpolate: 0
+  m_Interpolate: 1
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 1
 --- !u!4 &1916425196
 Transform:
   m_ObjectHideFlags: 0
@@ -2204,30 +2027,6 @@ MonoBehaviour:
   m_ShadowLayerMask: 1
   m_RenderingLayers: 1
   m_ShadowRenderingLayers: 1
---- !u!114 &1916425198
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1916425181}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f9541de87605f4055b799ade47b81065, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SurvivalStats
-  decayOxygen: 2
-  decayHunger: 1
-  damageRate: 5
-  depthThreshold: -20
-  depthOxygenMultiplier: 1.5
-  _maxHealth: 100
-  _maxOxygen: 100
-  _maxHunger: 100
-  <Health>k__BackingField: 100
-  <Oxygen>k__BackingField: 100
-  <Hunger>k__BackingField: 100
-  <IsDowned>k__BackingField: 0
 --- !u!1 &1936119512
 GameObject:
   m_ObjectHideFlags: 0
@@ -2237,7 +2036,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1936119515}
-  - component: {fileID: 1936119514}
   - component: {fileID: 1936119513}
   m_Layer: 0
   m_Name: EscapeGate
@@ -2267,37 +2065,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1, y: 1, z: 1}
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &1936119514
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1936119512}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 51e3ad6b7dcd14be3bcd15d6316c27ab, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::EscapeGate
-  "\u611F\u77E5\u534A\u5F84": 3
-  "\u30B2\u30FC\u30C8\u30E9\u30A4\u30C8": {fileID: 0}
-  "\u660E\u6EC5\u901F\u5EA6": 0.5
-  "\u901A\u5E38\u30AB\u30E9\u30FC":
-    r: 0.2
-    g: 1
-    b: 0.5
-    a: 1
-  "\u63A5\u8FD1\u30AB\u30E9\u30FC":
-    r: 1
-    g: 1
-    b: 0.5
-    a: 1
-  "\u81EA\u52D5\u914D\u7F6E": 1
-  _ui: {fileID: 0}
-  _playerTransform: {fileID: 0}
-  _playerInRange: 0
-  _baseLightIntensity: 0
-  _isActivated: 1
 --- !u!4 &1936119515
 Transform:
   m_ObjectHideFlags: 0

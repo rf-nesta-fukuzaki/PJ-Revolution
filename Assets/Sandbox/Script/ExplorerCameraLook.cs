@@ -33,8 +33,9 @@ public class ExplorerCameraLook : MonoBehaviour
 
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
-        float mouseX = Input.GetAxis("Mouse X") * _sensitivityX;
-        float mouseY = Input.GetAxis("Mouse Y") * _sensitivityY;
+        Vector2 lookDelta = InputStateReader.ReadLookDelta();
+        float mouseX = lookDelta.x * _sensitivityX;
+        float mouseY = lookDelta.y * _sensitivityY;
 
         // Explorer 本体を Y 軸回転（体の向き = カメラの水平向き）
         transform.Rotate(Vector3.up, mouseX, Space.World);
@@ -48,11 +49,11 @@ public class ExplorerCameraLook : MonoBehaviour
     private void HandleCursorLock()
     {
         // 左クリックでロック
-        if (Input.GetMouseButtonDown(0) && Cursor.lockState != CursorLockMode.Locked)
+        if (InputStateReader.PrimaryPointerPressedThisFrame() && Cursor.lockState != CursorLockMode.Locked)
             LockCursor();
 
         // ESC でアンロック
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (InputStateReader.EscapePressedThisFrame())
             UnlockCursor();
     }
 

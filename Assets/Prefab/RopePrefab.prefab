@@ -12,7 +12,6 @@ GameObject:
   - component: {fileID: 1008975986517261808}
   - component: {fileID: 7018855245645690477}
   - component: {fileID: 342818879219072929}
-  - component: {fileID: 1207659000249647453}
   m_Layer: 0
   m_Name: RopePrefab
   m_TagString: Untagged
@@ -193,21 +192,3 @@ CapsuleCollider:
   m_Height: 0.05
   m_Direction: 1
   m_Center: {x: -123.54474, y: -0.00001, z: -2272.0383}
---- !u!114 &1207659000249647453
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 7458196472727440837}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: bcb3e94f1fbbb496293b718faa5a504a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RopeController
-  ShowTopMostFoldoutHeaderGroup: 1
-  anchorPoint: {fileID: 0}
-  ropeRadius: 0.35
-  ropeWidth: 0.05
-  IsDeployed:
-    m_InternalValue: 0

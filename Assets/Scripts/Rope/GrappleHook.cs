@@ -8,7 +8,6 @@ public class GrappleHook : MonoBehaviour
     [Header("Settings")]
     [SerializeField] private float maxGrappleDistance = 50f;
     [SerializeField] private LayerMask grappableLayer = ~0;
-    [SerializeField] private float hookSpeed = 50f;
 
     [Header("References")]
     [SerializeField] private RopeSystem ropeSystem;

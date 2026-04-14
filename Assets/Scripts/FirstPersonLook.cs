@@ -19,7 +19,10 @@ public class FirstPersonLook : MonoBehaviour
 
     private float _pitch;
     private float _yaw;
+    private Quaternion _targetBodyRotation = Quaternion.identity;
+    private bool _hasPendingBodyRotation;
 
+    private Rigidbody _rb;
     private PlayerStateManager _stateManager;
     private PlayerMovement _playerMovement;
     private float _cameraYOffset;
@@ -30,6 +33,7 @@ public class FirstPersonLook : MonoBehaviour
 
     private void Awake()
     {
+        _rb = GetComponent<Rigidbody>();
         _stateManager = GetComponent<PlayerStateManager>();
         _playerMovement = GetComponent<PlayerMovement>();
         AutoFindReferences();
@@ -37,7 +41,8 @@ public class FirstPersonLook : MonoBehaviour
 
     private void Start()
     {
-        _yaw = transform.eulerAngles.y;
+        _yaw = _rb != null ? _rb.rotation.eulerAngles.y : transform.eulerAngles.y;
+        _targetBodyRotation = Quaternion.Euler(0f, _yaw, 0f);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
@@ -66,6 +71,19 @@ public class FirstPersonLook : MonoBehaviour
         }
     }
 
+    private void FixedUpdate()
+    {
+        if (!_hasPendingBodyRotation)
+            return;
+
+        if (_rb != null && !_rb.isKinematic)
+            _rb.MoveRotation(_targetBodyRotation);
+        else
+            transform.rotation = _targetBodyRotation;
+
+        _hasPendingBodyRotation = false;
+    }
+
     private void OnGUI()
     {
         if (Cursor.lockState == CursorLockMode.Locked) return;
@@ -89,11 +107,13 @@ public class FirstPersonLook : MonoBehaviour
 
     private void ApplyMouseLook()
     {
-        float mouseX = Input.GetAxis("Mouse X") * sensitivityX;
-        float mouseY = Input.GetAxis("Mouse Y") * sensitivityY;
+        Vector2 lookDelta = InputStateReader.ReadLookDelta();
+        float mouseX = lookDelta.x * sensitivityX;
+        float mouseY = lookDelta.y * sensitivityY;
 
         _yaw += mouseX;
-        transform.rotation = Quaternion.Euler(0f, _yaw, 0f);
+        _targetBodyRotation = Quaternion.Euler(0f, _yaw, 0f);
+        _hasPendingBodyRotation = true;
 
         _pitch -= mouseY;
         _pitch = Mathf.Clamp(_pitch, -90f, 90f);
@@ -107,12 +127,12 @@ public class FirstPersonLook : MonoBehaviour
         bool isSwinging = _stateManager != null &&
                           _stateManager.CurrentState == PlayerState.Swinging;
 
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (InputStateReader.EscapePressedThisFrame())
         {
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
             _skipMouseInput = true;
-            _yaw = transform.eulerAngles.y;
+            _yaw = _rb != null ? _rb.rotation.eulerAngles.y : transform.eulerAngles.y;
             return;
         }
 
@@ -122,12 +142,12 @@ public class FirstPersonLook : MonoBehaviour
             {
                 Cursor.lockState = CursorLockMode.None;
                 Cursor.visible = true;
-                _yaw = transform.eulerAngles.y;
+                _yaw = _rb != null ? _rb.rotation.eulerAngles.y : transform.eulerAngles.y;
             }
             return;
         }
 
-        if (Input.GetMouseButtonDown(0) && Cursor.lockState == CursorLockMode.None)
+        if (InputStateReader.PrimaryPointerPressedThisFrame() && Cursor.lockState == CursorLockMode.None)
         {
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
                 return;

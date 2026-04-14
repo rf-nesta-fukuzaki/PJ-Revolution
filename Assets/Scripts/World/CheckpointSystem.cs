@@ -11,12 +11,16 @@ public class CheckpointSystem : MonoBehaviour
     [Header("Respawn")]
     [SerializeField] private float respawnDelay = 1.5f;
     [SerializeField] private float fallDeathY = -20f;
+    [SerializeField] private float respawnHeightOffset = 2f;
+    [SerializeField] private float respawnGroundProbeHeight = 120f;
+    [SerializeField] private float respawnGroundProbeDistance = 300f;
 
     private List<Transform> _checkpoints = new List<Transform>();
     private int _currentCheckpointIndex = -1;
     private Transform _playerTransform;
     private Rigidbody _playerRb;
     private bool _isRespawning;
+    private Vector3 _defaultRespawnPosition = new Vector3(0f, 5f, 0f);
 
     private void Awake()
     {
@@ -31,6 +35,9 @@ public class CheckpointSystem : MonoBehaviour
         {
             _playerTransform = player.transform;
             _playerRb = player.GetComponent<Rigidbody>();
+            // インスペクタ上の開始位置を「最終リスポーン位置」とみなし、
+            // 内部ではオフセット適用前の基準座標を保持する。
+            _defaultRespawnPosition = _playerTransform.position - Vector3.up * respawnHeightOffset;
         }
     }
 
@@ -76,8 +83,9 @@ public class CheckpointSystem : MonoBehaviour
         {
             _playerRb.linearVelocity = Vector3.zero;
             _playerRb.angularVelocity = Vector3.zero;
+            _playerRb.position = respawnPos;
         }
-        if (_playerTransform != null)
+        else if (_playerTransform != null)
             _playerTransform.position = respawnPos;
 
         yield return new WaitForSeconds(respawnDelay * 0.5f);
@@ -89,11 +97,42 @@ public class CheckpointSystem : MonoBehaviour
 
     private Vector3 GetRespawnPosition()
     {
+        Vector3 basePos;
         if (_currentCheckpointIndex >= 0 && _currentCheckpointIndex < _checkpoints.Count)
-            return _checkpoints[_currentCheckpointIndex].position + Vector3.up * 2f;
+            basePos = _checkpoints[_currentCheckpointIndex].position;
+        else
+            basePos = _defaultRespawnPosition;
 
-        // チェックポイントなし: 地形スタート地点
-        return new Vector3(0f, 5f, 0f);
+        if (TryGetGroundY(basePos, out float groundY))
+            basePos.y = Mathf.Max(basePos.y, groundY);
+
+        return basePos + Vector3.up * respawnHeightOffset;
+    }
+
+    private bool TryGetGroundY(Vector3 position, out float groundY)
+    {
+        Vector3 rayStart = position + Vector3.up * respawnGroundProbeHeight;
+        if (Physics.Raycast(
+            rayStart,
+            Vector3.down,
+            out RaycastHit hit,
+            respawnGroundProbeDistance,
+            ~0,
+            QueryTriggerInteraction.Ignore))
+        {
+            groundY = hit.point.y;
+            return true;
+        }
+
+        Terrain activeTerrain = Terrain.activeTerrain;
+        if (activeTerrain != null)
+        {
+            groundY = activeTerrain.SampleHeight(position) + activeTerrain.transform.position.y;
+            return true;
+        }
+
+        groundY = position.y;
+        return false;
     }
 }
 

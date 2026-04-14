@@ -7,7 +7,6 @@ public class CanvasFixer : MonoBehaviour
     [MenuItem("Tools/Fix Canvas Properties")]
     public static void Fix()
     {
-        // 1. TitleCanvas 以外を false に
         Canvas[] canvases = Resources.FindObjectsOfTypeAll<Canvas>();
         foreach (Canvas canvas in canvases)
         {
@@ -23,61 +22,84 @@ public class CanvasFixer : MonoBehaviour
             }
         }
 
-        // 2. QuitButtonの修正
         GameObject quitBtn = GameObject.Find("QuitButton");
+        if (quitBtn == null)
+        {
+            quitBtn = GameObject.Find("Btn_Exit");
+        }
+
         if (quitBtn != null && quitBtn.GetComponent<UnityEngine.UI.Button>() != null)
         {
-            // すでに存在するかチェック
             Transform existingText = quitBtn.transform.Find("Text (TMP)");
             if (existingText != null)
             {
                 Undo.DestroyObjectImmediate(existingText.gameObject);
             }
 
-            // 新規作成
             GameObject textObj = new GameObject("Text (TMP)");
             Undo.RegisterCreatedObjectUndo(textObj, "Create QuitButton Text");
             
             textObj.transform.SetParent(quitBtn.transform, false);
             
-            // RectTransform
             RectTransform rect = textObj.AddComponent<RectTransform>();
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
             
-            // TMP_Text
             TextMeshProUGUI tmp = textObj.AddComponent<TextMeshProUGUI>();
             tmp.text = "ゲーム終了";
             tmp.fontSize = 28;
             tmp.alignment = TextAlignmentOptions.CenterGeoAligned;
             tmp.color = Color.white;
             
-            // Font setup
-            string[] guids = AssetDatabase.FindAssets("NotoSansJP-VariableFont_wght SDF t:TMP_FontAsset");
-            if (guids.Length > 0)
+            TMP_FontAsset font = FindPreferredTitleFont();
+            if (font != null)
             {
-                string path = AssetDatabase.GUIDToAssetPath(guids[0]);
-                TMP_FontAsset font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(path);
-                if (font != null)
+                tmp.font = font;
+                if (font.material != null)
                 {
-                    tmp.font = font;
+                    tmp.fontSharedMaterial = font.material;
                 }
             }
             else
             {
-                Debug.LogWarning("NotoSansJP-VariableFont_wght SDF font not found.");
+                Debug.LogWarning("No TMP font asset for title UI was found.");
             }
             
             Debug.Log("QuitButton Text fixed successfully.");
         }
         else
         {
-            Debug.LogError("QuitButton not found.");
+            Debug.LogWarning("Exit button was not found. Skipped TMP text rebuild.");
         }
 
-        // Scene変更のマーク
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene());
+    }
+
+    static TMP_FontAsset FindPreferredTitleFont()
+    {
+        string[] searchQueries =
+        {
+            "NotoSansJP_Rebuilt t:TMP_FontAsset",
+            "NotoSansJP t:TMP_FontAsset",
+            "TitleRef_RoundedBold_Fixed t:TMP_FontAsset"
+        };
+
+        foreach (string query in searchQueries)
+        {
+            string[] guids = AssetDatabase.FindAssets(query);
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                TMP_FontAsset font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(path);
+                if (font != null)
+                {
+                    return font;
+                }
+            }
+        }
+
+        return TMP_Settings.defaultFontAsset;
     }
 }

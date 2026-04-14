@@ -44,12 +44,6 @@ public class RopeSystem : MonoBehaviour
         _playerRb = GetComponentInParent<Rigidbody>();
         _stateManager = GetComponentInParent<PlayerStateManager>();
 
-        ropeStiffness = 0.6f;
-        damping = 0.98f;
-        maxRopeLength = 50f;
-        swingForce = 25f;
-        pullForce = 800f;
-
         InitNodes();
         SetupLineRenderer();
     }
@@ -91,6 +85,7 @@ public class RopeSystem : MonoBehaviour
         SimulateRope();
         SolveConstraints();
         ApplyPlayerForce();
+        ApplyPullForces();
         UpdateLineRenderer();
     }
 
@@ -174,6 +169,19 @@ public class RopeSystem : MonoBehaviour
             lineRenderer.SetPosition(i, _nodes[i]);
     }
 
+    private void ApplyPullForces()
+    {
+        if (CurrentMode != RopeMode.Pull || _pullTarget == null || _playerRb == null) return;
+
+        Vector3 startPos = ropeStartPoint != null ? ropeStartPoint.position : transform.position;
+        Vector3 toTarget = _pullTarget.position - startPos;
+        if (toTarget.sqrMagnitude > maxPullDistance * maxPullDistance) return;
+
+        Vector3 pullDirection = toTarget.normalized;
+        _playerRb.AddForce(pullDirection * pullForce, ForceMode.Force);
+        _pullTarget.AddForce(-pullDirection * pullForce, ForceMode.Force);
+    }
+
     // ─── 公開 API ───
 
     public void AttachSwing(Vector3 anchorPoint)
@@ -237,22 +245,8 @@ public class RopeSystem : MonoBehaviour
         if (!IsAttached) return;
 
         // E キー: ロープ巻き取り
-        if (Input.GetKey(KeyCode.E))
+        if (InputStateReader.ReelPressed())
             ReelIn(reelSpeed);
-
-        // Pull モード: 毎フレームターゲット方向に力を加える
-        if (CurrentMode == RopeMode.Pull && _pullTarget != null && _playerRb != null)
-        {
-            Vector3 startPos = ropeStartPoint != null ? ropeStartPoint.position : transform.position;
-            Vector3 toTarget = _pullTarget.position - startPos;
-            if (toTarget.magnitude < maxPullDistance)
-            {
-                // 自分を引き寄せる
-                _playerRb.AddForce(toTarget.normalized * pullForce * Time.deltaTime, ForceMode.Force);
-                // ターゲットを引き寄せる
-                _pullTarget.AddForce(-toTarget.normalized * pullForce * Time.deltaTime, ForceMode.Force);
-            }
-        }
     }
 }
 

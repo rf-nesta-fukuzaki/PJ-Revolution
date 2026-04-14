@@ -10,7 +10,6 @@ GameObject:
   m_Component:
   - component: {fileID: 3546798657768499424}
   - component: {fileID: 9065248977222786872}
-  - component: {fileID: 5191812707112644463}
   - component: {fileID: 6869009328950555866}
   m_Layer: 0
   m_Name: CrystalPrefab
@@ -59,21 +58,6 @@ MonoBehaviour:
   AutoObjectParentSync: 1
   SyncOwnerTransformWhenParented: 1
   AllowOwnerToParent: 0
---- !u!114 &5191812707112644463
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 784247681191309770}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b3cf3ea0b089649e5bbe8cb7589e71a5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CollectibleGem
-  ShowTopMostFoldoutHeaderGroup: 1
-  gemValue: 1
-  promptText: "[E] \u5B9D\u77F3\u3092\u53CE\u96C6\u3059\u308B"
 --- !u!135 &6869009328950555866
 SphereCollider:
   m_ObjectHideFlags: 0

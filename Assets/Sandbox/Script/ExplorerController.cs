@@ -61,13 +61,14 @@ public class ExplorerController : MonoBehaviour
                                           _groundLayer, QueryTriggerInteraction.Ignore);
 
         // 移動入力
-        float h = Input.GetAxisRaw("Horizontal");
-        float v = Input.GetAxisRaw("Vertical");
+        Vector2 moveInput = InputStateReader.ReadMoveVectorRaw();
+        float h = moveInput.x;
+        float v = moveInput.y;
         _moveInput   = (transform.right * h + transform.forward * v).normalized;
-        _isSprinting = _moveInput.sqrMagnitude > 0.01f && Input.GetKey(KeyCode.LeftShift);
+        _isSprinting = _moveInput.sqrMagnitude > 0.01f && InputStateReader.IsSprintPressed();
 
         // ジャンプ入力（接地時のみ受付）
-        if (Input.GetKeyDown(KeyCode.Space) && _isGrounded)
+        if (InputStateReader.JumpPressedThisFrame() && _isGrounded)
             _jumpRequested = true;
 
         // Animator: Speed（State Speed Multiplier）
