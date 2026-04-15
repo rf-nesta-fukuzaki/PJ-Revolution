@@ -46,8 +46,10 @@ public sealed class CozyCaveTitleController : MonoBehaviour
 
     [Header("Scene Transition")]
     [SerializeField] private CanvasGroup sceneFadeCanvasGroup;
+#pragma warning disable CS0414
     [SerializeField] [Min(0.1f)] private float startTransitionDuration = 0.42f;
     [SerializeField] [Range(0f, 1f)] private float startTransitionFlashAlpha = 0.16f;
+#pragma warning restore CS0414
 
     private Sequence _introSequence;
     private Tween _introFailsafeTween;

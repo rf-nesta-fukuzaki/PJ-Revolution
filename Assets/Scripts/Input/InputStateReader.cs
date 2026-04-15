@@ -80,6 +80,26 @@ public static class InputStateReader
         return gamepad != null && gamepad.buttonSouth.wasReleasedThisFrame;
     }
 
+    public static bool IsAscendPressed()
+    {
+        var keyboard = Keyboard.current;
+        if (keyboard != null && keyboard.spaceKey.isPressed)
+            return true;
+
+        var gamepad = Gamepad.current;
+        return gamepad != null && gamepad.buttonSouth.isPressed;
+    }
+
+    public static bool IsDescendPressed()
+    {
+        var keyboard = Keyboard.current;
+        if (keyboard != null && (keyboard.leftCtrlKey.isPressed || keyboard.rightCtrlKey.isPressed || keyboard.cKey.isPressed))
+            return true;
+
+        var gamepad = Gamepad.current;
+        return gamepad != null && gamepad.buttonEast.isPressed;
+    }
+
     public static bool PrimaryPointerPressedThisFrame()
     {
         var mouse = Mouse.current;
@@ -120,6 +140,36 @@ public static class InputStateReader
         return gamepad != null && gamepad.buttonNorth.wasPressedThisFrame;
     }
 
+    public static bool InteractPressedThisFrame()
+    {
+        var keyboard = Keyboard.current;
+        if (keyboard != null && keyboard.eKey.wasPressedThisFrame)
+            return true;
+
+        var gamepad = Gamepad.current;
+        return gamepad != null && gamepad.buttonWest.wasPressedThisFrame;
+    }
+
+    public static bool UsePressedThisFrame()
+    {
+        var keyboard = Keyboard.current;
+        if (keyboard != null && keyboard.fKey.wasPressedThisFrame)
+            return true;
+
+        var gamepad = Gamepad.current;
+        return gamepad != null && gamepad.leftShoulder.wasPressedThisFrame;
+    }
+
+    public static bool DropPressedThisFrame()
+    {
+        var keyboard = Keyboard.current;
+        if (keyboard != null && keyboard.gKey.wasPressedThisFrame)
+            return true;
+
+        var gamepad = Gamepad.current;
+        return gamepad != null && gamepad.buttonEast.wasPressedThisFrame;
+    }
+
     public static bool ReelPressed()
     {
         var keyboard = Keyboard.current;
@@ -128,5 +178,10 @@ public static class InputStateReader
 
         var gamepad = Gamepad.current;
         return gamepad != null && gamepad.rightShoulder.isPressed;
+    }
+
+    public static float ReadVerticalAxisRaw()
+    {
+        return ReadMoveVectorRaw().y;
     }
 }

@@ -22,9 +22,9 @@ TagManager:
   - Enemy
   - Interactable
   - Rope
-  - 
-  - 
-  - 
+  - GrabPoint
+  - Relic
+  - Ghost
   - 
   - 
   - 
