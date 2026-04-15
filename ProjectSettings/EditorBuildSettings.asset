@@ -6,12 +6,18 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Sandbox/Scene/MainMenu.unity
+    guid: 66da034d7e5274401a09d0d7d9ebed76
+  - enabled: 1
+    path: Assets/Sandbox/Scene/Mountain01.unity
+    guid: 68fa5535c7ba14042b624ed1e2bbce33
+  - enabled: 1
     path: Assets/Scenes/TitleScece.unity
     guid: b2156252b8b0c4486aabaee811d8f9d8
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/SampleScene.unity
     guid: 99c9720ab356a0642a771bea13969a05
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/TestScene.unity
     guid: 7a88cf4c3d1ae496382778a508672d19
   m_configObjects:
