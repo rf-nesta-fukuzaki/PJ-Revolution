@@ -216,9 +216,10 @@ public class BasecampShop : MonoBehaviour
     private void RefreshInfoBoard()
     {
         // 天候情報
-        if (_weatherLabel != null && WeatherSystem.Instance != null)
+        var weather = GameServices.Weather;
+        if (_weatherLabel != null && weather != null)
         {
-            string weatherName = WeatherSystem.Instance.CurrentWeather switch
+            string weatherName = weather.CurrentWeather switch
             {
                 WeatherType.Sunny   => "☀ 晴れ",
                 WeatherType.Cloudy  => "☁ 曇り",
@@ -236,7 +237,7 @@ public class BasecampShop : MonoBehaviour
 
         // ルート状況（SpawnManager の L2 実行結果を反映）
         if (_routeStatusLabel != null)
-            _routeStatusLabel.text = SpawnManager.Instance?.GetRouteStatusSummary()
+            _routeStatusLabel.text = GameServices.Spawner?.GetRouteStatusSummary()
                                      ?? "ルート状況: 調査中...";
     }
 
@@ -247,7 +248,7 @@ public class BasecampShop : MonoBehaviour
 
         if (_shopPanel != null) _shopPanel.SetActive(false);
 
-        ExpeditionManager.Instance?.StartExpedition();
+        GameServices.Expedition?.StartExpedition();
 
         Debug.Log($"[Shop] 出発！購入: {GetTotalPurchasedCount()}個  使用予算: {TEAM_BUDGET_MAX - GetCurrentBudget()}pt");
     }

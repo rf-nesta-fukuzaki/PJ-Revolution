@@ -61,10 +61,15 @@ public class ExpeditionManager : MonoBehaviour
     public void StartExpedition()
     {
         if (_expeditionStarted) return;
+
+        // 前提条件: ベースキャンプフェーズからのみ開始可能
+        Debug.Assert(_phase == ExpeditionPhase.Basecamp,
+            $"[Contract] StartExpedition: invalid phase transition {_phase}→Climbing");
+
         _expeditionStarted     = true;
         _expeditionElapsedTime = 0f;
 
-        _phase = ExpeditionPhase.Climbing;
+        TransitionPhase(ExpeditionPhase.Climbing);
         ExpeditionEvents.RaiseExpeditionStarted();   // HUD への直接依存を排除
 
         // ネットワーク同期：ホスト以外のクライアントにもフェーズ変化を通知
@@ -110,9 +115,14 @@ public class ExpeditionManager : MonoBehaviour
     public void ReturnToBase(bool allSurvived = true)
     {
         if (_expeditionEnded) return;
+
+        // 前提条件: Climbing フェーズからのみ帰還可能
+        Debug.Assert(_phase == ExpeditionPhase.Climbing,
+            $"[Contract] ReturnToBase: invalid phase transition {_phase}→Returning");
+
         _expeditionEnded = true;
 
-        _phase = ExpeditionPhase.Returning;
+        TransitionPhase(ExpeditionPhase.Returning);
         ExpeditionEvents.RaiseExpeditionEnded();     // HUD への直接依存を排除
 
         // ネットワーク同期：全クライアントに帰還フェーズを通知
@@ -120,13 +130,17 @@ public class ExpeditionManager : MonoBehaviour
 
         float clearTime = _expeditionElapsedTime;
 
-        if (ScoreTracker.Instance == null)
+        var scoreService = GameServices.Score;
+        if (scoreService == null)
         {
-            Debug.LogWarning("[Expedition] ScoreTracker が見つかりません");
+            Debug.LogWarning("[Expedition] IScoreService が見つかりません");
             return;
         }
 
-        var score = ScoreTracker.Instance.BuildResultData(clearTime, allSurvived);
+        // 前提条件: clearTime は 0 以上
+        Debug.Assert(clearTime >= 0f, $"[Contract] ExpeditionManager.ReturnToBase: clearTime が負の値 ({clearTime})");
+
+        var score = scoreService.BuildResultData(clearTime, allSurvived);
         StartCoroutine(ShowResultAfterFade(score));
     }
 
@@ -136,7 +150,28 @@ public class ExpeditionManager : MonoBehaviour
         yield return new WaitForSeconds(0.5f);
         yield return StartCoroutine(Fade(1f, 0f));
 
+        TransitionPhase(ExpeditionPhase.Result);
         _resultScreen?.Show(score);
+    }
+
+    // ── フェーズ遷移（バリデーション付き）──────────────────────
+    private static readonly (ExpeditionPhase from, ExpeditionPhase to)[] VALID_TRANSITIONS =
+    {
+        (ExpeditionPhase.Basecamp,  ExpeditionPhase.Climbing),
+        (ExpeditionPhase.Climbing,  ExpeditionPhase.Returning),
+        (ExpeditionPhase.Returning, ExpeditionPhase.Result),
+    };
+
+    private void TransitionPhase(ExpeditionPhase next)
+    {
+        bool valid = false;
+        foreach (var (from, to) in VALID_TRANSITIONS)
+        {
+            if (from == _phase && to == next) { valid = true; break; }
+        }
+        Debug.Assert(valid, $"[Contract] ExpeditionManager: illegal phase transition {_phase}→{next}");
+        _phase = next;
+        Debug.Log($"[Expedition] フェーズ遷移: {next}");
     }
 
     // ── 死亡リスポーン ────────────────────────────────────────
@@ -150,7 +185,7 @@ public class ExpeditionManager : MonoBehaviour
             return;
         }
 
-        ScoreTracker.Instance?.RecordFall(player.GetInstanceID());
+        GameServices.Score?.RecordFall(player.GetInstanceID());
         Debug.Log($"[Expedition] {player.name} が死亡");
     }
 

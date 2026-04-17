@@ -75,6 +75,15 @@ public class BivouacTentItem : ItemBase
 
         _tentInstance.name = "BivouacTent_Placed";
 
+        // ShelterZone をアタッチ — FrostbiteDamage / RelicFreezeDamage の保護エリアとして機能
+        var shelterChild = new GameObject("ShelterZone");
+        shelterChild.transform.SetParent(_tentInstance.transform);
+        shelterChild.transform.localPosition = Vector3.zero;
+        var shelterCol = shelterChild.AddComponent<SphereCollider>();
+        shelterCol.isTrigger = true;
+        shelterCol.radius    = _shelterRadius;
+        shelterChild.AddComponent<ShelterZone>();
+
         // チェックポイント機能をアタッチ
         var checkpoint = _tentInstance.AddComponent<BivouacCheckpoint>();
         checkpoint.Init(_shelterRadius);
@@ -114,7 +123,7 @@ public class BivouacCheckpoint : MonoBehaviour
         _shelterRadius = shelterRadius;
 
         // チェックポイントとして ExpeditionManager に登録
-        ExpeditionManager.Instance?.RegisterDynamicCheckpoint(transform);
+        GameServices.Expedition?.RegisterDynamicCheckpoint(transform);
         _isRegistered = true;
         Debug.Log($"[BivouacCheckpoint] チェックポイント登録 at {transform.position}");
     }
@@ -127,7 +136,7 @@ public class BivouacCheckpoint : MonoBehaviour
         if (health == null) return;
 
         // テント内では天候ダメージを無効化（WeatherSystem に通知）
-        WeatherSystem.Instance?.AddShelterOccupant(other.gameObject);
+        GameServices.Weather?.AddShelterOccupant(other.gameObject);
         Debug.Log($"[BivouacCheckpoint] {other.name} がテントに入りました（天候保護）");
     }
 
@@ -135,7 +144,7 @@ public class BivouacCheckpoint : MonoBehaviour
     {
         if (!other.CompareTag("Player")) return;
 
-        WeatherSystem.Instance?.RemoveShelterOccupant(other.gameObject);
+        GameServices.Weather?.RemoveShelterOccupant(other.gameObject);
         Debug.Log($"[BivouacCheckpoint] {other.name} がテントから出ました");
     }
 

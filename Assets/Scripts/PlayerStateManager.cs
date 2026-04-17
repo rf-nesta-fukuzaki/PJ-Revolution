@@ -11,7 +11,7 @@ public class PlayerStateManager : MonoBehaviour
     [Header("設定")]
     [SerializeField] private float antiEmbedForce = 0.5f;
 
-    public PlayerState CurrentState { get; private set; } = PlayerState.Normal;
+    public MovementState CurrentState { get; private set; } = MovementState.Normal;
 
     private Rigidbody _rb;
 
@@ -25,7 +25,7 @@ public class PlayerStateManager : MonoBehaviour
         _rb.isKinematic = false;
     }
 
-    public void SetState(PlayerState newState)
+    public void SetState(MovementState newState)
     {
         if (CurrentState == newState) return;
 
@@ -34,7 +34,7 @@ public class PlayerStateManager : MonoBehaviour
         OnStateChanged(prev, newState);
     }
 
-    public void RequestStateChange(PlayerState newState)
+    public void RequestStateChange(MovementState newState)
     {
         SetState(newState);
     }
@@ -46,33 +46,33 @@ public class PlayerStateManager : MonoBehaviour
 
     private IEnumerator StunCoroutine(float duration)
     {
-        SetState(PlayerState.Interacting);
+        SetState(MovementState.Interacting);
         yield return new WaitForSeconds(duration);
-        if (CurrentState == PlayerState.Interacting)
-            SetState(PlayerState.Normal);
+        if (CurrentState == MovementState.Interacting)
+            SetState(MovementState.Normal);
     }
 
-    private void OnStateChanged(PlayerState prev, PlayerState current)
+    private void OnStateChanged(MovementState prev, MovementState current)
     {
         switch (current)
         {
-            case PlayerState.Normal:
-            case PlayerState.Falling:
+            case MovementState.Normal:
+            case MovementState.Falling:
                 _rb.isKinematic = false;
-                if (prev == PlayerState.Climbing)
+                if (prev == MovementState.Climbing)
                     _rb.AddForce(Vector3.up * antiEmbedForce, ForceMode.VelocityChange);
                 break;
 
-            case PlayerState.Climbing:
+            case MovementState.Climbing:
                 _rb.linearVelocity = Vector3.zero;
                 _rb.isKinematic = true;
                 break;
 
-            case PlayerState.Swinging:
+            case MovementState.Swinging:
                 _rb.isKinematic = false;
                 break;
 
-            case PlayerState.Downed:
+            case MovementState.Downed:
                 _rb.linearVelocity = Vector3.zero;
                 break;
         }
@@ -81,8 +81,8 @@ public class PlayerStateManager : MonoBehaviour
     }
 }
 
-/// <summary>プレイヤーの行動状態。</summary>
-public enum PlayerState
+/// <summary>プレイヤーの移動・行動ステート（Assets/Scripts 側のレガシーステートマシン用）。</summary>
+public enum MovementState
 {
     Normal,
     Swinging,

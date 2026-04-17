@@ -41,14 +41,20 @@ public abstract class RelicBase : MonoBehaviour
     [SerializeField] protected bool _isHeld = false;
 
     // ── 状態 ────────────────────────────────────────────────
-    protected float     _currentHp;
-    protected Rigidbody _rb;
-    protected bool      _isDestroyed;
+    protected float          _currentHp;
+    protected Rigidbody      _rb;
+    protected bool           _isDestroyed;
+    private RelicCondition   _lastCondition;
     private readonly List<MonoBehaviour> _behaviourBuffer = new();
 
     // ── イベント ────────────────────────────────────────────
-    public event Action<float, float>  OnDamaged;    // (damage, currentHp)
-    public event Action<RelicBase>     OnRelicBroken;
+    public event Action<float, float>                OnDamaged;         // (damage, currentHp)
+    public event Action<RelicBase>                   OnRelicBroken;
+    /// <summary>
+    /// 耐久状態のティアが変化した際に発火（Perfect→Damaged 等）。
+    /// UI やオーディオシステムが購読して演出を行う。
+    /// </summary>
+    public event Action<RelicCondition, RelicCondition> OnConditionChanged; // (prev, next)
 
     // ── プロパティ ───────────────────────────────────────────
     public string RelicName    => _relicName;
@@ -91,7 +97,12 @@ public abstract class RelicBase : MonoBehaviour
         if (_definition != null)
             ApplyDefinition(_definition);
 
-        _currentHp = _maxHp;
+        // 不変条件: MaxHp は正の値でなければならない
+        Debug.Assert(_maxHp > 0f,
+            $"[Contract] RelicBase.Awake: _maxHp は 0 より大きくなければなりません (value={_maxHp}, relic={_relicName})");
+
+        _currentHp     = _maxHp;
+        _lastCondition = RelicCondition.Perfect;
         RebuildVisual();
     }
 
@@ -128,10 +139,31 @@ public abstract class RelicBase : MonoBehaviour
 
     public void ApplyDamage(float damage, GameObject source = null)
     {
+        // 前提条件: damage は非負の値でなければならない
+        if (damage < 0f)
+        {
+            Debug.LogError(
+                $"[Contract] RelicBase.ApplyDamage: damage は 0 以上でなければなりません " +
+                $"(value={damage}, relic={_relicName}, source={source?.name})");
+            return;
+        }
+
         if (_isDestroyed || damage <= 0f) return;
 
         _currentHp = Mathf.Max(0f, _currentHp - damage);
         OnDamaged?.Invoke(damage, _currentHp);
+
+        // 条件ティアが変化した場合にイベントを発火（FSM遷移通知）
+        var newCondition = Condition;
+        if (newCondition != _lastCondition)
+        {
+            var prev = _lastCondition;
+            _lastCondition = newCondition;
+            // 不変条件: 遺物の状態は一方向（悪化のみ）に遷移する
+            Debug.Assert(newCondition > prev || newCondition == RelicCondition.Destroyed,
+                $"[Contract] RelicBase: 状態は悪化方向にしか変化しません ({prev} → {newCondition})");
+            OnConditionChanged?.Invoke(prev, newCondition);
+        }
 
         OnDamageReceived(damage, source);
 
@@ -139,11 +171,36 @@ public abstract class RelicBase : MonoBehaviour
             HandleDestruction();
     }
 
+    /// <summary>
+    /// 環境由来のダメージ（凍結・高山病・経年劣化等）を与える。
+    /// 物理衝突ダメージとは独立し、ダメージ耐性 (Toughness) の影響を受けない。
+    /// RelicFreezeDamage など環境システムから呼ぶ。
+    /// </summary>
+    public void ApplyEnvironmentalDamage(float damage)
+    {
+        ApplyDamage(damage, null);
+    }
+
     /// <summary>遺物を修復する（HP を増加させる）。ThermalCase など保護アイテムが使用する。</summary>
     public void Repair(float amount)
     {
+        // 前提条件: amount は正の値でなければならない
+        if (amount < 0f)
+        {
+            Debug.LogError(
+                $"[Contract] RelicBase.Repair: amount は 0 以上でなければなりません " +
+                $"(value={amount}, relic={_relicName})");
+            return;
+        }
+
         if (_isDestroyed || amount <= 0f) return;
+
+        float prevHp = _currentHp;
         _currentHp = Mathf.Min(_maxHp, _currentHp + amount);
+
+        // 事後条件: HP は MaxHp を超えてはならない
+        Debug.Assert(_currentHp <= _maxHp,
+            $"[Contract] RelicBase.Repair: HP ({_currentHp}) が MaxHp ({_maxHp}) を超えました");
     }
 
     protected virtual void OnDamageReceived(float damage, GameObject source) { }

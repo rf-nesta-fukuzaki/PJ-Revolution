@@ -41,6 +41,16 @@ public class ExplorerController : MonoBehaviour
     private float _currentBlend;
     private float _blendVelocity;
 
+    // ── 外部から注入される速度ペナルティ（0 = なし / 0.3 = -30%） ──
+    private float _altitudePenalty;    // AltitudeSicknessEffect から設定
+    private float _carryPenalty;       // RelicCarrier から設定（運搬重量依存）
+
+    /// <summary>高山病による速度ペナルティを設定する（GDD §3.4）。</summary>
+    public void SetAltitudePenalty(float penalty) => _altitudePenalty = Mathf.Clamp01(penalty);
+
+    /// <summary>運搬重量による速度ペナルティを設定する（GDD §3.3）。</summary>
+    public void SetCarryPenalty(float penalty)    => _carryPenalty    = Mathf.Clamp01(penalty);
+
     private static readonly int SpeedHash       = Animator.StringToHash("Speed");
     private static readonly int SpeedBlendHash  = Animator.StringToHash("SpeedBlend");
     private static readonly int JumpTriggerHash = Animator.StringToHash("JumpTrigger");
@@ -101,9 +111,12 @@ public class ExplorerController : MonoBehaviour
             _animator?.SetTrigger(JumpTriggerHash);
         }
 
-        // 水平移動
+        // 水平移動（速度ペナルティを合算 — GDD §3.3/3.4）
         if (_moveInput.sqrMagnitude < 0.01f) return;
-        float speed = _isSprinting ? _sprintSpeed : _walkSpeed;
+        float baseSpeed = _isSprinting ? _sprintSpeed : _walkSpeed;
+        float totalPenalty = Mathf.Clamp01(_altitudePenalty + _carryPenalty);
+        // 最低速度 1.0m/s を保証（GDD §3.3）
+        float speed = Mathf.Max(1.0f, baseSpeed * (1f - totalPenalty));
         _rb.MovePosition(_rb.position + _moveInput * (speed * Time.fixedDeltaTime));
     }
 }

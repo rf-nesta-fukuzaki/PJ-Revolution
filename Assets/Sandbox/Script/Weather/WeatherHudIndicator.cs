@@ -16,12 +16,13 @@ public class WeatherHudIndicator : MonoBehaviour
 
     private void Update()
     {
-        if (WeatherSystem.Instance == null) return;
+        var weather = GameServices.Weather;
+        if (weather == null) return;
 
-        var weather = WeatherSystem.Instance.CurrentWeather;
+        var current = weather.CurrentWeather;
 
         if (_weatherLabel != null)
-            _weatherLabel.text = weather switch
+            _weatherLabel.text = current switch
             {
                 WeatherType.Sunny    => "晴れ",
                 WeatherType.Cloudy   => "曇り",
@@ -32,9 +33,9 @@ public class WeatherHudIndicator : MonoBehaviour
             };
 
         if (_windLabel != null)
-            _windLabel.text = $"風速 {WeatherSystem.Instance.WindSpeed:F1} m/s";
+            _windLabel.text = $"風速 {weather.WindSpeed:F1} m/s";
 
         if (_weatherIcon != null && _weatherIcons != null && _weatherIcons.Length >= 5)
-            _weatherIcon.sprite = _weatherIcons[(int)weather];
+            _weatherIcon.sprite = _weatherIcons[(int)current];
     }
 }

@@ -31,8 +31,8 @@ public class LongRopeItem : ItemBase
     {
         if (_isBroken || _isConnected) return false;
 
-        bool ok = RopeManager.Instance != null &&
-                  RopeManager.Instance.ConnectRope(playerIdA, playerIdB, _ropeLength);
+        bool ok = GameServices.Ropes != null &&
+                  GameServices.Ropes.ConnectRope(playerIdA, playerIdB, _ropeLength);
 
         if (ok)
         {
@@ -49,7 +49,7 @@ public class LongRopeItem : ItemBase
     {
         if (!_isConnected) return;
 
-        RopeManager.Instance?.DisconnectRope(_connectedPlayerIdA, _connectedPlayerIdB);
+        GameServices.Ropes?.DisconnectRope(_connectedPlayerIdA, _connectedPlayerIdB);
         _isConnected = false;
         Debug.Log("[LongRope] ロープを切断");
     }

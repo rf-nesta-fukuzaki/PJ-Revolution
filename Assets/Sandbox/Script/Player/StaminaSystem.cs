@@ -125,4 +125,14 @@ public class StaminaSystem : MonoBehaviour
     {
         return _cachedRigidbody != null && _cachedRigidbody.linearVelocity.sqrMagnitude > 0.5f;
     }
+
+    // ── デバッグ用 ────────────────────────────────────────────
+    /// <summary>
+    /// オフラインテスト用: スタミナを即座にゼロにする。
+    /// OfflineTestBootstrapper の F9 キーから呼ばれる。
+    /// </summary>
+    public void ConsumeAll()
+    {
+        Consume(_currentStamina);
+    }
 }

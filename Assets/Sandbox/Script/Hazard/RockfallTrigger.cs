@@ -100,7 +100,9 @@ public class RockfallTrigger : MonoBehaviour
             rock.GetComponent<Renderer>().material.color = new Color(0.5f, 0.45f, 0.4f);
         }
 
-        var rb = rock.GetComponent<Rigidbody>() ?? rock.AddComponent<Rigidbody>();
+        Rigidbody rb = rock.GetComponent<Rigidbody>();
+        if (rb == null)
+            rb = rock.AddComponent<Rigidbody>();
         rb.linearVelocity = Vector3.down * _rockSpeed + Random.insideUnitSphere * 2f;
         rb.mass           = 5f;
 

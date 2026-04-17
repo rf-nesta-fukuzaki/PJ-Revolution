@@ -74,10 +74,10 @@ public class AnchorBoltItem : ItemBase
         anchor.name = "AnchorBolt_Placed";
 
         // RopeManager にアンカーポイントとして登録（実装があれば）
-        RopeManager.Instance?.RegisterAnchorPoint(anchor.transform);
+        GameServices.Ropes?.RegisterAnchorPoint(anchor.transform);
 
         _chargesLeft--;
-        ScoreTracker.Instance?.RecordRopePlacement(playerId);
+        GameServices.Score?.RecordRopePlacement(playerId);
         ConsumeDurability(100f / _maxCharges);
 
         Debug.Log($"[AnchorBolt] 設置完了。残り {_chargesLeft}/{_maxCharges} 個");

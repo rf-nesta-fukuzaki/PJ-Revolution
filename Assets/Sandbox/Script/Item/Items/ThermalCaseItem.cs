@@ -40,6 +40,10 @@ public class ThermalCaseItem : ItemBase
 
         // 遺物のダメージを軽減するためにイベントに介入
         relic.OnDamaged += OnRelicDamaged;
+
+        // 凍結ダメージ免疫を通知（GDD §5.2）
+        relic.GetComponent<RelicFreezeDamage>()?.SetInThermalCase(true);
+
         Debug.Log($"[ThermalCase] {relic.RelicName} を保護開始");
         return true;
     }
@@ -48,7 +52,10 @@ public class ThermalCaseItem : ItemBase
     public void StopProtecting()
     {
         if (_protectedRelic != null)
+        {
             _protectedRelic.OnDamaged -= OnRelicDamaged;
+            _protectedRelic.GetComponent<RelicFreezeDamage>()?.SetInThermalCase(false);
+        }
 
         _protectedRelic = null;
         _isProtecting   = false;

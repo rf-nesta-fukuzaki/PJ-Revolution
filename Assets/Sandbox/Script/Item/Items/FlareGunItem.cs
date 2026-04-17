@@ -37,16 +37,37 @@ public class FlareGunItem : ItemBase
         _flaresLeft        = _maxFlares;
     }
 
+    // ── GDD §2.4: 上空発射判定 ────────────────────────────────
+    /// <summary>仰角が閾値以上かどうか（ヘリ呼び出し判定用）。</summary>
+    private static bool IsPointingUpward(Vector3 direction, float minElevationDeg = 60f)
+    {
+        // direction と Vector3.up の角度が (90° - minElevationDeg) 以下 = 仰角 minElevationDeg 以上
+        float angleBetween = Vector3.Angle(direction, Vector3.up);
+        return angleBetween <= (90f - minElevationDeg);
+    }
+
     /// <summary>フレアを発射する。</summary>
     public bool TryFire(Transform firePoint)
     {
         if (_isBroken || _flaresLeft <= 0) return false;
 
+        bool isSkyShot = IsPointingUpward(firePoint.forward);
+
         FireFlare(firePoint.position, firePoint.forward);
         _flaresLeft--;
         ConsumeDurability(100f / _maxFlares);
 
-        Debug.Log($"[FlareGun] フレア発射！残り {_flaresLeft}/{_maxFlares} 発");
+        if (isSkyShot)
+        {
+            // 上空発射 → ヘリコプター呼び出し（GameServices 経由で IHelicopterService を使用）
+            GameServices.Helicopter?.CallHelicopter(firePoint.position);
+            Debug.Log($"[FlareGun] 上空発射！ヘリを呼び出しました。残り {_flaresLeft}/{_maxFlares} 発");
+        }
+        else
+        {
+            Debug.Log($"[FlareGun] 水平発射（マーキング）。残り {_flaresLeft}/{_maxFlares} 発");
+        }
+
         return true;
     }
 

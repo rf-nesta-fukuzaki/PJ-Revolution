@@ -197,7 +197,7 @@ public class RopeSystem : MonoBehaviour
         InitRopeNodes(anchorPoint, ropeStartPoint != null ? ropeStartPoint.position : transform.position);
 
         if (lineRenderer != null) lineRenderer.enabled = true;
-        _stateManager?.SetState(PlayerState.Swinging);
+        _stateManager?.SetState(MovementState.Swinging);
 
         AudioManager.Instance?.PlaySE("rope_attach");
     }
@@ -220,8 +220,8 @@ public class RopeSystem : MonoBehaviour
         _pullTarget = null;
         if (lineRenderer != null) lineRenderer.enabled = false;
 
-        if (_stateManager != null && _stateManager.CurrentState == PlayerState.Swinging)
-            _stateManager.SetState(PlayerState.Normal);
+        if (_stateManager != null && _stateManager.CurrentState == MovementState.Swinging)
+            _stateManager.SetState(MovementState.Normal);
     }
 
     public void ReelIn(float amount)

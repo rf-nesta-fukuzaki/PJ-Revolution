@@ -51,16 +51,20 @@ public class ResultScreen : MonoBehaviour
     }
 
     // ── 表示 ─────────────────────────────────────────────────
-    public void Show(ScoreData score)
+    public void Show(ScoreData score, bool allSurvived = false)
     {
+        Debug.Assert(score != null, "[Contract] ResultScreen.Show: score が null です");
         if (_panel != null) _panel.SetActive(true);
 
         PopulateTeamScore(score);
         PopulatePlayerRows(score);
         PopulateTitles(score);
 
+        // プロフィールに遠征結果を保存（GameServices 経由）
+        GameServices.Save?.UpdateFromResult(score, allSurvived);
+
         // リザルトに基づいてコスメティックを解放
-        CosmeticManager.Instance?.ProcessResultRewards(score);
+        GameServices.Cosmetics?.ProcessResultRewards(score);
 
         StartCoroutine(AnimateIn());
     }

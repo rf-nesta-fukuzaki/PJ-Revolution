@@ -7,7 +7,7 @@ using Random = UnityEngine.Random;
 /// 晴/曇/霧/雨/吹雪サイクル + 風向き・風速をランダムに変化させる。
 /// Rigidbody コンポーネントを持つ全オブジェクトに風力を適用する。
 /// </summary>
-public class WeatherSystem : MonoBehaviour
+public class WeatherSystem : MonoBehaviour, IWeatherService
 {
     public static WeatherSystem Instance { get; private set; }
 
@@ -233,6 +233,24 @@ public class WeatherSystem : MonoBehaviour
 
     /// <summary>指定オブジェクトがシェルター保護下にあるか判定。</summary>
     public bool IsInShelter(GameObject go) => _shelterOccupants.Contains(go);
+
+    // ── デバッグ用 ────────────────────────────────────────────
+    /// <summary>
+    /// オフラインテスト用: 天候を次のタイプへ手動で切り替える。
+    /// OfflineTestBootstrapper の F8 キーから呼ばれる。
+    /// </summary>
+    public void CycleToNextWeather()
+    {
+        var next = _currentWeather switch
+        {
+            WeatherType.Sunny   => WeatherType.Cloudy,
+            WeatherType.Cloudy  => WeatherType.Fog,
+            WeatherType.Fog     => WeatherType.Rain,
+            WeatherType.Rain    => WeatherType.Blizzard,
+            _                   => WeatherType.Sunny,
+        };
+        ChangeWeather(next);
+    }
 }
 
 public enum WeatherType { Sunny, Cloudy, Fog, Rain, Blizzard }

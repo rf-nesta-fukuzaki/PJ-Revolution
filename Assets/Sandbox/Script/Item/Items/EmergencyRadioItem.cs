@@ -46,7 +46,7 @@ public class EmergencyRadioItem : ItemBase
         Debug.Log("[EmergencyRadio] 緊急ブロードキャスト開始！プロキシミティ制限解除");
 
         // ProximityVoiceChat がある場合は距離制限を解除
-        ProximityVoiceChat.Instance?.SetRangeOverride(true);
+        GameServices.VoiceChat?.SetRangeOverride(true);
 
         float elapsed = 0f;
         while (elapsed < _broadcastDuration && !_isBroken)
@@ -55,7 +55,7 @@ public class EmergencyRadioItem : ItemBase
             yield return null;
         }
 
-        ProximityVoiceChat.Instance?.SetRangeOverride(false);
+        GameServices.VoiceChat?.SetRangeOverride(false);
         _isBroadcasting = false;
 
         ConsumeDurability(_maxDurability);  // 使用後は壊れる
@@ -69,7 +69,7 @@ public class EmergencyRadioItem : ItemBase
         if (_broadcastCoroutine != null)
             StopCoroutine(_broadcastCoroutine);
 
-        ProximityVoiceChat.Instance?.SetRangeOverride(false);
+        GameServices.VoiceChat?.SetRangeOverride(false);
         _isBroadcasting = false;
 
         Debug.Log("[EmergencyRadio] 壊れました！");

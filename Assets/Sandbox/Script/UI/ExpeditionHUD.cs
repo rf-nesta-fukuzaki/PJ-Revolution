@@ -72,7 +72,7 @@ public class ExpeditionHUD : MonoBehaviour
     {
         // タイマー開始は ExpeditionEvents.OnExpeditionStarted イベント経由に変更。
         // テストシーン（ExpeditionManager なし）での互換性のためフォールバックを残す。
-        if (ExpeditionManager.Instance == null)
+        if (GameServices.Expedition == null)
             StartTimer();
 
         SetWarning("");
@@ -131,9 +131,9 @@ public class ExpeditionHUD : MonoBehaviour
     // ── ロープ状態 ────────────────────────────────────────────
     private void UpdateRopeUI()
     {
-        if (_ropeIndicator == null || RopeManager.Instance == null) return;
+        if (_ropeIndicator == null || GameServices.Ropes == null) return;
 
-        bool connected = RopeManager.Instance.HasAnyRope;
+        bool connected = GameServices.Ropes.HasAnyRope;
         _ropeIndicator.color = connected ? _ropeConnectedColor : _ropeIdleColor;
     }
 

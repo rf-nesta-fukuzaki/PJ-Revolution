@@ -1,3 +1,4 @@
+using Unity.Netcode;
 using UnityEngine;
 
 /// <summary>
@@ -9,7 +10,7 @@ using UnityEngine;
 public class ExplorerCameraLook : MonoBehaviour
 {
     [Header("参照")]
-    [Tooltip("Explorer の目線高さに置いた空の子オブジェクト。Main Camera を子にする。")]
+    [Tooltip("Explorer の目線高さに置いた空の子オブジェクト。Main Camera を子にする。未設定時は子の CameraRig を自動検索する。")]
     [SerializeField] private Transform _cameraRig;
 
     [Header("感度")]
@@ -22,15 +23,42 @@ public class ExplorerCameraLook : MonoBehaviour
 
     private float _pitch;
 
+    private void Awake()
+    {
+        // インスペクターで未アサインの場合は子の CameraRig を自動検索
+        if (_cameraRig == null)
+            _cameraRig = transform.Find("CameraRig");
+    }
+
     private void Start()
     {
+        // ローカルオーナーのみカーソルロックと重複 AudioListener 解消を行う
+        var netObj = GetComponent<NetworkObject>();
+        bool isLocalOwner = netObj == null || netObj.IsOwner;
+        if (!isLocalOwner) return;
+
         LockCursor();
+        DisableRedundantAudioListener();
+    }
+
+    /// <summary>
+    /// CameraRig が AudioListener を持つため、シーンの MainCamera 側の
+    /// AudioListener を無効にして「AudioListener が 2 つ」警告を解消する。
+    /// </summary>
+    private void DisableRedundantAudioListener()
+    {
+        var mainCamObj = GameObject.FindWithTag("MainCamera");
+        if (mainCamObj == null || mainCamObj.transform.IsChildOf(transform)) return;
+        var listener = mainCamObj.GetComponent<AudioListener>();
+        if (listener != null)
+            listener.enabled = false;
     }
 
     private void Update()
     {
         HandleCursorLock();
 
+        if (_cameraRig == null) return;
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
         Vector2 lookDelta = InputStateReader.ReadLookDelta();

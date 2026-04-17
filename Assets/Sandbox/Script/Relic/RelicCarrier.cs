@@ -35,7 +35,7 @@ public class RelicCarrier : MonoBehaviour
         float delta = Vector3.Distance(_currentHolder.position, _prevHolderPos);
         _prevHolderPos = _currentHolder.position;
         if (_lastCarrierPlayerId >= 0)
-            ScoreTracker.Instance?.RecordRelicCarried(_lastCarrierPlayerId, delta);
+            GameServices.Score?.RecordRelicCarried(_lastCarrierPlayerId, delta);
 
         // 保持中：プレイヤーの前方 _holdDistance の位置に追従
         Vector3 targetPos = _currentHolder.position
