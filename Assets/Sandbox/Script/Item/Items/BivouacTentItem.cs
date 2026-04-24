@@ -1,4 +1,6 @@
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「ビバークテント」
@@ -27,12 +29,6 @@ public class BivouacTentItem : ItemBase
         _maxDurability     = 80f;
         _currentDurability = _maxDurability;
         _impactDmgScale    = 0.5f;
-    }
-
-    private void OnEnable()
-    {
-        // シーン遷移（新遠征）でフラグリセット
-        _hasBeenPlacedThisExpedition = false;
     }
 
     /// <summary>現在地にテントを設置する。</summary>
@@ -75,12 +71,24 @@ public class BivouacTentItem : ItemBase
 
         _tentInstance.name = "BivouacTent_Placed";
 
+        // ShelterZone をアタッチ — FrostbiteDamage / RelicFreezeDamage の保護エリアとして機能
+        var shelterChild = new GameObject("ShelterZone");
+        shelterChild.transform.SetParent(_tentInstance.transform);
+        shelterChild.transform.localPosition = Vector3.zero;
+        var shelterCol = shelterChild.AddComponent<SphereCollider>();
+        shelterCol.isTrigger = true;
+        shelterCol.radius    = _shelterRadius;
+        shelterChild.AddComponent<ShelterZone>();
+
         // チェックポイント機能をアタッチ
         var checkpoint = _tentInstance.AddComponent<BivouacCheckpoint>();
         checkpoint.Init(_shelterRadius);
 
         _isPlaced                    = true;
         _hasBeenPlacedThisExpedition = true;
+
+        // GDD §15.2 — tent_setup
+        PPAudioManager.Instance?.PlaySE(SoundId.TentSetup, position);
 
         ConsumeDurability(20f);  // 設置で消耗
         Debug.Log($"[BivouacTent] テント設置完了。チェックポイントとして登録");
@@ -105,16 +113,24 @@ public class BivouacTentItem : ItemBase
 public class BivouacCheckpoint : MonoBehaviour
 {
     private float _shelterRadius;
-#pragma warning disable CS0414
     private bool  _isRegistered;
-#pragma warning restore CS0414
+
+    /// <summary>チェックポイントとして登録済みか（二重登録防止のため公開）。</summary>
+    public bool IsRegistered => _isRegistered;
 
     public void Init(float shelterRadius)
     {
+        // 冪等性: Init は一度だけ登録処理を行う（複数回呼ばれても安全）
+        if (_isRegistered)
+        {
+            _shelterRadius = shelterRadius;  // 半径のみ更新
+            return;
+        }
+
         _shelterRadius = shelterRadius;
 
         // チェックポイントとして ExpeditionManager に登録
-        ExpeditionManager.Instance?.RegisterDynamicCheckpoint(transform);
+        GameServices.Expedition?.RegisterDynamicCheckpoint(transform);
         _isRegistered = true;
         Debug.Log($"[BivouacCheckpoint] チェックポイント登録 at {transform.position}");
     }
@@ -127,7 +143,7 @@ public class BivouacCheckpoint : MonoBehaviour
         if (health == null) return;
 
         // テント内では天候ダメージを無効化（WeatherSystem に通知）
-        WeatherSystem.Instance?.AddShelterOccupant(other.gameObject);
+        GameServices.Weather?.AddShelterOccupant(other.gameObject);
         Debug.Log($"[BivouacCheckpoint] {other.name} がテントに入りました（天候保護）");
     }
 
@@ -135,7 +151,7 @@ public class BivouacCheckpoint : MonoBehaviour
     {
         if (!other.CompareTag("Player")) return;
 
-        WeatherSystem.Instance?.RemoveShelterOccupant(other.gameObject);
+        GameServices.Weather?.RemoveShelterOccupant(other.gameObject);
         Debug.Log($"[BivouacCheckpoint] {other.name} がテントから出ました");
     }
 

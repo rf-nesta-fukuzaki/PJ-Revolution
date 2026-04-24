@@ -1,5 +1,7 @@
 using System.Collections;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §7.1 L5 — 崩れ足場ハザード。
@@ -53,6 +55,9 @@ public class CollapsiblePlatform : MonoBehaviour
         _isCollapsing = true;
         float elapsed = 0f;
 
+        // GDD §15.2 — floor_crumble_warn（ぐらつき開始で予兆音）
+        PPAudioManager.Instance?.PlaySE(SoundId.FloorCrumbleWarn, transform.position);
+
         // ぐらつき演出
         while (elapsed < _collapseDelay)
         {
@@ -81,6 +86,9 @@ public class CollapsiblePlatform : MonoBehaviour
         _isCollapsed  = true;
         _isCollapsing = false;
         Debug.Log($"[CollapsiblePlatform] {name} が崩れた！");
+
+        // GDD §15.2 — floor_crumble（実際の崩落）
+        PPAudioManager.Instance?.PlaySE(SoundId.FloorCrumble, transform.position);
 
         foreach (var r in _renderers) r.enabled  = false;
         foreach (var c in _colliders) c.enabled  = false;

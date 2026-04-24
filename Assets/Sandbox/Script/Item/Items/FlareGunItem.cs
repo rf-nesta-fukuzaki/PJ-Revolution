@@ -1,5 +1,7 @@
 using System.Collections;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「フレアガン」
@@ -16,9 +18,8 @@ public class FlareGunItem : ItemBase
     [SerializeField] private int   _maxFlares    = 3;
     [SerializeField] private float _flareSpeed   = 15f;
     [SerializeField] private float _flareBurnTime = 8f;   // 地面で燃え続ける時間（秒）
-#pragma warning disable CS0414
-    [SerializeField] private float _visibleRange = 100f;  // フレアの視認距離（将来のLoS判定用）
-#pragma warning restore CS0414
+    [Tooltip("着弾後のフレアが視認される最大距離 (m)。この距離を超えた観測者、または LoS が遮られた観測者からは視認不可。")]
+    [SerializeField] private float _visibleRange = 100f;
 
     private int _flaresLeft;
 
@@ -37,16 +38,40 @@ public class FlareGunItem : ItemBase
         _flaresLeft        = _maxFlares;
     }
 
+    // ── GDD §2.4: 上空発射判定 ────────────────────────────────
+    /// <summary>仰角が閾値以上かどうか（ヘリ呼び出し判定用）。</summary>
+    private static bool IsPointingUpward(Vector3 direction, float minElevationDeg = 60f)
+    {
+        // direction と Vector3.up の角度が (90° - minElevationDeg) 以下 = 仰角 minElevationDeg 以上
+        float angleBetween = Vector3.Angle(direction, Vector3.up);
+        return angleBetween <= (90f - minElevationDeg);
+    }
+
     /// <summary>フレアを発射する。</summary>
     public bool TryFire(Transform firePoint)
     {
         if (_isBroken || _flaresLeft <= 0) return false;
 
+        bool isSkyShot = IsPointingUpward(firePoint.forward);
+
+        // GDD §15.2 — flare_fire
+        PPAudioManager.Instance?.PlaySE(SoundId.FlareFire, firePoint.position);
+
         FireFlare(firePoint.position, firePoint.forward);
         _flaresLeft--;
         ConsumeDurability(100f / _maxFlares);
 
-        Debug.Log($"[FlareGun] フレア発射！残り {_flaresLeft}/{_maxFlares} 発");
+        if (isSkyShot)
+        {
+            // 上空発射 → ヘリコプター呼び出し（GameServices 経由で IHelicopterService を使用）
+            GameServices.Helicopter?.CallHelicopter(firePoint.position);
+            Debug.Log($"[FlareGun] 上空発射！ヘリを呼び出しました。残り {_flaresLeft}/{_maxFlares} 発");
+        }
+        else
+        {
+            Debug.Log($"[FlareGun] 水平発射（マーキング）。残り {_flaresLeft}/{_maxFlares} 発");
+        }
+
         return true;
     }
 
@@ -80,7 +105,7 @@ public class FlareGunItem : ItemBase
 
         // 衝突後の処理
         var flareComp = flare.AddComponent<FlareBehavior>();
-        flareComp.Init(_flareBurnTime);
+        flareComp.Init(_flareBurnTime, _visibleRange);
 
         // コライダー不要（マーカー目的）
         var col = flare.GetComponent<SphereCollider>();
@@ -88,8 +113,6 @@ public class FlareGunItem : ItemBase
     }
 
     public override bool TryUse() => _flaresLeft > 0 && !_isBroken;
-
-    protected override float GetUseDurabilityDrain() => 100f / _maxFlares;
 
     protected override void OnItemBroken()
     {
@@ -114,23 +137,68 @@ public class FlareGunItem : ItemBase
     }
 }
 
-/// <summary>フレア弾の挙動（着地後に燃え続ける）。</summary>
+/// <summary>
+/// フレア弾の挙動（着地後に燃え続ける）。
+/// 着地後は s_burningFlares に登録され、<see cref="IsVisibleFrom"/> で LoS+距離判定が可能。
+/// HUD コンパスやチームメイト向け通知で `GetVisibleFlaresFrom(playerPos)` を呼び出すことを想定。
+/// </summary>
 public class FlareBehavior : MonoBehaviour
 {
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int ColorId = Shader.PropertyToID("_Color");
 
+    // GDD §5.2 — 燃焼中フレアのグローバル登録簿（HUD / ミニマップ用）
+    private static readonly System.Collections.Generic.List<FlareBehavior> s_burningFlares = new();
+    public static System.Collections.Generic.IReadOnlyList<FlareBehavior> BurningFlares => s_burningFlares;
+
     private float _burnTime;
+    private float _visibleRange = 100f;
     private bool  _hasLanded;
     private Renderer _renderer;
     private MaterialPropertyBlock _propertyBlock;
 
-    public void Init(float burnTime) => _burnTime = burnTime;
+    public float VisibleRange => _visibleRange;
+    public bool  HasLanded    => _hasLanded;
+
+    public void Init(float burnTime, float visibleRange = 100f)
+    {
+        _burnTime = burnTime;
+        _visibleRange = visibleRange;
+    }
 
     private void Awake()
     {
         _renderer = GetComponent<Renderer>();
         _propertyBlock = new MaterialPropertyBlock();
+    }
+
+    /// <summary>
+    /// 指定位置からこのフレアが視認可能か判定。距離 ≤ _visibleRange かつ
+    /// 間に遮蔽物が無いこと（Default + Environment 等の既定レイヤー）を条件とする。
+    /// </summary>
+    public bool IsVisibleFrom(Vector3 observer, int obstacleMask = ~0)
+    {
+        if (!_hasLanded) return false;
+        Vector3 toFlare = transform.position - observer;
+        float distSqr = toFlare.sqrMagnitude;
+        if (distSqr > _visibleRange * _visibleRange) return false;
+
+        // 視線レイキャスト。自分のコライダーは trigger なので遮らない想定。
+        float dist = Mathf.Sqrt(distSqr);
+        if (dist < 0.01f) return true;
+        Vector3 dir = toFlare / dist;
+        return !Physics.Raycast(observer, dir, dist - 0.1f, obstacleMask, QueryTriggerInteraction.Ignore);
+    }
+
+    /// <summary>観測者から視認可能な全フレアを返す（HUD コンパス等が利用）。</summary>
+    public static System.Collections.Generic.IEnumerable<FlareBehavior> GetVisibleFlaresFrom(
+        Vector3 observer, int obstacleMask = ~0)
+    {
+        foreach (var f in s_burningFlares)
+        {
+            if (f == null) continue;
+            if (f.IsVisibleFrom(observer, obstacleMask)) yield return f;
+        }
     }
 
     private void OnCollisionEnter(Collision col)
@@ -145,7 +213,13 @@ public class FlareBehavior : MonoBehaviour
             rb.isKinematic = true;
         }
 
+        s_burningFlares.Add(this);
         StartCoroutine(BurnRoutine());
+    }
+
+    private void OnDestroy()
+    {
+        s_burningFlares.Remove(this);
     }
 
     private IEnumerator BurnRoutine()

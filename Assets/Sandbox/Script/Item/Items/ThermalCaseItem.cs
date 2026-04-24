@@ -7,11 +7,11 @@ using UnityEngine;
 /// </summary>
 public class ThermalCaseItem : ItemBase
 {
-    [Header("保護設定")]
+    [Header("保護設定 (GDD §5.2)")]
     [SerializeField] private float _damageReductionRate = 0.5f;  // ダメージ50%軽減
-#pragma warning disable CS0414
-    [SerializeField] private bool  _protectsTemperature = true;  // 将来の天候システム連携用
-#pragma warning restore CS0414
+    [Tooltip("true の場合、吹雪中の凍結ダメージ (RelicFreezeDamage) から保護する。\n" +
+             "false にすると物理衝撃軽減のみ作用（将来の『スポーツケース』派生に流用可）。")]
+    [SerializeField] private bool  _protectsTemperature = true;
 
     private RelicBase _protectedRelic;
     private bool      _isProtecting;
@@ -40,7 +40,12 @@ public class ThermalCaseItem : ItemBase
 
         // 遺物のダメージを軽減するためにイベントに介入
         relic.OnDamaged += OnRelicDamaged;
-        Debug.Log($"[ThermalCase] {relic.RelicName} を保護開始");
+
+        // 凍結ダメージ免疫を通知（GDD §5.2）— _protectsTemperature で gating
+        if (_protectsTemperature)
+            relic.GetComponent<RelicFreezeDamage>()?.SetInThermalCase(true);
+
+        Debug.Log($"[ThermalCase] {relic.RelicName} を保護開始 (temp={_protectsTemperature})");
         return true;
     }
 
@@ -48,7 +53,14 @@ public class ThermalCaseItem : ItemBase
     public void StopProtecting()
     {
         if (_protectedRelic != null)
+        {
             _protectedRelic.OnDamaged -= OnRelicDamaged;
+
+            // SetInThermalCase(true) を行った場合のみ対称的に false を呼ぶ。
+            // _protectsTemperature=false の場合はそもそも true を呼んでいないので無操作。
+            if (_protectsTemperature)
+                _protectedRelic.GetComponent<RelicFreezeDamage>()?.SetInThermalCase(false);
+        }
 
         _protectedRelic = null;
         _isProtecting   = false;

@@ -1,4 +1,6 @@
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「食料（×3）」
@@ -41,6 +43,9 @@ public class FoodItem : ItemBase
         stamina.Recover(_staminaRecover);
         _usesLeft--;
 
+        // GDD §15.2 — food_eat
+        PPAudioManager.Instance?.PlaySE(SoundId.FoodEat, stamina.transform.position);
+
         Debug.Log($"[Food] スタミナ +{_staminaRecover}。残り {_usesLeft} 個。");
 
         if (_usesLeft <= 0)
@@ -61,6 +66,4 @@ public class FoodItem : ItemBase
         }
         return nearest?.gameObject;
     }
-
-    protected override float GetUseDurabilityDrain() => _maxDurability / _uses;
 }

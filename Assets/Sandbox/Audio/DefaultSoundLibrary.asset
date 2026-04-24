@@ -1,0 +1,599 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a61a98156047e4bea8d3a959e7fa6f9d, type: 3}
+  m_Name: DefaultSoundLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::PeakPlunder.Audio.SoundLibrary
+  _entries:
+  - id: 1
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0.05
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 8
+  - id: 2
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0.05
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 8
+  - id: 3
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0.05
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 8
+  - id: 4
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 5
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 6
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 7
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 8
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 9
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 10
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0.05
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 11
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 1
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 12
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 13
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 14
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 15
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 16
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0.05
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 17
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 18
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 19
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 20
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 21
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 22
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 23
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 24
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 25
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 26
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 27
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 1
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 28
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 29
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 30
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 31
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 32
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 33
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 34
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 35
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 36
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 37
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 38
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 39
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 40
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 41
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 42
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 43
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 44
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 45
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 46
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 1
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 1
+  - id: 47
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 48
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 1
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 1
+  - id: 49
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 1
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 1
+  - id: 50
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0.05
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 51
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0.05
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 52
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 53
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 54
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 55
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 56
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 57
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 58
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 59
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 60
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 2
+  - id: 61
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 2
+  - id: 62
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 2
+  - id: 63
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 2
+  - id: 64
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 2
+  - id: 65
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 2
+  - id: 66
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 2
+  - id: 67
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 2
+  - id: 68
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 2
+  - id: 69
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 70
+    clip: {fileID: 0}
+    spatialBlend: 0
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8929139680980968246, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 71
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 72
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 1
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4
+  - id: 73
+    clip: {fileID: 0}
+    spatialBlend: 1
+    volume: 1
+    loop: 0
+    pitchVariation: 0
+    mixerGroup: {fileID: -8283642758014546525, guid: fa69f1f7816f440aa98b83034098cc03, type: 2}
+    maxConcurrent: 4

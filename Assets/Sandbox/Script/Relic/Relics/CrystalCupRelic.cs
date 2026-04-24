@@ -69,7 +69,37 @@ public class CrystalCupRelic : RelicBase
 
     private void SpawnShatterParticles()
     {
-        // Particle System が未アサインの場合はスキップ
+        // GDD §4.4 — 外部アセット不要のカートゥーン破砕演出。
+        // プリミティブキューブを 6〜10 個生成し、半径方向へ弾いて自己破棄。
+        const int MIN_SHARDS = 6;
+        const int MAX_SHARDS = 10;
+        const float SHARD_LIFE   = 2.5f;
+        const float BURST_FORCE  = 4.5f;
+        const float BURST_TORQUE = 6.0f;
+
+        var ice       = new Color(0.60f, 0.88f, 0.88f, 1f);
+        int shardCount = Random.Range(MIN_SHARDS, MAX_SHARDS + 1);
+
+        for (int i = 0; i < shardCount; i++)
+        {
+            var shard = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            shard.name = $"CrystalShard_{i}";
+            shard.transform.position = transform.position + Random.insideUnitSphere * 0.25f;
+            shard.transform.rotation = Random.rotation;
+            shard.transform.localScale = Vector3.one * Random.Range(0.08f, 0.18f);
+
+            var rend = shard.GetComponent<Renderer>();
+            if (rend != null)
+                rend.material.color = ice;
+
+            var rb = shard.AddComponent<Rigidbody>();
+            rb.mass = 0.05f;
+            Vector3 burstDir = (Random.onUnitSphere + Vector3.up * 0.5f).normalized;
+            rb.AddForce(burstDir * BURST_FORCE, ForceMode.Impulse);
+            rb.AddTorque(Random.insideUnitSphere * BURST_TORQUE, ForceMode.Impulse);
+
+            Destroy(shard, SHARD_LIFE);
+        }
     }
 
     protected override Color GizmoColor => new Color(0.55f, 0.87f, 0.83f);

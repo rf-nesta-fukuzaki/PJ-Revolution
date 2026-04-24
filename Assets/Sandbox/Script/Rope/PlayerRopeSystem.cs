@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §3.2 — プレイヤー間ロープ物理システム。
@@ -13,22 +15,23 @@ public class PlayerRopeSystem : MonoBehaviour
     private const int   DEFAULT_NODE_COUNT       = 20;
     private const int   CONSTRAINT_ITERATIONS    = 10;
     private const float WIND_NOISE_SCALE         = 0.5f;
+    // GDD §15.2 — 張力警告 (rope_tension) を再生する閾値（破断力の何％で鳴らすか）
+    private const float TENSION_WARN_RATIO       = 0.7f;
 
     // ── Inspector ───────────────────────────────────────────
-    [Header("ロープ物理")]
-    [SerializeField] private int   _nodeCount         = DEFAULT_NODE_COUNT;
-    [SerializeField] private float _segmentLength     = 0.3f;
-    [SerializeField] private float _ropeStiffness     = 0.85f;
-#pragma warning disable CS0414
-    [SerializeField] private float _ropeMass          = 0.05f;  // 将来のノード質量計算用
-#pragma warning restore CS0414
-    [SerializeField] private float _damping           = 0.98f;
-    [SerializeField] private float _windStrength      = 0.04f;
+    [Header("設定 (ScriptableObject — 未設定時はデフォルト値を使用)")]
+    [SerializeField] private RopeConfigSO _config;
 
-    [Header("接続設定")]
-    [SerializeField] private float _maxRopeLength     = 20f;   // ショートロープ 10m / ロングロープ 25m
-    [SerializeField] private float _breakForce        = 800f;  // この力を超えると切れる
-    [SerializeField] private float _tensionForceScale = 300f;  // プレイヤーへの引き戻し力
+    // パラメーターアクセサ（SO 注入 or デフォルト値）
+    private int   NodeCount         => _config != null ? _config.NodeCount        : DEFAULT_NODE_COUNT;
+    private float SegmentLength     => _config != null ? _config.SegmentLength    : 0.3f;
+    private float RopeStiffness     => _config != null ? _config.RopeStiffness    : 0.85f;
+    private float Damping           => _config != null ? _config.Damping          : 0.98f;
+    private float WindStrength      => _config != null ? _config.WindStrength     : 0.04f;
+    private int   ConstraintIter    => _config != null ? _config.ConstraintIter   : CONSTRAINT_ITERATIONS;
+    private float MaxRopeLength     => _config != null ? _config.MaxRopeLength    : 20f;
+    private float BreakForce        => _config != null ? _config.BreakForce       : 800f;
+    private float TensionForceScale => _config != null ? _config.TensionForceScale: 300f;
 
     [Header("プレイヤー参照")]
     [SerializeField] private Rigidbody _playerA;
@@ -43,6 +46,8 @@ public class PlayerRopeSystem : MonoBehaviour
     private bool         _isConnected;
     private float        _currentLength;
     private float        _windPhase;
+    // GDD §15.2 — 張力警告 SE を高張力エッジで一度だけ鳴らすためのヒステリシス
+    private bool         _wasUnderTensionWarning;
 
     public bool IsConnected => _isConnected;
 
@@ -55,18 +60,19 @@ public class PlayerRopeSystem : MonoBehaviour
 
     private void InitNodes()
     {
-        _positions     = new Vector3[_nodeCount];
-        _prevPositions = new Vector3[_nodeCount];
-        _isPinned      = new bool[_nodeCount];
+        int n = NodeCount;
+        _positions     = new Vector3[n];
+        _prevPositions = new Vector3[n];
+        _isPinned      = new bool[n];
 
-        // 初期位置：原点に積み重ね
-        for (int i = 0; i < _nodeCount; i++)
+        float seg = SegmentLength;
+        for (int i = 0; i < n; i++)
         {
-            _positions[i]     = transform.position + Vector3.down * (i * _segmentLength);
+            _positions[i]     = transform.position + Vector3.down * (i * seg);
             _prevPositions[i] = _positions[i];
         }
 
-        _lineRenderer.positionCount = _nodeCount;
+        _lineRenderer.positionCount = n;
     }
 
     // ── 接続 API ─────────────────────────────────────────────
@@ -76,30 +82,47 @@ public class PlayerRopeSystem : MonoBehaviour
         _playerA   = playerA;
         _playerB   = playerB;
         _isConnected = true;
-        _currentLength = ropeLength > 0f ? ropeLength : _maxRopeLength;
+        _currentLength = ropeLength > 0f ? ropeLength : MaxRopeLength;
 
         // ノード位置を再配置
         ReplaceNodes(playerA.position, playerB.position);
 
         _lineRenderer.enabled = true;
+
+        // GDD §15.2 — rope_connect
+        Vector3 midpoint = (playerA.position + playerB.position) * 0.5f;
+        PPAudioManager.Instance?.PlaySE(SoundId.RopeConnect, midpoint);
+
         Debug.Log("[PlayerRope] ロープ接続完了");
     }
 
     /// <summary>ロープを切断する。</summary>
-    public void Disconnect()
+    public void Disconnect() => DisconnectInternal(broken: false);
+
+    private void DisconnectInternal(bool broken)
     {
+        // GDD §15.2 — 切断音: 自発切断は rope_cut、張力超過は rope_snap
+        if (_isConnected && _playerA != null && _playerB != null)
+        {
+            Vector3 midpoint = (_playerA.position + _playerB.position) * 0.5f;
+            var id = broken ? SoundId.RopeSnap : SoundId.RopeCut;
+            PPAudioManager.Instance?.PlaySE(id, midpoint);
+        }
+
         _isConnected = false;
         _playerA     = null;
         _playerB     = null;
         _lineRenderer.enabled = false;
-        Debug.Log("[PlayerRope] ロープ切断！");
+        _wasUnderTensionWarning = false;
+        Debug.Log(broken ? "[PlayerRope] ロープ切断（張力超過）！" : "[PlayerRope] ロープ切断！");
     }
 
     private void ReplaceNodes(Vector3 start, Vector3 end)
     {
-        for (int i = 0; i < _nodeCount; i++)
+        int n = _positions.Length;
+        for (int i = 0; i < n; i++)
         {
-            float t = (float)i / (_nodeCount - 1);
+            float t = (float)i / (n - 1);
             _positions[i]     = Vector3.Lerp(start, end, t);
             _prevPositions[i] = _positions[i];
         }
@@ -121,11 +144,13 @@ public class PlayerRopeSystem : MonoBehaviour
     {
         _windPhase += Time.fixedDeltaTime * 0.7f;
 
-        for (int i = 0; i < _nodeCount; i++)
+        int nodeCount = _positions.Length;
+        float damping = Damping;
+        for (int i = 0; i < nodeCount; i++)
         {
             if (_isPinned[i]) continue;
 
-            Vector3 velocity = (_positions[i] - _prevPositions[i]) * _damping;
+            Vector3 velocity = (_positions[i] - _prevPositions[i]) * damping;
 
             // 重力
             velocity += Physics.gravity * Time.fixedDeltaTime;
@@ -133,7 +158,7 @@ public class PlayerRopeSystem : MonoBehaviour
             // 風（Perlin Noise でランダム揺れ）
             float wx = (Mathf.PerlinNoise(_windPhase + i * WIND_NOISE_SCALE, 0f) - 0.5f) * 2f;
             float wz = (Mathf.PerlinNoise(0f, _windPhase + i * WIND_NOISE_SCALE) - 0.5f) * 2f;
-            velocity += new Vector3(wx, 0f, wz) * _windStrength;
+            velocity += new Vector3(wx, 0f, wz) * WindStrength;
 
             _prevPositions[i] = _positions[i];
             _positions[i]    += velocity;
@@ -142,27 +167,31 @@ public class PlayerRopeSystem : MonoBehaviour
 
     private void SolveConstraints()
     {
-        // 両端をプレイヤー位置にピン留め
-        _positions[0]              = _playerA.position;
-        _positions[_nodeCount - 1] = _playerB.position;
+        int   n   = _positions.Length;
+        float seg = SegmentLength;
+        float stiffness = RopeStiffness;
 
-        for (int iter = 0; iter < CONSTRAINT_ITERATIONS; iter++)
+        // 両端をプレイヤー位置にピン留め
+        _positions[0]     = _playerA.position;
+        _positions[n - 1] = _playerB.position;
+
+        for (int iter = 0; iter < ConstraintIter; iter++)
         {
             // 両端を再ピン
-            _positions[0]              = _playerA.position;
-            _positions[_nodeCount - 1] = _playerB.position;
+            _positions[0]     = _playerA.position;
+            _positions[n - 1] = _playerB.position;
 
-            for (int i = 0; i < _nodeCount - 1; i++)
+            for (int i = 0; i < n - 1; i++)
             {
                 Vector3 diff   = _positions[i + 1] - _positions[i];
                 float   dist   = diff.magnitude;
                 if (dist < 0.0001f) continue;
 
-                float   error  = (dist - _segmentLength) / dist;
-                Vector3 corr   = diff * error * _ropeStiffness * 0.5f;
+                float   error  = (dist - seg) / dist;
+                Vector3 corr   = diff * error * stiffness * 0.5f;
 
-                if (i > 0)              _positions[i]     += corr;
-                if (i < _nodeCount - 2) _positions[i + 1] -= corr;
+                if (i > 0)      _positions[i]     += corr;
+                if (i < n - 2)  _positions[i + 1] -= corr;
             }
         }
     }
@@ -171,18 +200,19 @@ public class PlayerRopeSystem : MonoBehaviour
     {
         if (_playerA == null || _playerB == null) return;
 
+        int   n        = _positions.Length;
         float totalLen = 0f;
-        for (int i = 0; i < _nodeCount - 1; i++)
+        for (int i = 0; i < n - 1; i++)
             totalLen += Vector3.Distance(_positions[i], _positions[i + 1]);
 
         if (totalLen <= _currentLength) return;
 
         // ロープが張っている → プレイヤーを引き寄せる
         Vector3 dirA = (_positions[1] - _positions[0]).normalized;
-        Vector3 dirB = (_positions[_nodeCount - 2] - _positions[_nodeCount - 1]).normalized;
+        Vector3 dirB = (_positions[n - 2] - _positions[n - 1]).normalized;
 
-        float excess     = totalLen - _currentLength;
-        float force      = excess * _tensionForceScale;
+        float excess = totalLen - _currentLength;
+        float force  = excess * TensionForceScale;
 
         _playerA.AddForce(dirA * force, ForceMode.Force);
         _playerB.AddForce(dirB * force, ForceMode.Force);
@@ -196,16 +226,27 @@ public class PlayerRopeSystem : MonoBehaviour
         Vector3 relVel    = _playerA.linearVelocity - _playerB.linearVelocity;
         float   tension   = relVel.magnitude * _playerA.mass;
 
-        if (tension > _breakForce)
+        // GDD §15.2 — 張力限界付近で rope_tension をエッジ発火（ギシギシ音）
+        float warnThreshold = BreakForce * TENSION_WARN_RATIO;
+        bool nowWarn = tension >= warnThreshold && tension < BreakForce;
+        if (nowWarn && !_wasUnderTensionWarning)
+        {
+            Vector3 midpoint = (_playerA.position + _playerB.position) * 0.5f;
+            PPAudioManager.Instance?.PlaySE(SoundId.RopeTension, midpoint);
+        }
+        _wasUnderTensionWarning = nowWarn;
+
+        if (tension > BreakForce)
         {
             Debug.Log("[PlayerRope] 過負荷でロープ切断！");
-            Disconnect();
+            DisconnectInternal(broken: true);
         }
     }
 
     private void UpdateLineRenderer()
     {
-        for (int i = 0; i < _nodeCount; i++)
+        int n = _positions.Length;
+        for (int i = 0; i < n; i++)
             _lineRenderer.SetPosition(i, _positions[i]);
     }
 

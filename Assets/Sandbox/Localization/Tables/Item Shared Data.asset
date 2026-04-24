@@ -1,0 +1,88 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b11a58205ec3474ca216360e9fa74a8, type: 3}
+  m_Name: Item Shared Data
+  m_EditorClassIdentifier: Unity.Localization::UnityEngine.Localization.Tables.SharedTableData
+  m_TableCollectionName: Item
+  m_TableCollectionNameGuidString: 8e60f59bfcf24473f99985b80983f456
+  m_Entries:
+  - m_Id: 187686912
+    m_Key: item.short_rope
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686913
+    m_Key: item.long_rope
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686914
+    m_Key: item.anchor_bolt
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686915
+    m_Key: item.ice_axe
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686916
+    m_Key: item.grappling_hook
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686917
+    m_Key: item.portable_winch
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686918
+    m_Key: item.secure_belt
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686919
+    m_Key: item.stretcher
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686920
+    m_Key: item.bivouac_tent
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686921
+    m_Key: item.oxygen_tank
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686922
+    m_Key: item.thermal_case
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686923
+    m_Key: item.flare_gun
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686924
+    m_Key: item.food
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686925
+    m_Key: item.packing_kit
+    m_Metadata:
+      m_Items: []
+  - m_Id: 187686926
+    m_Key: item.emergency_radio
+    m_Metadata:
+      m_Items: []
+  m_Metadata:
+    m_Items: []
+  m_KeyGenerator:
+    rid: 6539533808918855866
+  references:
+    version: 2
+    RefIds:
+    - rid: 6539533808918855866
+      type: {class: DistributedUIDGenerator, ns: UnityEngine.Localization.Tables, asm: Unity.Localization}
+      data:
+        m_CustomEpoch: 1776397015641

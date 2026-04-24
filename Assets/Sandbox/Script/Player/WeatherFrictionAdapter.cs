@@ -12,13 +12,14 @@ public class WeatherFrictionAdapter : MonoBehaviour
     [SerializeField] private float _baseFriction = 0.6f;   // 通常時の動摩擦係数
     [SerializeField] private float _minFriction  = 0.05f;  // 吹雪時の最低摩擦係数
 
-    private const float MAX_SLIPPERINESS = 0.7f;   // WeatherSystem.GetSliperiness() の最大値
+    private const float MAX_SLIPPERINESS = 0.7f;   // IWeatherService.GetSliperiness() の最大値
 
-    private PhysicsMaterial _material;
-    private Collider        _collider;
-    private float           _weatherFriction;
-    private bool            _hasHazardOverride;
-    private float           _hazardFriction;
+    private PhysicsMaterial  _material;
+    private Collider         _collider;
+    private float            _weatherFriction;
+    private bool             _hasHazardOverride;
+    private float            _hazardFriction;
+    private IWeatherService  _weather;
 
     private void Awake()
     {
@@ -39,16 +40,17 @@ public class WeatherFrictionAdapter : MonoBehaviour
 
     private void Start()
     {
-        if (WeatherSystem.Instance == null) return;
+        _weather = GameServices.Weather;
+        if (_weather == null) return;
 
-        WeatherSystem.Instance.OnWeatherChanged += OnWeatherChanged;
-        OnWeatherChanged(WeatherSystem.Instance.CurrentWeather);
+        _weather.OnWeatherChanged += OnWeatherChanged;
+        OnWeatherChanged(_weather.CurrentWeather);
     }
 
     private void OnDestroy()
     {
-        if (WeatherSystem.Instance != null)
-            WeatherSystem.Instance.OnWeatherChanged -= OnWeatherChanged;
+        if (_weather != null)
+            _weather.OnWeatherChanged -= OnWeatherChanged;
 
         if (_material != null)
             Destroy(_material);
@@ -56,9 +58,9 @@ public class WeatherFrictionAdapter : MonoBehaviour
 
     private void OnWeatherChanged(WeatherType _)
     {
-        if (WeatherSystem.Instance == null) return;
+        if (_weather == null) return;
 
-        float slipperiness = WeatherSystem.Instance.GetSliperiness();
+        float slipperiness = _weather.GetSliperiness();
 
         // slipperiness 0..MAX_SLIPPERINESS → friction _baseFriction.._minFriction
         float t = Mathf.Clamp01(slipperiness / MAX_SLIPPERINESS);

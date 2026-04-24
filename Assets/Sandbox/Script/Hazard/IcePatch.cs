@@ -1,5 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §7.1 L5 — 氷面ハザード。
@@ -15,6 +17,11 @@ public class IcePatch : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         ApplyFriction(other, _frictionOverride, true);
+
+        // GDD §15.2 — ice_crack（氷面に乗った瞬間のピキッ音）
+        // プレイヤーのみに反応してスパム防止
+        if (other != null && other.CompareTag("Player"))
+            PPAudioManager.Instance?.PlaySE(SoundId.IceCrack, other.transform.position);
     }
 
     private void OnTriggerExit(Collider other)

@@ -803,7 +803,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ExplorerController
   _walkSpeed: 5
   _sprintSpeed: 10
-  _jumpForce: 6
+  _jumpForce: 5.9
   _groundCheckOffsetY: 0.1
   _groundCheckRadius: 0.3
   _groundLayer:

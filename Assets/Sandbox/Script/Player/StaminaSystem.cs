@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §3.1 — スタミナ管理システム。
@@ -24,11 +26,20 @@ public class StaminaSystem : MonoBehaviour
     [SerializeField] private float _altitudeDrainBonus   = 5f;    // /秒 追加消費
     [SerializeField] private bool  _hasOxygenTank        = false; // 酸素タンクの有無
 
+    [Header("セーフゾーン (GDD §10.5)")]
+    [Tooltip("ShelterZone 内でのスタミナ回復速度倍率（GDD §10.5: 2倍）")]
+    [SerializeField] private float _shelterRegenMultiplier = 2f;
+
     // ── 状態 ────────────────────────────────────────────────
     private float _currentStamina;
     private bool  _isExhausted;
     private float _exhaustRecoverThreshold = 25f;   // この量まで回復したら疲労解除
-    private Rigidbody _cachedRigidbody;
+    private Rigidbody       _cachedRigidbody;
+    private ShelterOccupant _shelter;
+
+    // GDD §15.2 — stamina_warning SE の閾値（20 未満で心拍音）
+    private const float WARNING_THRESHOLD = 20f;
+    private bool _wasBelowWarningThreshold;
 
     public float MaxStamina        => _maxStamina;
     public float CurrentStamina    => _currentStamina;
@@ -43,8 +54,9 @@ public class StaminaSystem : MonoBehaviour
 
     private void Awake()
     {
-        _currentStamina = _maxStamina;
+        _currentStamina  = _maxStamina;
         _cachedRigidbody = GetComponent<Rigidbody>();
+        _shelter         = GetComponent<ShelterOccupant>();
     }
 
     private void OnEnable()
@@ -63,6 +75,7 @@ public class StaminaSystem : MonoBehaviour
         RegenerateStamina();
         CheckAltitudeDrain();
         UpdateExhaustionState();
+        UpdateWarningSound();
     }
 
     // ── 消費 ─────────────────────────────────────────────────
@@ -80,8 +93,13 @@ public class StaminaSystem : MonoBehaviour
     {
         if (_isExhausted) return;
 
-        bool isMoving = GetIsMoving();
-        float rate    = isMoving ? _regenRateMoving : _regenRateBase;
+        bool  isMoving = GetIsMoving();
+        float rate     = isMoving ? _regenRateMoving : _regenRateBase;
+
+        // GDD §10.5: セーフゾーン内では回復速度 2 倍
+        if (_shelter != null && _shelter.IsSheltered)
+            rate *= _shelterRegenMultiplier;
+
         _currentStamina = Mathf.Min(_maxStamina, _currentStamina + rate * Time.deltaTime);
     }
 
@@ -111,6 +129,8 @@ public class StaminaSystem : MonoBehaviour
         {
             _isExhausted = true;
             OnExhausted?.Invoke();
+            // GDD §15.2 — stamina_empty SE（「ハァ…」息切れ音）
+            PPAudioManager.Instance?.PlaySE2D(SoundId.StaminaEmpty);
             Debug.Log("[Stamina] スタミナ切れ！");
         }
 
@@ -124,5 +144,27 @@ public class StaminaSystem : MonoBehaviour
     private bool GetIsMoving()
     {
         return _cachedRigidbody != null && _cachedRigidbody.linearVelocity.sqrMagnitude > 0.5f;
+    }
+
+    /// <summary>
+    /// GDD §15.2 — スタミナが 20 を下回った瞬間に stamina_warning を一度だけ発火する。
+    /// 連続再生ではなく閾値の立ち下がりエッジで鳴らす。
+    /// </summary>
+    private void UpdateWarningSound()
+    {
+        bool nowBelow = _currentStamina < WARNING_THRESHOLD && _currentStamina > 0f;
+        if (nowBelow && !_wasBelowWarningThreshold)
+            PPAudioManager.Instance?.PlaySE2D(SoundId.StaminaWarning);
+        _wasBelowWarningThreshold = nowBelow;
+    }
+
+    // ── デバッグ用 ────────────────────────────────────────────
+    /// <summary>
+    /// オフラインテスト用: スタミナを即座にゼロにする。
+    /// OfflineTestBootstrapper の F9 キーから呼ばれる。
+    /// </summary>
+    public void ConsumeAll()
+    {
+        Consume(_currentStamina);
     }
 }

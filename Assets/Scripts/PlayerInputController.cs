@@ -35,7 +35,7 @@ public class PlayerInputController : MonoBehaviour
     {
         if (_stateManager == null) return true;
         var s = _stateManager.CurrentState;
-        return s == PlayerState.Normal || s == PlayerState.Swinging;
+        return s == MovementState.Normal || s == MovementState.Swinging;
     }
 
     private void HandleMovement()

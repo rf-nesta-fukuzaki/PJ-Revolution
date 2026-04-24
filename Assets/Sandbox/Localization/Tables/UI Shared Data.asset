@@ -1,0 +1,120 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b11a58205ec3474ca216360e9fa74a8, type: 3}
+  m_Name: UI Shared Data
+  m_EditorClassIdentifier: Unity.Localization::UnityEngine.Localization.Tables.SharedTableData
+  m_TableCollectionName: UI
+  m_TableCollectionNameGuidString: 2ef1a3375d7604d6097a22d82f23fdf4
+  m_Entries:
+  - m_Id: 586145792
+    m_Key: ui.mainmenu.play
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534400
+    m_Key: ui.mainmenu.quit
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534401
+    m_Key: ui.mainmenu.settings
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534402
+    m_Key: ui.lobby.create
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534403
+    m_Key: ui.lobby.join
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534404
+    m_Key: ui.lobby.room_code
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534405
+    m_Key: ui.lobby.start
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534406
+    m_Key: ui.basecamp.shop
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534407
+    m_Key: ui.basecamp.depart
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534408
+    m_Key: ui.basecamp.budget
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534409
+    m_Key: ui.hud.altitude
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534410
+    m_Key: ui.hud.stamina
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534411
+    m_Key: ui.hud.health
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534412
+    m_Key: ui.result.score
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534413
+    m_Key: ui.result.return
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534414
+    m_Key: ui.result.best_time
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534415
+    m_Key: ui.vote.return_start
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534416
+    m_Key: ui.vote.approve
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534417
+    m_Key: ui.vote.deny
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534418
+    m_Key: ui.settings.graphics
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534419
+    m_Key: ui.settings.audio
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534420
+    m_Key: ui.settings.controls
+    m_Metadata:
+      m_Items: []
+  - m_Id: 594534421
+    m_Key: ui.settings.accessibility
+    m_Metadata:
+      m_Items: []
+  m_Metadata:
+    m_Items: []
+  m_KeyGenerator:
+    rid: 6539533808918855865
+  references:
+    version: 2
+    RefIds:
+    - rid: 6539533808918855865
+      type: {class: DistributedUIDGenerator, ns: UnityEngine.Localization.Tables, asm: Unity.Localization}
+      data:
+        m_CustomEpoch: 1776397015498

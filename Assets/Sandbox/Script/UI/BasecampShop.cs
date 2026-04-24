@@ -1,8 +1,12 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §2.2 — ベースキャンプ準備フェーズのショップ UI。
@@ -13,18 +17,29 @@ public class BasecampShop : MonoBehaviour
 {
     private static Material s_runtimeItemMaterial;
 
-    public static BasecampShop Instance { get; private set; }
-
-    // ── チーム予算（オフライン / NGO 未スポーン時のローカルフォールバック）──
     private const int TEAM_BUDGET_MAX = 100;
-    private int _teamBudget = TEAM_BUDGET_MAX;
+    private const float ERROR_DISPLAY_SECONDS = 2f;
 
-    // NetworkBasecampBudgetSync が存在すれば優先する
+    private int _localTeamBudget = TEAM_BUDGET_MAX;
+    private BasecampShopSession _session;
+    private readonly Dictionary<string, BasecampShopItemDefinition> _catalogById = new();
+    private readonly List<BasecampShopItemDefinition> _orderedCatalog = new();
+    private readonly List<ShopItemRow> _rows = new();
+    private Transform _itemListContentParent;
+
     private NetworkBasecampBudgetSync _budgetSync;
+    private Coroutine _errorRoutine;
 
     // ── Inspector ───────────────────────────────────────────
+    [Header("カタログ設定")]
+    [SerializeField] private BasecampShopCatalogSO _catalogAsset;
+
     [Header("UI ルート")]
     [SerializeField] private GameObject _shopPanel;
+
+    [Header("表示制御")]
+    [SerializeField] private bool _openOnStart = false;
+    [SerializeField] private KeyCode _togglePanelKey = KeyCode.B;
 
     [Header("予算表示")]
     [SerializeField] private TextMeshProUGUI _budgetLabel;
@@ -40,171 +55,308 @@ public class BasecampShop : MonoBehaviour
     [Header("ボタン")]
     [SerializeField] private Button          _departButton;
 
-    // ── アイテム定義 ─────────────────────────────────────────
-    private readonly List<ShopItemData> _catalog = new()
-    {
-        new ShopItemData("ショートロープ（10m）",  5,  1, 1, 80,  "基本のプレイヤー連結。極端な負荷で切れる"),
-        new ShopItemData("ロングロープ（25m）",    10, 2, 2, 70,  "広範囲連結。チームの展開幅が広がる"),
-        new ShopItemData("アイスアックス",         8,  1, 1, 60,  "氷壁グリップ。15回使用で破損"),
-        new ShopItemData("アンカーボルト（×3）",   6,  1, 1, 100, "ロープ固定点。消耗品"),
-        new ShopItemData("グラップリングフック",   12, 2, 1, 50,  "遠距離の崖に到達。物理エイム"),
-        new ShopItemData("折りたたみ担架",         10, 3, 3, 70,  "大型遺物運搬用。2人で安定、1人で引きずり"),
-        new ShopItemData("梱包キット",             8,  2, 1, 100, "壊れやすい遺物を保護。ダメージ50%軽減。3回使用"),
-        new ShopItemData("サーマルケース",          4,  1, 1, 90,  "温度変化に弱い遺物を保護"),
-        new ShopItemData("固定ベルト",              6,  1, 1, 100, "遺物を背中に固定。両手が空く。小型遺物のみ"),
-        new ShopItemData("食料（×3）",              3,  1, 1, 100, "スタミナ回復。投げて渡せる"),
-        new ShopItemData("フレアガン",              5,  1, 1, 100, "ルートマーキング＆ヘリ信号。3発"),
-        new ShopItemData("緊急無線機",              7,  1, 1, 40,  "プロキシミティ距離制限を30秒無効化。超壊れやすい"),
-        new ShopItemData("ポータブルウインチ",     20, 3, 2, 50,  "機械的引き上げ。急斜面で威力を発揮。ケーブル切断リスク"),
-        new ShopItemData("ビバークテント",          15, 2, 2, 80,  "設置型チェックポイント＆天候シェルター。1遠征1個限定"),
-        new ShopItemData("酸素タンク",              12, 2, 1, 60,  "高山病防止（2000m以上で必要）"),
-    };
+    [Header("エラー表示 (GDD §8.5 / §14.6)")]
+    [SerializeField] private TextMeshProUGUI _errorLabel;
 
-    // 購入済みアイテム（アイテム名 → 個数）
-    private readonly Dictionary<string, int> _purchasedItems = new();
+    private bool _tutorialShownThisSession;
 
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
+        BuildCatalogLookup();
+        _session = new BasecampShopSession(_catalogById);
+
+        if (_shopPanel != null && !_openOnStart)
+            _shopPanel.SetActive(false);
     }
 
     private void Start()
     {
         _departButton?.onClick.AddListener(OnDepart);
+        ConfigureItemListContainer();
         BuildItemList();
 
-        // NetworkBasecampBudgetSync が存在する場合はネットワーク予算を使用
-        _budgetSync = NetworkBasecampBudgetSync.Instance;
-        if (_budgetSync != null)
-            _budgetSync.OnBudgetChanged += HandleNetworkBudgetChanged;
+        BindBudgetSync();
+
+        if (_errorLabel != null) _errorLabel.gameObject.SetActive(false);
 
         RefreshBudgetLabel();
         RefreshInfoBoard();
+        RefreshAllRows();
 
-        if (_shopPanel != null) _shopPanel.SetActive(true);
+        SetShopPanelVisible(_openOnStart);
     }
 
     private void OnDestroy()
     {
-        if (_budgetSync != null)
-            _budgetSync.OnBudgetChanged -= HandleNetworkBudgetChanged;
+        _departButton?.onClick.RemoveListener(OnDepart);
+        UnbindBudgetSync();
     }
 
     private void HandleNetworkBudgetChanged(int newBudget)
     {
-        // NetworkVariable が更新されたら全クライアントの UI を更新
         RefreshBudgetLabel();
         RefreshAllRows();
     }
 
-    // ── 予算取得ヘルパー ─────────────────────────────────────
-    /// <summary>
-    /// 現在の残予算を返す。
-    /// NetworkBasecampBudgetSync がスポーン済みならネットワーク値を使用し、
-    /// そうでなければローカルフォールバックを使用する。
-    /// </summary>
     private int GetCurrentBudget()
     {
-        if (_budgetSync != null && _budgetSync.IsSpawned)
+        if (IsUsingNetworkBudget())
             return _budgetSync.TeamBudget;
-        return _teamBudget;
+        return _localTeamBudget;
     }
 
-    // ── 購入 ─────────────────────────────────────────────────
-    /// <summary>アイテム名を指定して購入。UI ボタンから呼ばれる。</summary>
-    public bool TryPurchase(string itemName)
+    private bool IsUsingNetworkBudget()
     {
-        var data = _catalog.Find(d => d.Name == itemName);
-        if (data == null)
+        return _budgetSync != null && _budgetSync.IsSpawned;
+    }
+
+    private void BindBudgetSync()
+    {
+        _budgetSync = NetworkBasecampBudgetSync.Instance;
+        if (_budgetSync == null) return;
+
+        _budgetSync.OnBudgetChanged          += HandleNetworkBudgetChanged;
+        _budgetSync.OnPurchaseResultForLocal += HandlePurchaseResult;
+    }
+
+    private void UnbindBudgetSync()
+    {
+        if (_budgetSync == null) return;
+
+        _budgetSync.OnBudgetChanged          -= HandleNetworkBudgetChanged;
+        _budgetSync.OnPurchaseResultForLocal -= HandlePurchaseResult;
+        _budgetSync = null;
+    }
+
+    private void Update()
+    {
+        if (_shopPanel == null || _session == null) return;
+        if (_session.CurrentState != BasecampShopFlowState.Open) return;
+
+        if (Input.GetKeyDown(_togglePanelKey))
+            SetShopPanelVisible(!_shopPanel.activeSelf);
+    }
+
+    private void SetShopPanelVisible(bool visible)
+    {
+        if (_shopPanel == null) return;
+        _shopPanel.SetActive(visible);
+
+        // GDD §21.3: 初回来訪時のみショップ操作チュートリアルを表示。
+        if (visible && !_tutorialShownThisSession)
         {
-            Debug.LogWarning($"[Shop] 不明なアイテム: {itemName}");
+            ShopTutorialOverlay.Instance?.ShowIfFirstTime();
+            _tutorialShownThisSession = true;
+        }
+    }
+
+    public bool TryPurchase(string itemId)
+    {
+        if (!_session.TryBuildPurchaseRequest(itemId, GetCurrentBudget(), out var item, out var reason))
+        {
+            PPAudioManager.Instance?.PlaySE2D(SoundId.UiPurchaseFail);
+            ShowError(reason);
+            Debug.LogWarning($"[Shop] 購入拒否: {itemId} ({reason})");
             return false;
         }
 
-        int budget = GetCurrentBudget();
-        if (budget < data.Cost)
+        if (IsUsingNetworkBudget())
         {
-            Debug.Log($"[Shop] 予算不足（残り {budget}pt、必要 {data.Cost}pt）");
+            _budgetSync.RequestPurchaseServerRpc(item.Id, item.Cost);
+            return true;
+        }
+
+        _localTeamBudget -= item.Cost;
+        if (_localTeamBudget < 0)
+        {
+            Debug.LogError($"[Contract] ローカル予算が負値です。itemId={item.Id}");
+            _localTeamBudget = 0;
+        }
+
+        if (!_session.ConfirmPurchase(item.Id, out var confirmError))
+        {
+            _localTeamBudget = Mathf.Min(TEAM_BUDGET_MAX, _localTeamBudget + item.Cost);
+            PPAudioManager.Instance?.PlaySE2D(SoundId.UiPurchaseFail);
+            ShowError(confirmError);
             return false;
         }
 
-        // ネットワーク同期が有効ならサーバー経由で予算を減算
-        if (_budgetSync != null && _budgetSync.IsSpawned)
-            _budgetSync.DeductServerRpc(data.Cost);
-        else
-            _teamBudget -= data.Cost;
-
-        _purchasedItems.TryGetValue(itemName, out int count);
-        _purchasedItems[itemName] = count + 1;
+        PPAudioManager.Instance?.PlaySE2D(SoundId.UiPurchase);
 
         RefreshBudgetLabel();
         RefreshAllRows();
-        Debug.Log($"[Shop] 購入: {itemName}  残り予算: {GetCurrentBudget()}pt");
+        Debug.Log($"[Shop] 購入: {item.DisplayName}  残り予算: {GetCurrentBudget()}pt");
         return true;
     }
 
-    /// <summary>アイテムを返品（使用前に限る）。</summary>
-    public bool TryRefund(string itemName)
+    private void HandlePurchaseResult(string itemId, bool success, string reason)
     {
-        if (!_purchasedItems.TryGetValue(itemName, out int count) || count <= 0) return false;
+        if (success)
+        {
+            if (!_session.ConfirmPurchase(itemId, out var confirmError))
+            {
+                Debug.LogError($"[Shop] 購入承認の反映に失敗: {itemId} ({confirmError})");
+                return;
+            }
 
-        var data = _catalog.Find(d => d.Name == itemName);
-        if (data == null) return false;
+            PPAudioManager.Instance?.PlaySE2D(SoundId.UiPurchase);
 
-        // ネットワーク同期が有効ならサーバー経由で予算を加算
-        if (_budgetSync != null && _budgetSync.IsSpawned)
-            _budgetSync.RefundServerRpc(data.Cost);
+            RefreshBudgetLabel();
+            RefreshAllRows();
+            Debug.Log($"[Shop] 購入承認: {itemId}");
+        }
         else
-            _teamBudget += data.Cost;
+        {
+            PPAudioManager.Instance?.PlaySE2D(SoundId.UiPurchaseFail);
+            ShowError(string.IsNullOrEmpty(reason) ? "購入に失敗しました" : reason);
+            Debug.Log($"[Shop] 購入拒否: {itemId} - {reason}");
+        }
+    }
 
-        _purchasedItems[itemName] = count - 1;
+    private void ShowError(string message)
+    {
+        if (_errorLabel == null) return;
+
+        _errorLabel.text = message;
+        _errorLabel.gameObject.SetActive(true);
+
+        if (_errorRoutine != null) StopCoroutine(_errorRoutine);
+        _errorRoutine = StartCoroutine(HideErrorAfterDelay());
+    }
+
+    private IEnumerator HideErrorAfterDelay()
+    {
+        yield return new WaitForSeconds(ERROR_DISPLAY_SECONDS);
+        if (_errorLabel != null) _errorLabel.gameObject.SetActive(false);
+        _errorRoutine = null;
+    }
+
+    public bool TryRefund(string itemId)
+    {
+        if (!_session.TryRefund(itemId, out var item, out var reason))
+        {
+            if (!string.IsNullOrEmpty(reason))
+                ShowError(reason);
+            return false;
+        }
+
+        if (IsUsingNetworkBudget())
+            _budgetSync.RefundServerRpc(item.Cost);
+        else
+            _localTeamBudget = Mathf.Min(TEAM_BUDGET_MAX, _localTeamBudget + item.Cost);
 
         RefreshBudgetLabel();
         RefreshAllRows();
-        Debug.Log($"[Shop] 返品: {itemName}  残り予算: {GetCurrentBudget()}pt");
+        Debug.Log($"[Shop] 返品: {item.DisplayName}  残り予算: {GetCurrentBudget()}pt");
         return true;
     }
-
-    // ── UI 構築 ──────────────────────────────────────────────
-    private readonly List<ShopItemRow> _rows = new();
 
     private void BuildItemList()
     {
         if (_itemListParent == null) return;
+        var rowParent = _itemListContentParent != null ? _itemListContentParent : _itemListParent;
 
-        foreach (Transform child in _itemListParent)
+        foreach (Transform child in rowParent)
             Destroy(child.gameObject);
 
         _rows.Clear();
 
-        foreach (var data in _catalog)
+        foreach (var item in _orderedCatalog)
         {
-            GameObject go;
-            ShopItemRow row;
+            GameObject entryObject;
 
             if (_shopItemRowPrefab != null)
             {
-                go  = Instantiate(_shopItemRowPrefab, _itemListParent);
-                row = go.GetComponent<ShopItemRow>() ?? go.AddComponent<ShopItemRow>();
+                entryObject = Instantiate(_shopItemRowPrefab, rowParent);
             }
             else
             {
-                go  = CreateFallbackRow();
-                go.transform.SetParent(_itemListParent, false);
-                row = go.AddComponent<ShopItemRow>();
+                entryObject = CreateFallbackRow();
+                entryObject.transform.SetParent(rowParent, false);
             }
 
-            row.Init(data, this);
+            var row = entryObject.GetComponent<ShopItemRow>() ?? entryObject.AddComponent<ShopItemRow>();
+            row.Init(item, TryPurchase, TryRefund);
             _rows.Add(row);
         }
     }
 
+    private void ConfigureItemListContainer()
+    {
+        _itemListContentParent = _itemListParent;
+        if (!(_itemListParent is RectTransform viewport)) return;
+
+        var viewportLayout = viewport.GetComponent<VerticalLayoutGroup>();
+        if (viewportLayout != null)
+            viewportLayout.enabled = false;
+
+        var viewportFitter = viewport.GetComponent<ContentSizeFitter>();
+        if (viewportFitter != null)
+            viewportFitter.enabled = false;
+
+        var image = viewport.GetComponent<Image>();
+        if (image == null)
+            image = viewport.gameObject.AddComponent<Image>();
+        image.color = new Color(1f, 1f, 1f, 0.02f);
+
+        var mask = viewport.GetComponent<RectMask2D>();
+        if (mask == null)
+            mask = viewport.gameObject.AddComponent<RectMask2D>();
+
+        var content = viewport.Find("Content") as RectTransform;
+        if (content == null)
+        {
+            var contentGo = new GameObject("Content", typeof(RectTransform));
+            contentGo.transform.SetParent(viewport, false);
+            content = contentGo.GetComponent<RectTransform>();
+        }
+
+        content.anchorMin = new Vector2(0f, 1f);
+        content.anchorMax = new Vector2(1f, 1f);
+        content.pivot = new Vector2(0.5f, 1f);
+        content.anchoredPosition = Vector2.zero;
+        content.sizeDelta = Vector2.zero;
+
+        var contentLayout = content.GetComponent<VerticalLayoutGroup>();
+        if (contentLayout == null)
+            contentLayout = content.gameObject.AddComponent<VerticalLayoutGroup>();
+        contentLayout.spacing = 8f;
+        contentLayout.childControlWidth = true;
+        contentLayout.childControlHeight = true;
+        contentLayout.childForceExpandWidth = true;
+        contentLayout.childForceExpandHeight = false;
+        contentLayout.padding = new RectOffset(6, 6, 6, 6);
+
+        var contentFitter = content.GetComponent<ContentSizeFitter>();
+        if (contentFitter == null)
+            contentFitter = content.gameObject.AddComponent<ContentSizeFitter>();
+        contentFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        contentFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        var scrollRect = viewport.GetComponent<ScrollRect>();
+        if (scrollRect == null)
+            scrollRect = viewport.gameObject.AddComponent<ScrollRect>();
+        scrollRect.viewport = viewport;
+        scrollRect.content = content;
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.movementType = ScrollRect.MovementType.Clamped;
+        scrollRect.scrollSensitivity = 40f;
+
+        _itemListContentParent = content;
+    }
+
     private void RefreshAllRows()
     {
+        if (_session == null) return;
+
+        int budget = GetCurrentBudget();
         foreach (var row in _rows)
-            row.Refresh(_purchasedItems.GetValueOrDefault(row.ItemName, 0), GetCurrentBudget());
+        {
+            int count = _session.GetPurchasedCount(row.ItemId);
+            row.Refresh(count, budget);
+        }
     }
 
     private void RefreshBudgetLabel()
@@ -215,39 +367,42 @@ public class BasecampShop : MonoBehaviour
 
     private void RefreshInfoBoard()
     {
-        // 天候情報
-        if (_weatherLabel != null && WeatherSystem.Instance != null)
-        {
-            string weatherName = WeatherSystem.Instance.CurrentWeather switch
-            {
-                WeatherType.Sunny   => "☀ 晴れ",
-                WeatherType.Cloudy  => "☁ 曇り",
-                WeatherType.Fog     => "🌫 霧",
-                WeatherType.Rain    => "🌧 雨",
-                WeatherType.Blizzard => "❄ 吹雪",
-                _                   => "不明"
-            };
-            _weatherLabel.text = $"今日の天気: {weatherName}";
-        }
-        else if (_weatherLabel != null)
-        {
-            _weatherLabel.text = "今日の天気: ☀ 晴れ";
-        }
+        var weather = GameServices.Weather;
+        if (_weatherLabel != null)
+            _weatherLabel.text = $"今日の天気: {GetWeatherDisplay(weather)}";
 
-        // ルート状況（SpawnManager の L2 実行結果を反映）
         if (_routeStatusLabel != null)
-            _routeStatusLabel.text = SpawnManager.Instance?.GetRouteStatusSummary()
+            _routeStatusLabel.text = GameServices.Spawner?.GetRouteStatusSummary()
                                      ?? "ルート状況: 調査中...";
     }
 
-    // ── 出発 ─────────────────────────────────────────────────
+    private static string GetWeatherDisplay(IWeatherService weather)
+    {
+        if (weather == null) return "☀ 晴れ";
+        return weather.CurrentWeather switch
+        {
+            WeatherType.Sunny    => "☀ 晴れ",
+            WeatherType.Cloudy   => "☁ 曇り",
+            WeatherType.Fog      => "🌫 霧",
+            WeatherType.Rain     => "🌧 雨",
+            WeatherType.Blizzard => "❄ 吹雪",
+            _                    => "不明"
+        };
+    }
+
     private void OnDepart()
     {
+        if (!_session.TryDepart(out var reason))
+        {
+            ShowError(reason);
+            return;
+        }
+
         GrantItemsToLocalPlayer();
 
-        if (_shopPanel != null) _shopPanel.SetActive(false);
+        SetShopPanelVisible(false);
 
-        ExpeditionManager.Instance?.StartExpedition();
+        GameServices.Expedition?.StartExpedition();
 
         Debug.Log($"[Shop] 出発！購入: {GetTotalPurchasedCount()}個  使用予算: {TEAM_BUDGET_MAX - GetCurrentBudget()}pt");
     }
@@ -255,12 +410,11 @@ public class BasecampShop : MonoBehaviour
     private int GetTotalPurchasedCount()
     {
         int total = 0;
-        foreach (var count in _purchasedItems.Values) total += count;
+        foreach (var count in _session.PurchasedCounts.Values)
+            total += count;
         return total;
     }
 
-    // ── アイテム付与 ─────────────────────────────────────────
-    /// <summary>購入済みアイテムをローカルプレイヤーのインベントリに付与する。</summary>
     private void GrantItemsToLocalPlayer()
     {
         var inventory = FindLocalPlayerInventory();
@@ -273,13 +427,18 @@ public class BasecampShop : MonoBehaviour
         int grantedCount = 0;
         var basePos = inventory.transform.position;
 
-        foreach (var kvp in _purchasedItems)
+        foreach (var kvp in _session.PurchasedCounts)
         {
             if (kvp.Value <= 0) continue;
+            if (!_catalogById.TryGetValue(kvp.Key, out var definition))
+            {
+                Debug.LogError($"[Shop] カタログに存在しないIDです: {kvp.Key}");
+                continue;
+            }
 
             for (int i = 0; i < kvp.Value; i++)
             {
-                var go = CreateItemObject(kvp.Key);
+                var go = CreateItemObject(definition);
                 if (go == null) continue;
 
                 var item = go.GetComponent<ItemBase>();
@@ -297,7 +456,6 @@ public class BasecampShop : MonoBehaviour
         Debug.Log($"[Shop] {grantedCount} 個のアイテムを付与しました");
     }
 
-    /// <summary>ローカルオーナーの PlayerInventory を返す。NGO が未起動の場合は最初の一つを返す。</summary>
     private static PlayerInventory FindLocalPlayerInventory()
     {
         var inventories = PlayerInventory.RegisteredInventories;
@@ -309,55 +467,12 @@ public class BasecampShop : MonoBehaviour
         return inventories.Count > 0 ? inventories[0] : null;
     }
 
-    /// <summary>
-    /// カタログ名 → アイテム生成ファクトリ関数の対応表。
-    /// go.AddComponent(System.Type) によるリフレクションを廃止し、
-    /// 型安全なジェネリック AddComponent&lt;T&gt; に統一する。
-    /// </summary>
-    private static readonly Dictionary<string, System.Func<GameObject, ItemBase>> _catalogFactoryMap = new()
+    private static GameObject CreateItemObject(BasecampShopItemDefinition definition)
     {
-        { "ショートロープ（10m）",  go => go.AddComponent<ShortRopeItem>() },
-        { "ロングロープ（25m）",    go => go.AddComponent<LongRopeItem>() },
-        { "アイスアックス",         go => go.AddComponent<IceAxeItem>() },
-        { "アンカーボルト（×3）",   go => go.AddComponent<AnchorBoltItem>() },
-        { "グラップリングフック",   go => go.AddComponent<GrapplingHookItem>() },
-        { "折りたたみ担架",         go => go.AddComponent<StretcherItem>() },
-        { "梱包キット",             go => go.AddComponent<PackingKitItem>() },
-        { "サーマルケース",          go => go.AddComponent<ThermalCaseItem>() },
-        { "固定ベルト",              go => go.AddComponent<SecureBeltItem>() },
-        { "食料（×3）",              go => go.AddComponent<FoodItem>() },
-        { "フレアガン",              go => go.AddComponent<FlareGunItem>() },
-        { "緊急無線機",              go => go.AddComponent<EmergencyRadioItem>() },
-        { "ポータブルウインチ",     go => go.AddComponent<PortableWinchItem>() },
-        { "ビバークテント",          go => go.AddComponent<BivouacTentItem>() },
-        { "酸素タンク",              go => go.AddComponent<OxygenTankItem>() },
-    };
-
-    // 金属アイテム（MagneticTarget を追加するもの）
-    private static readonly HashSet<string> _metalCatalogNames = new()
-    {
-        "グラップリングフック",
-        "アイスアックス",
-        "アンカーボルト（×3）",
-        "ポータブルウインチ",
-        "ショートロープ（10m）",
-        "ロングロープ（25m）",
-    };
-
-    /// <summary>カタログ名に対応する ItemBase コンポーネントを持つ GameObject を生成して返す。</summary>
-    private static GameObject CreateItemObject(string catalogName)
-    {
-        if (!_catalogFactoryMap.TryGetValue(catalogName, out var factory))
-        {
-            Debug.LogWarning($"[Shop] 未知のカタログ名: {catalogName}");
-            return null;
-        }
-
         var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        go.name = catalogName;
+        go.name = definition.DisplayName;
         go.transform.localScale = Vector3.one * 0.25f;
 
-        // URP マテリアルを適用
         var rend = go.GetComponent<Renderer>();
         if (rend != null)
         {
@@ -365,14 +480,18 @@ public class BasecampShop : MonoBehaviour
             if (material != null) rend.sharedMaterial = material;
         }
 
-        // ItemBase は [RequireComponent(Rigidbody)] のためファクトリ呼び出しより先に追加
         go.AddComponent<Rigidbody>();
 
-        // 金属アイテムには MagneticTarget を付与（MagneticHelmetRelic の引き寄せ対象）
-        if (_metalCatalogNames.Contains(catalogName))
+        if (definition.IsMetal)
             go.AddComponent<MagneticTarget>();
 
-        factory(go);   // 型安全な AddComponent<T>() を呼ぶ
+        if (!BasecampShopItemFactory.TryCreate(go, definition.ItemType, out _))
+        {
+            Debug.LogError($"[Shop] ItemType のファクトリが未定義です: {definition.ItemType}");
+            Destroy(go);
+            return null;
+        }
+
         return go;
     }
 
@@ -390,104 +509,67 @@ public class BasecampShop : MonoBehaviour
         return s_runtimeItemMaterial;
     }
 
-    // ── フォールバック UI 生成 ───────────────────────────────
     private GameObject CreateFallbackRow()
     {
-        var go = new GameObject("ShopRow");
-        var layout = go.AddComponent<HorizontalLayoutGroup>();
-        layout.childControlWidth  = true;
-        layout.childControlHeight = true;
-        layout.spacing = 8f;
+        var go = new GameObject("ShopRow", typeof(RectTransform));
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.sizeDelta = new Vector2(0f, 56f);
         return go;
     }
-}
 
-// ── データ構造 ──────────────────────────────────────────────
-[System.Serializable]
-public class ShopItemData
-{
-    public string Name;
-    public int    Cost;
-    public float  Weight;
-    public int    Slots;
-    public float  Durability;
-    public string Description;
-
-    public ShopItemData(string name, int cost, float weight, int slots, float durability, string desc)
+    private void BuildCatalogLookup()
     {
-        Name        = name;
-        Cost        = cost;
-        Weight      = weight;
-        Slots       = slots;
-        Durability  = durability;
-        Description = desc;
-    }
-}
+        _catalogById.Clear();
+        _orderedCatalog.Clear();
 
-/// <summary>ショップの各アイテム行 UI コンポーネント。</summary>
-public class ShopItemRow : MonoBehaviour
-{
-    public string ItemName { get; private set; }
+        bool loadedFromAsset = _catalogAsset != null
+                               && _catalogAsset.Items != null
+                               && _catalogAsset.Items.Count > 0
+                               && TryAppendCatalog(_catalogAsset.Items, "catalog asset");
 
-    private ShopItemData  _data;
-    private BasecampShop  _shop;
+        if (!loadedFromAsset && _catalogAsset != null)
+            Debug.LogWarning("[Shop] CatalogSO の内容が無効です。デフォルトカタログにフォールバックします。");
 
-    // UI 要素（Prefab から取得、なければコードで生成）
-    private TextMeshProUGUI _nameLabel;
-    private TextMeshProUGUI _costLabel;
-    private TextMeshProUGUI _countLabel;
-    private Button          _buyButton;
-    private Button          _refundButton;
+        if (!loadedFromAsset)
+            TryAppendCatalog(BasecampShopDefaultCatalog.Create(), "default catalog");
 
-    public void Init(ShopItemData data, BasecampShop shop)
-    {
-        _data     = data;
-        _shop     = shop;
-        ItemName  = data.Name;
-
-        SetupUI();
-        Refresh(0, 100);
+        if (_catalogById.Count == 0)
+            throw new InvalidOperationException("[Shop] 有効なカタログ項目が0件です。");
     }
 
-    private void SetupUI()
+    private bool TryAppendCatalog(IReadOnlyList<BasecampShopItemDefinition> items, string sourceName)
     {
-        // 既存の TMP/Button コンポーネントを探す
-        _nameLabel    = transform.Find("NameLabel")?.GetComponent<TextMeshProUGUI>();
-        _costLabel    = transform.Find("CostLabel")?.GetComponent<TextMeshProUGUI>();
-        _countLabel   = transform.Find("CountLabel")?.GetComponent<TextMeshProUGUI>();
-        _buyButton    = transform.Find("BuyButton")?.GetComponent<Button>();
-        _refundButton = transform.Find("RefundButton")?.GetComponent<Button>();
+        if (items == null || items.Count == 0) return false;
 
-        // Prefab に UI がなければコードで生成
-        if (_nameLabel == null)
-            _nameLabel = CreateTmpLabel("NameLabel", $"{_data.Name}  {_data.Cost}pt");
+        int beforeCount = _catalogById.Count;
+        for (int i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            if (item == null)
+            {
+                Debug.LogError($"[Shop] {sourceName} の index={i} が null です。");
+                continue;
+            }
 
-        _buyButton?.onClick.AddListener(() => _shop.TryPurchase(ItemName));
-        _refundButton?.onClick.AddListener(() => _shop.TryRefund(ItemName));
-    }
+            if (!item.TryValidate(out var reason))
+            {
+                Debug.LogError($"[Shop] {sourceName} の item '{item.Id}' が無効です。理由: {reason}");
+                continue;
+            }
 
-    public void Refresh(int purchasedCount, int remainingBudget)
-    {
-        if (_nameLabel != null)
-            _nameLabel.text = $"{_data.Name}  [{_data.Cost}pt / 重{_data.Weight} / 枠{_data.Slots}]";
+            if (_catalogById.ContainsKey(item.Id))
+            {
+                Debug.LogError($"[Shop] 重複 itemId を検出: {item.Id}");
+                continue;
+            }
 
-        if (_countLabel != null)
-            _countLabel.text = $"×{purchasedCount}";
+            _catalogById.Add(item.Id, item);
+            _orderedCatalog.Add(item);
+        }
 
-        if (_buyButton != null)
-            _buyButton.interactable = remainingBudget >= _data.Cost;
-
-        if (_refundButton != null)
-            _refundButton.interactable = purchasedCount > 0;
-    }
-
-    private TextMeshProUGUI CreateTmpLabel(string objName, string text)
-    {
-        var go  = new GameObject(objName);
-        go.transform.SetParent(transform, false);
-        var tmp = go.AddComponent<TextMeshProUGUI>();
-        tmp.text     = text;
-        tmp.fontSize = 14f;
-        return tmp;
+        return _catalogById.Count > beforeCount;
     }
 }

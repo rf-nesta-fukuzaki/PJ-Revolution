@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物⑧「磁力の兜」
@@ -9,14 +11,17 @@ using UnityEngine;
 /// </summary>
 public class MagneticHelmetRelic : RelicBase
 {
-    [Header("磁力設定")]
+    [Header("磁力設定 (GDD §6.2)")]
+    [Tooltip("フル引力圏。この半径内では最大トルク (_magnetForce) が適用される。")]
     [SerializeField] private float _magnetRadius    = 6f;
     [SerializeField] private float _magnetForce     = 25f;
-#pragma warning disable CS0414
-    [SerializeField] private float _maxPullDistance = 10f;    // 将来の距離制限実装用
-#pragma warning restore CS0414
+    [Tooltip("絶対到達距離。_magnetRadius → _maxPullDistance の間で線形に力が弱まり、これ以遠は無効化。")]
+    [SerializeField] private float _maxPullDistance = 10f;
 
     private readonly List<Rigidbody> _affectedItems = new();
+
+    // GDD §15.2 — relic_magnet_pull のエッジトリガー用（引き寄せ開始の瞬間だけ鳴らす）
+    private bool _wasAttracting;
 
     protected override void Awake()
     {
@@ -41,24 +46,49 @@ public class MagneticHelmetRelic : RelicBase
     {
         _affectedItems.Clear();
 
+        // _maxPullDistance が _magnetRadius 以下だと二層カーブが退化するため、
+        // Inspector での誤設定に対するガード（最低でも等価）。
+        float outer = Mathf.Max(_maxPullDistance, _magnetRadius);
+
         // MagneticTarget コンポーネントを持つ全 Rigidbody を引き寄せる
         foreach (var target in MagneticTarget.RegisteredTargets)
         {
             float dist = Vector3.Distance(transform.position, target.transform.position);
-            if (dist > _magnetRadius) continue;
+            if (dist > outer) continue;
 
             var rb = target.TargetRigidbody;
             if (rb == null) continue;
 
             _affectedItems.Add(rb);
 
-            Vector3 dir        = (transform.position - target.transform.position).normalized;
-            float   forceMag   = _magnetForce * (1f - dist / _magnetRadius);
+            Vector3 dir = (transform.position - target.transform.position).normalized;
+
+            // _magnetRadius 内は最大力。外側は線形フォールオフ。
+            float forceMag;
+            if (dist <= _magnetRadius)
+            {
+                forceMag = _magnetForce;
+            }
+            else
+            {
+                float falloffSpan = outer - _magnetRadius;
+                float t = falloffSpan > 0f
+                    ? 1f - (dist - _magnetRadius) / falloffSpan
+                    : 0f;
+                forceMag = _magnetForce * Mathf.Clamp01(t);
+            }
+
             rb.AddForce(dir * forceMag, ForceMode.Force);
 
             if (dist < 1f)
                 Debug.Log($"[MagneticHelmet] 「俺の{target.ItemName}が！」");
         }
+
+        // GDD §15.2 — relic_magnet_pull（引き寄せ開始のエッジトリガー）
+        bool nowAttracting = _affectedItems.Count > 0;
+        if (nowAttracting && !_wasAttracting)
+            PPAudioManager.Instance?.PlaySE(SoundId.RelicMagnetPull, transform.position);
+        _wasAttracting = nowAttracting;
     }
 
     protected override Color GizmoColor => new Color(0.42f, 0.49f, 0.42f);
@@ -104,7 +134,10 @@ public class MagneticHelmetRelic : RelicBase
     protected override void OnDrawGizmos()
     {
         base.OnDrawGizmos();
-        Gizmos.color = new Color(0.5f, 0f, 1f, 0.15f);
+        // 内側=フル引力圏、外側=フォールオフ終端
+        Gizmos.color = new Color(0.5f, 0f, 1f, 0.20f);
         Gizmos.DrawSphere(transform.position, _magnetRadius);
+        Gizmos.color = new Color(0.5f, 0f, 1f, 0.08f);
+        Gizmos.DrawSphere(transform.position, Mathf.Max(_maxPullDistance, _magnetRadius));
     }
 }

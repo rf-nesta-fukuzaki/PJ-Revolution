@@ -1,5 +1,7 @@
 using System.Collections;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「ポータブルウインチ」
@@ -11,7 +13,11 @@ public class PortableWinchItem : ItemBase
 {
     // ── 定数 ────────────────────────────────────────────────
     private const float CABLE_BREAK_TENSION  = 900f;
-    private const float CABLE_BREAK_CHANCE_PER_SEC = 0.02f;  // 過負荷時の毎秒切断確率
+    private const float CABLE_BREAK_CHANCE_PER_SEC = 0.02f;  // 過負荷時の毎秒切断確率（初期値）
+    // GDD §5.2: 過負荷継続時間に応じた切断確率ランプ。短時間なら耐えるが、
+    // 長時間過負荷を続けるとほぼ確実に切れる設計。
+    private const float OVERLOAD_RAMP_PER_SEC      = 0.05f;   // 1 秒経過毎に追加される確率/秒
+    private const float OVERLOAD_RAMP_MAX          = 0.5f;    // 最大の追加確率/秒（無限には上がらない）
 
     [Header("ウインチ設定")]
     [SerializeField] private float _liftForce        = 600f;   // 引き上げ力（N）
@@ -59,6 +65,9 @@ public class PortableWinchItem : ItemBase
             _lineRenderer.positionCount = 2;
             _lineRenderer.enabled       = true;
         }
+
+        // GDD §15.2 — winch_start（ウインチ設置でモーター起動音）
+        PPAudioManager.Instance?.PlaySE(SoundId.WinchStart, anchorWorldPos);
 
         Debug.Log($"[Winch] アンカー設置: {anchorWorldPos}");
         return true;
@@ -118,13 +127,17 @@ public class PortableWinchItem : ItemBase
             return;
         }
 
-        // 過負荷ゾーンでのランダム切断
+        // 過負荷ゾーンでのランダム切断（経過時間に応じて確率がランプアップ）
         if (tension > _overloadThreshold)
         {
             _overloadTimer += Time.fixedDeltaTime;
-            if (Random.value < CABLE_BREAK_CHANCE_PER_SEC * Time.fixedDeltaTime)
+
+            float rampBonus       = Mathf.Min(_overloadTimer * OVERLOAD_RAMP_PER_SEC, OVERLOAD_RAMP_MAX);
+            float breakChancePerS = CABLE_BREAK_CHANCE_PER_SEC + rampBonus;
+
+            if (Random.value < breakChancePerS * Time.fixedDeltaTime)
             {
-                Debug.Log("[Winch] ランダム切断発生！");
+                Debug.Log($"[Winch] ランダム切断発生！過負荷継続 {_overloadTimer:F1}s, 確率 {breakChancePerS:F2}/s");
                 BreakCable();
             }
         }
@@ -144,6 +157,10 @@ public class PortableWinchItem : ItemBase
             _lineRenderer.enabled = false;
 
         ConsumeDurability(30f);
+
+        // GDD §15.2 — winch_cable_snap（ケーブル切断の破断音）
+        PPAudioManager.Instance?.PlaySE(SoundId.WinchCableSnap, _anchorPoint);
+
         Debug.Log("[Winch] ケーブル切断！！");
     }
 

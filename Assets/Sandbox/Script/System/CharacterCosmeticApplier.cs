@@ -58,16 +58,16 @@ public class CharacterCosmeticApplier : MonoBehaviour
     // ── ライフサイクル ────────────────────────────────────────
     private void Start()
     {
-        if (CosmeticManager.Instance != null)
-            CosmeticManager.Instance.OnCosmeticUnlocked += OnCosmeticUnlocked;
+        if (GameServices.Cosmetics != null)
+            GameServices.Cosmetics.OnCosmeticUnlocked += OnCosmeticUnlocked;
 
         ApplyAllCosmetics();
     }
 
     private void OnDestroy()
     {
-        if (CosmeticManager.Instance != null)
-            CosmeticManager.Instance.OnCosmeticUnlocked -= OnCosmeticUnlocked;
+        if (GameServices.Cosmetics != null)
+            GameServices.Cosmetics.OnCosmeticUnlocked -= OnCosmeticUnlocked;
 
         if (_runtimeBodyMaterial != null)
             Destroy(_runtimeBodyMaterial);
@@ -323,8 +323,8 @@ public class CharacterCosmeticApplier : MonoBehaviour
     // ── バリデーション ────────────────────────────────────────
     private static bool ValidateUnlocked(string id)
     {
-        if (CosmeticManager.Instance == null) return true;
-        if (CosmeticManager.Instance.IsUnlocked(id)) return true;
+        if (GameServices.Cosmetics == null) return true;
+        if (GameServices.Cosmetics.IsUnlocked(id)) return true;
 
         Debug.LogWarning($"[CosmeticApplier] '{id}' は未アンロックです（Set を無視）");
         return false;

@@ -10,7 +10,8 @@ public class OxygenTankItem : ItemBase
     [Header("酸素設定")]
     [SerializeField] private float _oxygenPerSecond = 1f;   // 毎秒消費量
 
-    private StaminaSystem _stamina;
+    private StaminaSystem           _stamina;
+    private AltitudeSicknessEffect  _altitudeSickness;
 
     protected override void Awake()
     {
@@ -29,6 +30,10 @@ public class OxygenTankItem : ItemBase
         _stamina = inv.GetComponent<StaminaSystem>();
         if (_stamina != null)
             _stamina.HasOxygenTank = true;
+
+        // 高山病エフェクトを抑制（GDD §3.4）
+        _altitudeSickness = inv.GetComponent<AltitudeSicknessEffect>();
+        _altitudeSickness?.SetOxygenTankActive(true);
     }
 
     public override void OnRemovedFromInventory()
@@ -36,6 +41,10 @@ public class OxygenTankItem : ItemBase
         if (_stamina != null)
             _stamina.HasOxygenTank = false;
         _stamina = null;
+
+        _altitudeSickness?.SetOxygenTankActive(false);
+        _altitudeSickness = null;
+
         base.OnRemovedFromInventory();
     }
 
@@ -54,6 +63,9 @@ public class OxygenTankItem : ItemBase
     {
         if (_stamina != null)
             _stamina.HasOxygenTank = false;
+
+        _altitudeSickness?.SetOxygenTankActive(false);
+        _altitudeSickness = null;
 
         Debug.Log("[OxygenTank] 酸素タンクが空になった！高山病リスク！");
         Destroy(gameObject, 1f);

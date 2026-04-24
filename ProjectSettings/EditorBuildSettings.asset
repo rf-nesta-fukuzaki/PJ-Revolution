@@ -5,21 +5,26 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/Sandbox/Scene/MainMenu.unity
     guid: 66da034d7e5274401a09d0d7d9ebed76
-  - enabled: 1
+  - enabled: 0
     path: Assets/Sandbox/Scene/Mountain01.unity
     guid: 68fa5535c7ba14042b624ed1e2bbce33
   - enabled: 1
     path: Assets/Scenes/TitleScece.unity
     guid: b2156252b8b0c4486aabaee811d8f9d8
-  - enabled: 0
+  - enabled: 1
     path: Assets/Scenes/SampleScene.unity
     guid: 99c9720ab356a0642a771bea13969a05
-  - enabled: 0
+  - enabled: 1
     path: Assets/Scenes/TestScene.unity
     guid: 7a88cf4c3d1ae496382778a508672d19
+  - enabled: 1
+    path: Assets/Sandbox/Scene/OfflineTestScene.unity
+    guid: b2882173a1ba843398b4a4fb4ee20f6e
   m_configObjects:
+    com.unity.addressableassets: {fileID: 11400000, guid: 280dd378a05db445bb7cb0256ec62b29, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+    com.unity.localization.settings: {fileID: 11400000, guid: f9203b34e66fa4f768be7c1dd11fb79d, type: 2}
   m_UseUCBPForAssetBundles: 0

@@ -59,7 +59,7 @@ public class NetworkExpeditionSync : NetworkBehaviour
         if (IsServer)
         {
             // ホスト側: ExpeditionManager のイベントをフック
-            var em = ExpeditionManager.Instance;
+            var em = GameServices.Expedition;
             if (em != null)
                 Debug.Log("[ExpeditionSync] ExpeditionManager に接続完了");
         }
@@ -146,7 +146,7 @@ public class NetworkExpeditionSync : NetworkBehaviour
     [Rpc(SendTo.ClientsAndHost)]
     private void ReachCheckpointClientRpc(ulong clientId, int checkpointIndex)
     {
-        ExpeditionManager.Instance?.OnCheckpointReached(checkpointIndex);
+        GameServices.Expedition?.OnCheckpointReached(checkpointIndex);
     }
 }
 

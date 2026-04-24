@@ -101,7 +101,15 @@ public class SpawnManager : MonoBehaviour
         }
 
         if (twins.Length % 2 != 0)
-            Debug.LogWarning($"[Spawn L3] 双子像が奇数個（{twins.Length}体）→ 最後の1体はパートナーなし");
+        {
+            var orphan = twins[twins.Length - 1];
+            if (orphan != null)
+            {
+                // 奇数体だと双子ギミックが片割れ不在で破綻するため、余剰1体を無効化して必ずペア成立させる。
+                orphan.gameObject.SetActive(false);
+                Debug.Log($"[Spawn L3] 双子像が奇数個（{twins.Length}体）のため余剰像を無効化: {orphan.name}");
+            }
+        }
 
         Debug.Log($"[Spawn L3] 双子像 {pairs} ペアをペアリング完了");
     }

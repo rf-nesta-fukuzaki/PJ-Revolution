@@ -125,7 +125,7 @@ public class FirstPersonLook : MonoBehaviour
     private void HandleCursorLock()
     {
         bool isSwinging = _stateManager != null &&
-                          _stateManager.CurrentState == PlayerState.Swinging;
+                          _stateManager.CurrentState == MovementState.Swinging;
 
         if (InputStateReader.EscapePressedThisFrame())
         {

@@ -31,6 +31,11 @@ public class AudioManager : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
+
+        // DontDestroyOnLoad はルート GameObject にのみ適用可能。
+        if (transform.parent != null)
+            transform.SetParent(null, true);
+
         DontDestroyOnLoad(gameObject);
 
         SetupSources();

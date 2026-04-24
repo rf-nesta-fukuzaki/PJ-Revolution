@@ -171,7 +171,7 @@ public class ProximityVoiceChat : NetworkBehaviour
             if (_shoutReportTimer <= 0f)
             {
                 _shoutReportTimer = SHOUT_REPORT_INTERVAL;
-                ScoreTracker.Instance?.RecordShout((int)OwnerClientId);
+                GameServices.Score?.RecordShout((int)OwnerClientId);
             }
         }
         else

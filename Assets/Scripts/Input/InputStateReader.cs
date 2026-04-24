@@ -120,6 +120,16 @@ public static class InputStateReader
         return gamepad != null && gamepad.leftTrigger.wasPressedThisFrame;
     }
 
+    public static bool IsSecondaryPointerHeld()
+    {
+        var mouse = Mouse.current;
+        if (mouse != null && mouse.rightButton.isPressed)
+            return true;
+
+        var gamepad = Gamepad.current;
+        return gamepad != null && gamepad.leftTrigger.ReadValue() > 0.5f;
+    }
+
     public static bool EscapePressedThisFrame()
     {
         var keyboard = Keyboard.current;
