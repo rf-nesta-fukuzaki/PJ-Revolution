@@ -39,6 +39,9 @@ public class ExpeditionHUD : MonoBehaviour
     [Header("プレイヤー参照")]
     [SerializeField] private StaminaSystem   _localPlayerStamina;
 
+    [Header("表示制御")]
+    [SerializeField] private CanvasGroup     _hudCanvasGroup;
+
     // ── 内部状態 ─────────────────────────────────────────────
     private float                            _elapsedTime;
     private bool                             _timerRunning;
@@ -52,6 +55,9 @@ public class ExpeditionHUD : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
+
+        if (_hudCanvasGroup == null)
+            _hudCanvasGroup = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
     }
 
     private void OnEnable()
@@ -73,7 +79,13 @@ public class ExpeditionHUD : MonoBehaviour
         // タイマー開始は ExpeditionEvents.OnExpeditionStarted イベント経由に変更。
         // テストシーン（ExpeditionManager なし）での互換性のためフォールバックを残す。
         if (GameServices.Expedition == null)
+        {
             StartTimer();
+        }
+        else
+        {
+            StopTimer();
+        }
 
         SetWarning("");
     }
@@ -90,8 +102,18 @@ public class ExpeditionHUD : MonoBehaviour
     }
 
     // ── タイマー ─────────────────────────────────────────────
-    public void StartTimer()  => _timerRunning = true;
-    public void StopTimer()   => _timerRunning = false;
+    public void StartTimer()
+    {
+        _timerRunning = true;
+        SetHudVisible(true);
+    }
+
+    public void StopTimer()
+    {
+        _timerRunning = false;
+        SetHudVisible(false);
+        SetWarning("");
+    }
 
     private void UpdateTimerUI()
     {
@@ -173,5 +195,13 @@ public class ExpeditionHUD : MonoBehaviour
         _warningTimer -= Time.deltaTime;
         if (_warningTimer <= 0f)
             SetWarning("");
+    }
+
+    private void SetHudVisible(bool visible)
+    {
+        if (_hudCanvasGroup == null) return;
+        _hudCanvasGroup.alpha = visible ? 1f : 0f;
+        _hudCanvasGroup.interactable = visible;
+        _hudCanvasGroup.blocksRaycasts = visible;
     }
 }

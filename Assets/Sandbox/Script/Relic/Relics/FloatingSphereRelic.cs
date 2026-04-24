@@ -1,4 +1,6 @@
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物⑤「浮遊する球体」
@@ -15,7 +17,13 @@ public class FloatingSphereRelic : RelicBase
 
     private Vector3 _currentDriftDir;
     private float   _driftTimer;
-    private bool    _isFloating;   // 空中に浮いているか
+    private bool    _isFloating;   // 空中に浮いているか（地面より _floatHeight 以上上空＝「逃げ中」）
+
+    /// <summary>
+    /// 球体が地面から離れて自由浮遊している（＝プレイヤーが追いかける必要がある）状態か。
+    /// HUD やチーム通知、感情表現システムが購読できるように公開する。
+    /// </summary>
+    public bool IsFloating => _isFloating;
 
     protected override void Awake()
     {
@@ -40,6 +48,7 @@ public class FloatingSphereRelic : RelicBase
         {
             // 保持中：重力なしで従順に追従（RigidbodyをKinematicに近い状態に）
             _rb.linearDamping = 20f;
+            SetFloatingState(false);
             return;
         }
 
@@ -63,6 +72,23 @@ public class FloatingSphereRelic : RelicBase
         _driftTimer -= Time.fixedDeltaTime;
         if (_driftTimer <= 0f)
             ChangeDriftDirection();
+
+        // 完全に地面から離れた＝逃走中。エッジトリガーで一度だけハム音を鳴らす。
+        bool nowFloating = groundDist >= _floatHeight;
+        SetFloatingState(nowFloating);
+    }
+
+    private void SetFloatingState(bool value)
+    {
+        if (_isFloating == value) return;
+        _isFloating = value;
+
+        if (value)
+        {
+            // GDD §15.2 — 逃走開始時のハム音（エッジトリガー）
+            PPAudioManager.Instance?.PlaySE(SoundId.RelicSphereHum, transform.position);
+            Debug.Log("[FloatingSphere] 逃走開始！");
+        }
     }
 
     private void ChangeDriftDirection()
@@ -88,6 +114,8 @@ public class FloatingSphereRelic : RelicBase
         ChangeDriftDirection();
         // 解放時にふわっと上昇
         _rb.AddForce(Vector3.up * 3f + _currentDriftDir * 2f, ForceMode.Impulse);
+        // GDD §15.2 — relic_sphere_hum（解放時の浮遊ハム音）
+        PPAudioManager.Instance?.PlaySE(SoundId.RelicSphereHum, transform.position);
     }
 
     protected override Color GizmoColor => new Color(0.42f, 0.05f, 0.68f);

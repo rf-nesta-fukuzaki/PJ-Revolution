@@ -8,15 +8,31 @@ using UnityEngine;
 [RequireComponent(typeof(RelicBase))]
 public class RelicCarrier : MonoBehaviour
 {
+    // GDD §16.2 — CarryType 値
+    //   0=なし/1=片手/2=両手/3=背負い/4=担架
+    public const int CARRY_TYPE_NONE      = 0;
+    public const int CARRY_TYPE_ONE_HAND  = 1;
+    public const int CARRY_TYPE_TWO_HANDS = 2;
+    public const int CARRY_TYPE_ON_BACK   = 3;
+    public const int CARRY_TYPE_STRETCHER = 4;
+
     [Header("持ち上げ設定")]
     [SerializeField] private float _holdDistance  = 1.5f;   // プレイヤー前方への距離
     [SerializeField] private float _holdSmoothing = 10f;    // 追従スムーズ係数
 
+    [Header("アニメーター連動 (GDD §16.2)")]
+    [Tooltip("この遺物を持ったときの Animator CarryType 値。0=なし/1=片手/2=両手/3=背負い/4=担架")]
+    [SerializeField, Range(0, 4)] private int _carryType = CARRY_TYPE_TWO_HANDS;
+
     private RelicBase  _relic;
     private Rigidbody  _rb;
     private Transform  _currentHolder;
+    private Animator   _holderAnimator;
     private int        _lastCarrierPlayerId = -1;
     private Vector3    _prevHolderPos;
+
+    private static readonly int IsCarryingHash = Animator.StringToHash("IsCarrying");
+    private static readonly int CarryTypeHash  = Animator.StringToHash("CarryType");
 
     public int  LastCarrierPlayerId => _lastCarrierPlayerId;
     public bool IsBeingCarried      => _currentHolder != null;
@@ -59,12 +75,28 @@ public class RelicCarrier : MonoBehaviour
 
         _rb.isKinematic = false;
         _rb.useGravity  = false;
+
+        // Animator: IsCarrying / CarryType (GDD §16.2)
+        _holderAnimator = holder.GetComponentInChildren<Animator>();
+        if (_holderAnimator != null)
+        {
+            _holderAnimator.SetBool(IsCarryingHash, true);
+            _holderAnimator.SetInteger(CarryTypeHash, _carryType);
+        }
     }
 
     /// <summary>遺物を置く。</summary>
     public void PutDown()
     {
         if (!IsBeingCarried) return;
+
+        // Animator: IsCarrying / CarryType 解除 (GDD §16.2)
+        if (_holderAnimator != null)
+        {
+            _holderAnimator.SetBool(IsCarryingHash, false);
+            _holderAnimator.SetInteger(CarryTypeHash, CARRY_TYPE_NONE);
+            _holderAnimator = null;
+        }
 
         _currentHolder  = null;
         _rb.useGravity  = true;

@@ -215,7 +215,10 @@ public class ScoreTracker : MonoBehaviour, IScoreService
                 RelicDamageDealt   = s.RelicDamageDealt,
                 GhostContributions = s.GhostPinsPlaced,
                 RopePlacementCount = s.RopePlacements,
-                ShoutCount         = s.ShoutCount
+                ShoutCount         = s.ShoutCount,
+                RelicsFoundCount   = s.RelicsFound,
+                // 「鉄人ハンター」(GDD §12.5): 落下ゼロ かつ allSurvived（チーム全員生存）
+                Survived           = s.FallCount == 0 && allSurvived
             });
         }
 

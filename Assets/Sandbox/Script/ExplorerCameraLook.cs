@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
 /// Sandbox シーン用 FPS カメラ視点制御。
@@ -12,6 +14,8 @@ public class ExplorerCameraLook : MonoBehaviour
     [Header("参照")]
     [Tooltip("Explorer の目線高さに置いた空の子オブジェクト。Main Camera を子にする。未設定時は子の CameraRig を自動検索する。")]
     [SerializeField] private Transform _cameraRig;
+    [Tooltip("プレイヤーモデルのルート。未設定時は ExplorerModel を自動検索する。")]
+    [SerializeField] private Transform _visualRoot;
 
     [Header("感度")]
     [SerializeField] private float _sensitivityX = 2f;
@@ -21,24 +25,46 @@ public class ExplorerCameraLook : MonoBehaviour
     [SerializeField] private float _minPitch = -80f;
     [SerializeField] private float _maxPitch =  80f;
 
+    [Header("一人称ビジュアル")]
+    [SerializeField] private bool _hideLocalBody = true;
+    [SerializeField] private bool _preserveBodyShadows = true;
+
     private float _pitch;
+    private bool _isLocalOwner;
+    private readonly List<RendererState> _hiddenRenderers = new();
+
+    private struct RendererState
+    {
+        public RendererState(Renderer renderer)
+        {
+            Renderer = renderer;
+            Enabled = renderer.enabled;
+            ShadowCasting = renderer.shadowCastingMode;
+        }
+
+        public Renderer Renderer { get; }
+        public bool Enabled { get; }
+        public ShadowCastingMode ShadowCasting { get; }
+    }
 
     private void Awake()
     {
         // インスペクターで未アサインの場合は子の CameraRig を自動検索
         if (_cameraRig == null)
             _cameraRig = transform.Find("CameraRig");
+
+        if (_visualRoot == null)
+            _visualRoot = transform.Find("ExplorerModel");
     }
 
     private void Start()
     {
-        // ローカルオーナーのみカーソルロックと重複 AudioListener 解消を行う
-        var netObj = GetComponent<NetworkObject>();
-        bool isLocalOwner = netObj == null || netObj.IsOwner;
-        if (!isLocalOwner) return;
+        RefreshLocalOwnerState();
+        if (!_isLocalOwner) return;
 
         LockCursor();
         DisableRedundantAudioListener();
+        ApplyFirstPersonLocalVisuals();
     }
 
     /// <summary>
@@ -56,6 +82,9 @@ public class ExplorerCameraLook : MonoBehaviour
 
     private void Update()
     {
+        if (_isLocalOwner && _hideLocalBody && _hiddenRenderers.Count == 0)
+            ApplyFirstPersonLocalVisuals();
+
         HandleCursorLock();
 
         if (_cameraRig == null) return;
@@ -95,5 +124,78 @@ public class ExplorerCameraLook : MonoBehaviour
     {
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+    }
+
+    private void OnDisable()
+    {
+        RestoreLocalVisuals();
+    }
+
+    private void OnEnable()
+    {
+        RefreshLocalOwnerState();
+        if (_isLocalOwner && _hideLocalBody)
+            ApplyFirstPersonLocalVisuals();
+    }
+
+    private void ApplyFirstPersonLocalVisuals()
+    {
+        if (!_hideLocalBody)
+            return;
+
+        _hiddenRenderers.Clear();
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null)
+                continue;
+
+            if (renderer.transform.IsChildOf(_cameraRig))
+                continue;
+
+            if (renderer is not MeshRenderer && renderer is not SkinnedMeshRenderer)
+                continue;
+
+            bool isBodyRenderer = renderer.gameObject == gameObject
+                                  || (_visualRoot != null && renderer.transform.IsChildOf(_visualRoot));
+            if (!isBodyRenderer)
+                continue;
+
+            _hiddenRenderers.Add(new RendererState(renderer));
+            if (_preserveBodyShadows)
+            {
+                renderer.enabled = true;
+                renderer.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
+            }
+            else
+            {
+                renderer.enabled = false;
+            }
+        }
+    }
+
+    private void RestoreLocalVisuals()
+    {
+        if (!_isLocalOwner || _hiddenRenderers.Count == 0)
+            return;
+
+        for (int i = 0; i < _hiddenRenderers.Count; i++)
+        {
+            RendererState state = _hiddenRenderers[i];
+            if (state.Renderer == null)
+                continue;
+
+            state.Renderer.enabled = state.Enabled;
+            state.Renderer.shadowCastingMode = state.ShadowCasting;
+        }
+
+        _hiddenRenderers.Clear();
+    }
+
+    private void RefreshLocalOwnerState()
+    {
+        var netObj = GetComponent<NetworkObject>();
+        _isLocalOwner = netObj == null || netObj.IsOwner;
     }
 }

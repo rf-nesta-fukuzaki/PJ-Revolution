@@ -1,113 +1,113 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// オフラインテスト用 NPC AI コントローラー。
-///
-/// NavMesh 不要のシンプルなウェイポイント徘徊 + 障害物回避 + ジャンプを実装する。
-/// NetworkBehaviour に依存しないため、NGO（Netcode for GameObjects）なしで動作する。
-/// Health / Respawn も内包しており、他コンポーネントへの依存はゼロ。
-///
-/// Animator パラメーター（ExplorerAnimator.controller と共有）:
-///   float   Speed      (0-1) : 移動中=1、停止=0（State Speed Multiplier）
-///   float   SpeedBlend (0-1) : 常に0（NPC はスプリントしない）
-///   trigger JumpTrigger      : ジャンプ開始時
-///   bool    IsGrounded       : 接地状態
-///
-/// 行動サイクル:
-///   1. ランダムウェイポイントを選択（スポーン地点を中心に一定半径内、上方バイアスあり）
-///   2. ウェイポイントへ向かって Rigidbody.MovePosition で前進
-///   3. 前方に崖・障害物を検出したらジャンプ or 別方向へ転換
-///   2 秒間ほぼ動かなかった場合（スタック）は強制的に方向転換
+/// オフラインテスト用 NPC コントローラー。
+/// ユーティリティベースのメタAIで「遺物確保 / 帰還搬送 / 味方支援 / 回復 / 探索」を切り替える。
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(CapsuleCollider))]
 public class NPCController : MonoBehaviour
 {
-    // ── 移動 ─────────────────────────────────────────────────
     [Header("移動")]
-    [SerializeField] private float _moveSpeed          = 4f;
-    [SerializeField] private float _wanderRadius       = 20f;
-    [SerializeField] private float _waypointTolerance  = 1.8f;
-    [SerializeField] private float _targetPickInterval = 4f;
+    [SerializeField] private float _moveSpeed = 4.6f;
+    [SerializeField] private float _carrySpeedMultiplier = 0.78f;
+    [SerializeField] private float _turnSpeed = 8f;
+    [SerializeField] private float _waypointTolerance = 1.35f;
+    [SerializeField] private float _exploreRadius = 22f;
+    [SerializeField] private float _retargetDistance = 2.2f;
 
-    // ── ジャンプ ──────────────────────────────────────────────
+    [Header("メタAI")]
+    [SerializeField] private float _thinkIntervalMin = 0.35f;
+    [SerializeField] private float _thinkIntervalMax = 0.95f;
+    [SerializeField] private float _sensorRefreshInterval = 1.0f;
+    [SerializeField] private float _hazardAvoidRadius = 4.5f;
+    [SerializeField] private bool _verboseDecisionLog = false;
+
+    [Header("遺物")]
+    [SerializeField] private float _relicPickupRange = 1.6f;
+    [SerializeField] private float _returnZoneDropRange = 2.4f;
+
     [Header("ジャンプ")]
-    [SerializeField] private float _jumpForce    = 6f;
-    [SerializeField] private float _jumpCooldown = 1.5f;
+    [SerializeField] private float _jumpVelocity = 6f;
+    [SerializeField] private float _jumpCooldown = 1.2f;
 
-    // ── 接地判定 ──────────────────────────────────────────────
     [Header("接地判定")]
-    [SerializeField] private float     _groundCheckOffset = -0.85f;
-    [SerializeField] private float     _groundCheckRadius = 0.30f;
+    [SerializeField] private float _groundCheckOffset = -0.85f;
+    [SerializeField] private float _groundCheckRadius = 0.30f;
     [SerializeField] private LayerMask _groundLayer;
 
-    // ── HP / リスポーン ────────────────────────────────────────
     [Header("HP / リスポーン")]
-    [SerializeField] private float _maxHp        = 100f;
-    [SerializeField] private float _deathY       = -10f;
-    [SerializeField] private float _respawnDelay =  5f;
+    [SerializeField] private float _maxHp = 100f;
+    [SerializeField] private float _deathY = -10f;
+    [SerializeField] private float _respawnDelay = 5f;
 
-    // ── アニメーション補間 ──────────────────────────────────────
     [Header("アニメーション")]
     [SerializeField] private float _animSmoothTime = 0.15f;
 
-    // ── 内部状態 ──────────────────────────────────────────────
     private Rigidbody _rb;
-    private Animator  _animator;
-    private float     _currentHp;
-    private bool      _isDead;
-    private bool      _isMoving;
+    private Animator _animator;
+
+    private readonly NPCMetaDecisionEngine _decisionEngine = new();
+    private readonly List<RelicCarrier> _relicBuffer = new();
+    private readonly List<RelicBase> _relicBaseBuffer = new();
+    private readonly List<ShelterZone> _shelterBuffer = new();
+    private readonly List<Transform> _hazardBuffer = new();
+
+    private float _currentHp;
+    private bool _isDead;
+    private bool _isGrounded;
+    private bool _isMoving;
 
     private Vector3 _homePos;
-    private Vector3 _waypoint;
-    private float   _waypointTimer;
-    private float   _jumpTimer;
-    private float   _stuckTimer;
     private Vector3 _stuckLastPos;
-    private bool    _isGrounded;
-
+    private float _stuckSeconds;
+    private float _stuckSampleTimer;
+    private float _jumpTimer;
+    private float _nextThinkTimer;
+    private float _nextSensorRefreshTimer;
     private float _currentSpeed;
     private float _speedVelocity;
 
-    // Animator パラメーターハッシュ（文字列ルックアップを回避）
-    private static readonly int SpeedHash       = Animator.StringToHash("Speed");
-    private static readonly int SpeedBlendHash  = Animator.StringToHash("SpeedBlend");
-    private static readonly int JumpTriggerHash = Animator.StringToHash("JumpTrigger");
-    private static readonly int IsGroundedHash  = Animator.StringToHash("IsGrounded");
+    private NpcMetaGoal _currentGoal = NpcMetaGoal.Explore;
+    private string _goalReason = string.Empty;
+    private Vector3 _goalPosition;
+    private bool _hasGoalPosition;
+    private Transform _returnZoneTransform;
+    private Transform _assistTarget;
+    private RelicCarrier _targetRelic;
+    private RelicCarrier _carriedRelic;
+    private RelicBase _targetRelicBase;
 
-    // ── ライフサイクル ────────────────────────────────────────
+    private static readonly int SpeedHash = Animator.StringToHash("Speed");
+    private static readonly int SpeedBlendHash = Animator.StringToHash("SpeedBlend");
+    private static readonly int JumpTriggerHash = Animator.StringToHash("JumpTrigger");
+    private static readonly int IsGroundedHash = Animator.StringToHash("IsGrounded");
+
     private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
         _rb.freezeRotation = true;
         _currentHp = _maxHp;
-        // Animator は Start() で取得する。
-        // AddComponent<NPCController>() 直後に Awake() が走るため、
-        // この時点ではまだ子モデルが未アタッチで GetComponentInChildren が null を返す。
+        _stuckLastPos = transform.position;
+        _stuckSampleTimer = 1f;
+        ResolveGroundMask();
     }
 
     private void Start()
     {
-        // Start() は次フレーム冒頭に呼ばれるため、
-        // OfflineNPCSpawner.Start() で同フレーム中にアタッチした
-        // Explorer モデルの Animator をここで確実に取得できる。
         _animator = GetComponentInChildren<Animator>();
-
         if (_animator == null)
-            Debug.LogWarning($"[NPCController] {gameObject.name}: Animator が見つかりません。モデルまたは AnimatorController を確認してください。");
+            Debug.LogWarning($"[NPCController] {gameObject.name}: Animator が見つかりません。");
 
-        if (_groundLayer.value == 0)
-            _groundLayer = ~(1 << 2);
+        _homePos = transform.position;
+        EnsureScoreRegistration();
 
-        _homePos      = transform.position;
-        _stuckLastPos = transform.position;
-        _stuckTimer   = 2f;
-
-        PickWaypoint();
+        RefreshSensors(force: true);
+        ThinkAndSetGoal(force: true);
     }
 
-    // ── Update: タイマー管理・接地確認・落下死・スタック検出 ──
     private void Update()
     {
         if (_isDead)
@@ -116,147 +116,696 @@ public class NPCController : MonoBehaviour
             return;
         }
 
-        _jumpTimer     = Mathf.Max(0f, _jumpTimer     - Time.deltaTime);
-        _waypointTimer = Mathf.Max(0f, _waypointTimer - Time.deltaTime);
-        _stuckTimer   -= Time.deltaTime;
+        _jumpTimer = Mathf.Max(0f, _jumpTimer - Time.deltaTime);
+        _nextThinkTimer -= Time.deltaTime;
+        _nextSensorRefreshTimer -= Time.deltaTime;
 
+        EnsureGroundMaskValid();
+        EnsureScoreRegistration();
         CheckGrounded();
+        UpdateStuckState();
+        CleanupMissingTargets();
 
         if (transform.position.y < _deathY)
-            Die();
-
-        if (_stuckTimer <= 0f)
         {
-            _stuckTimer = 2f;
-
-            if (Vector3.Distance(transform.position, _stuckLastPos) < 0.4f)
-            {
-                PickWaypoint();
-                TryJump();
-            }
-
-            _stuckLastPos = transform.position;
+            Die();
+            return;
         }
 
+        if (_nextSensorRefreshTimer <= 0f)
+            RefreshSensors(force: false);
+
+        if (_nextThinkTimer <= 0f || ShouldForceReplan())
+            ThinkAndSetGoal(force: false);
+
+        TryHandleRelicInteraction();
         UpdateAnimator(_isMoving, _isGrounded);
     }
 
-    // ── FixedUpdate: Rigidbody 移動 ───────────────────────────
     private void FixedUpdate()
     {
-        if (_isDead) return;
+        if (_isDead)
+            return;
 
-        if (_waypointTimer <= 0f)
-            PickWaypoint();
-
-        Vector3 toWaypoint = _waypoint - transform.position;
-        toWaypoint.y = 0f;
-        float dist = toWaypoint.magnitude;
-
-        if (dist < _waypointTolerance)
+        if (!_hasGoalPosition)
         {
             _isMoving = false;
-            PickWaypoint();
             return;
         }
 
-        Vector3 dir = toWaypoint.normalized;
-
-        // 崖チェック
-        Vector3 aheadCheckOrigin = transform.position + dir * 0.8f + Vector3.up * 0.2f;
-        if (!Physics.Raycast(aheadCheckOrigin, Vector3.down, 2.5f, _groundLayer))
+        Vector3 toGoal = _goalPosition - _rb.position;
+        toGoal.y = 0f;
+        float distance = toGoal.magnitude;
+        if (distance <= _waypointTolerance)
         {
             _isMoving = false;
-            PickWaypoint();
+            OnGoalReached();
             return;
         }
 
-        // 前方障害物チェック
-        var obstacleRay = new Ray(transform.position + Vector3.up * 0.5f, dir);
-        if (Physics.Raycast(obstacleRay, 1.2f, _groundLayer))
+        Vector3 dir = toGoal / Mathf.Max(distance, 0.0001f);
+        dir = ApplyHazardAvoidance(dir);
+        dir = ApplyObstacleAvoidance(dir);
+
+        if (IsCliffAhead(dir))
         {
             TryJump();
-            dir = Quaternion.Euler(0f, Random.Range(-70f, 70f), 0f) * dir;
+            dir = Quaternion.Euler(0f, Random.Range(-95f, 95f), 0f) * dir;
         }
 
-        // 向きを滑らかに変更
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            _isMoving = false;
+            return;
+        }
+
         transform.rotation = Quaternion.Slerp(
             transform.rotation,
             Quaternion.LookRotation(dir),
-            8f * Time.fixedDeltaTime);
+            _turnSpeed * Time.fixedDeltaTime);
 
-        _rb.MovePosition(_rb.position + dir * (_moveSpeed * Time.fixedDeltaTime));
+        float speed = _moveSpeed * (_carriedRelic != null ? _carrySpeedMultiplier : 1f);
+        _rb.MovePosition(_rb.position + dir * (speed * Time.fixedDeltaTime));
         _isMoving = true;
     }
 
-    // ── アニメーター更新 ──────────────────────────────────────
-    private void UpdateAnimator(bool moving, bool grounded)
+    private void ThinkAndSetGoal(bool force)
     {
-        if (_animator == null) return;
+        RelicCarrier nearestRelic = FindNearestRelicCandidate();
+        RelicBase nearestRelicBase = FindNearestRelicBaseCandidate();
+        ShelterZone nearestShelter = FindNearestShelter();
+        PlayerHealthSystem nearestAlly = FindNearestAlivePlayer();
+        bool allyInDanger = nearestAlly != null && nearestAlly.HpPercent <= 0.45f;
 
-        float targetSpeed = moving ? 1f : 0f;
-        _currentSpeed = Mathf.SmoothDamp(_currentSpeed, targetSpeed,
-                                          ref _speedVelocity, _animSmoothTime);
+        float nearestCarrierDistance = nearestRelic != null ? Vector3.Distance(transform.position, nearestRelic.transform.position) : Mathf.Infinity;
+        float nearestBaseDistance = nearestRelicBase != null ? Vector3.Distance(transform.position, nearestRelicBase.transform.position) : Mathf.Infinity;
+        float nearestRelicDistance = Mathf.Min(nearestCarrierDistance, nearestBaseDistance);
+        float nearestReturnDistance = _returnZoneTransform != null ? Vector3.Distance(transform.position, _returnZoneTransform.position) : Mathf.Infinity;
+        float nearestShelterDistance = nearestShelter != null ? Vector3.Distance(transform.position, nearestShelter.transform.position) : Mathf.Infinity;
+        float nearestAllyDistance = nearestAlly != null ? Vector3.Distance(transform.position, nearestAlly.transform.position) : Mathf.Infinity;
 
-        _animator.SetFloat(SpeedHash,      _currentSpeed);
-        _animator.SetFloat(SpeedBlendHash, 0f);   // NPC はスプリントしない
-        _animator.SetBool(IsGroundedHash,  grounded);
+        var context = new NpcMetaContext(
+            hasRelic: _carriedRelic != null,
+            hpRatio: _maxHp > 0.001f ? _currentHp / _maxHp : 1f,
+            threatLevel: ComputeThreatLevel(),
+            expeditionUrgency: ComputeExpeditionUrgency(),
+            nearestRelicDistance: nearestRelicDistance,
+            nearestReturnZoneDistance: nearestReturnDistance,
+            nearestShelterDistance: nearestShelterDistance,
+            nearestTeammateDistance: nearestAllyDistance,
+            allyInDanger: allyInDanger,
+            stuckSeconds: _stuckSeconds);
+
+        NpcMetaDecision decision = _decisionEngine.Decide(context);
+        _currentGoal = decision.Goal;
+        _goalReason = decision.Reason;
+
+        switch (_currentGoal)
+        {
+            case NpcMetaGoal.ReturnRelic:
+                _goalPosition = _returnZoneTransform != null ? _returnZoneTransform.position : _homePos;
+                _hasGoalPosition = true;
+                break;
+
+            case NpcMetaGoal.SecureRelic:
+                _targetRelic = nearestRelic;
+                _targetRelicBase = _targetRelic == null ? nearestRelicBase : null;
+                _hasGoalPosition = _targetRelic != null || _targetRelicBase != null;
+                if (_targetRelic != null)
+                    _goalPosition = _targetRelic.transform.position;
+                else if (_targetRelicBase != null)
+                    _goalPosition = _targetRelicBase.transform.position;
+                break;
+
+            case NpcMetaGoal.Recover:
+                _hasGoalPosition = nearestShelter != null;
+                if (_hasGoalPosition)
+                {
+                    _goalPosition = nearestShelter.transform.position;
+                }
+                else
+                {
+                    _goalPosition = _homePos;
+                    _hasGoalPosition = true;
+                }
+                break;
+
+            case NpcMetaGoal.AssistTeammate:
+                _assistTarget = nearestAlly != null ? nearestAlly.transform : null;
+                _hasGoalPosition = _assistTarget != null;
+                if (_hasGoalPosition)
+                    _goalPosition = _assistTarget.position;
+                break;
+
+            case NpcMetaGoal.Repath:
+                _goalPosition = PickExploreWaypoint();
+                _hasGoalPosition = true;
+                break;
+
+            case NpcMetaGoal.Explore:
+            default:
+                if (!force && _hasGoalPosition && Vector3.Distance(_rb.position, _goalPosition) > _retargetDistance)
+                {
+                    // 直前ゴールを維持して無駄な目標変更を減らす。
+                    break;
+                }
+
+                _goalPosition = PickExploreWaypoint();
+                _hasGoalPosition = true;
+                break;
+        }
+
+        if (_verboseDecisionLog)
+        {
+            Debug.Log($"[NPCMetaAI] {name} goal={_currentGoal} score={decision.Score:F2} reason={_goalReason}");
+        }
+
+        _nextThinkTimer = Random.Range(_thinkIntervalMin, _thinkIntervalMax);
     }
 
-    // ── 接地確認 ──────────────────────────────────────────────
+    private void RefreshSensors(bool force)
+    {
+        _nextSensorRefreshTimer = _sensorRefreshInterval;
+
+        _relicBuffer.Clear();
+        _relicBuffer.AddRange(Object.FindObjectsByType<RelicCarrier>(FindObjectsSortMode.None));
+
+        _relicBaseBuffer.Clear();
+        _relicBaseBuffer.AddRange(Object.FindObjectsByType<RelicBase>(FindObjectsSortMode.None));
+
+        _shelterBuffer.Clear();
+        _shelterBuffer.AddRange(Object.FindObjectsByType<ShelterZone>(FindObjectsSortMode.None));
+
+        _hazardBuffer.Clear();
+        AddHazards(Object.FindObjectsByType<IcePatch>(FindObjectsSortMode.None));
+        AddHazards(Object.FindObjectsByType<CollapsiblePlatform>(FindObjectsSortMode.None));
+        AddHazards(Object.FindObjectsByType<RockfallTrigger>(FindObjectsSortMode.None));
+        AddHazards(Object.FindObjectsByType<FakeFloor>(FindObjectsSortMode.None));
+        AddHazards(Object.FindObjectsByType<PressurePlateArrow>(FindObjectsSortMode.None));
+        AddHazards(Object.FindObjectsByType<PendulumLog>(FindObjectsSortMode.None));
+        AddHazards(Object.FindObjectsByType<FallingCeiling>(FindObjectsSortMode.None));
+
+        if (_returnZoneTransform == null || force)
+        {
+            var returnZone = Object.FindFirstObjectByType<ReturnZone>();
+            _returnZoneTransform = returnZone != null ? returnZone.transform : null;
+        }
+    }
+
+    private void AddHazards<T>(T[] hazards) where T : Component
+    {
+        foreach (T hazard in hazards)
+        {
+            if (hazard == null)
+                continue;
+
+            _hazardBuffer.Add(hazard.transform);
+        }
+    }
+
+    private void TryHandleRelicInteraction()
+    {
+        if (_carriedRelic != null)
+        {
+            if (_returnZoneTransform != null &&
+                Vector3.Distance(transform.position, _returnZoneTransform.position) <= _returnZoneDropRange)
+            {
+                _carriedRelic.PutDown();
+                _carriedRelic = null;
+                _targetRelic = null;
+                _nextThinkTimer = 0f;
+            }
+
+            return;
+        }
+
+        if (_targetRelic == null || _targetRelic.IsBeingCarried)
+        {
+            if (_targetRelicBase != null)
+            {
+                float baseDistance = Vector3.Distance(transform.position, _targetRelicBase.transform.position);
+                if (baseDistance <= _relicPickupRange)
+                {
+                    // RelicCarrier が無い遺物でも「確保」扱いとしてスコアへ反映する。
+                    EnsureScoreRegistration();
+                    GameServices.Score?.RegisterCollectedRelic(_targetRelicBase);
+                    GameServices.Score?.RecordRelicFound(GetInstanceID());
+                    _targetRelicBase = null;
+                    _nextThinkTimer = 0f;
+                }
+            }
+
+            return;
+        }
+
+        float distance = Vector3.Distance(transform.position, _targetRelic.transform.position);
+        if (distance > _relicPickupRange)
+            return;
+
+        _targetRelic.PickUp(transform, GetInstanceID());
+        _carriedRelic = _targetRelic;
+        _targetRelic = null;
+        _targetRelicBase = null;
+        _nextThinkTimer = 0f;
+    }
+
     private void CheckGrounded()
     {
-        Vector3 origin = _rb.position + Vector3.up * _groundCheckOffset;
-        _isGrounded = Physics.CheckSphere(
-            origin, _groundCheckRadius, _groundLayer, QueryTriggerInteraction.Ignore);
+        Vector3 sphereOrigin = _rb.position + Vector3.up * _groundCheckOffset;
+        bool sphere = Physics.CheckSphere(
+            sphereOrigin,
+            _groundCheckRadius,
+            _groundLayer,
+            QueryTriggerInteraction.Ignore);
+
+        bool ray = Physics.Raycast(
+            _rb.position + Vector3.up * 0.1f,
+            Vector3.down,
+            Mathf.Abs(_groundCheckOffset) + _groundCheckRadius + 0.35f,
+            _groundLayer,
+            QueryTriggerInteraction.Ignore);
+
+        _isGrounded = sphere || ray;
     }
 
-    // ── ジャンプ ──────────────────────────────────────────────
+    private void UpdateStuckState()
+    {
+        _stuckSampleTimer -= Time.deltaTime;
+        if (_stuckSampleTimer > 0f)
+            return;
+
+        _stuckSampleTimer = 1f;
+        float moved = Vector3.Distance(transform.position, _stuckLastPos);
+        _stuckLastPos = transform.position;
+
+        if (moved < 0.35f)
+            _stuckSeconds += 1f;
+        else
+            _stuckSeconds = Mathf.Max(0f, _stuckSeconds - 0.6f);
+    }
+
     private void TryJump()
     {
-        if (!_isGrounded || _jumpTimer > 0f) return;
+        if (!_isGrounded || _jumpTimer > 0f)
+            return;
 
         _jumpTimer = _jumpCooldown;
-        Vector3 vel = _rb.linearVelocity;
-        vel.y = 0f;
-        _rb.linearVelocity = vel;
-        _rb.AddForce(Vector3.up * _jumpForce, ForceMode.Impulse);
-
+        Vector3 velocity = _rb.linearVelocity;
+        if (velocity.y < 0f)
+            velocity.y = 0f;
+        velocity.y = _jumpVelocity;
+        _rb.linearVelocity = velocity;
         _animator?.SetTrigger(JumpTriggerHash);
     }
 
-    // ── ウェイポイント選択 ────────────────────────────────────
-    private void PickWaypoint()
+    private void OnGoalReached()
     {
-        _waypointTimer = _targetPickInterval + Random.Range(-1f, 1.5f);
+        switch (_currentGoal)
+        {
+            case NpcMetaGoal.AssistTeammate:
+                // 味方に合流したら少し待って次の判断へ。
+                _nextThinkTimer = 0.3f;
+                break;
 
-        Vector2 xz   = Random.insideUnitCircle * _wanderRadius;
-        float   yOff = Random.Range(-3f, 12f);
+            case NpcMetaGoal.ReturnRelic:
+                // 返却地点到達時は遺物ドロップ判定を優先。
+                TryHandleRelicInteraction();
+                _nextThinkTimer = 0f;
+                break;
 
-        _waypoint = new Vector3(
-            _homePos.x + xz.x,
-            _homePos.y + yOff,
-            _homePos.z + xz.y);
+            default:
+                _nextThinkTimer = 0f;
+                break;
+        }
     }
 
-    // ── HP / ダメージ ─────────────────────────────────────────
+    private void CleanupMissingTargets()
+    {
+        if (_targetRelic != null && _targetRelic.IsBeingCarried && _targetRelic != _carriedRelic)
+            _targetRelic = null;
+        if (_targetRelicBase != null && _targetRelicBase.IsDestroyed)
+            _targetRelicBase = null;
+
+        if (_assistTarget != null && !_assistTarget.gameObject.activeInHierarchy)
+            _assistTarget = null;
+
+        if (_carriedRelic == null && _currentGoal == NpcMetaGoal.ReturnRelic)
+            _nextThinkTimer = 0f;
+    }
+
+    private bool ShouldForceReplan()
+    {
+        if (_stuckSeconds >= 2f)
+            return true;
+
+        if (_currentGoal == NpcMetaGoal.SecureRelic && (_targetRelic == null || _targetRelic.IsBeingCarried))
+            return _targetRelicBase == null;
+
+        if (_currentGoal == NpcMetaGoal.AssistTeammate && _assistTarget == null)
+            return true;
+
+        return false;
+    }
+
+    private float ComputeThreatLevel()
+    {
+        float threat = 0f;
+
+        if (!_isGrounded)
+            threat += Mathf.Clamp01(-_rb.linearVelocity.y / 10f) * 0.55f;
+
+        if (_maxHp > 0.001f)
+            threat += Mathf.Clamp01((0.4f - (_currentHp / _maxHp)) * 1.7f);
+
+        Vector3 forward = transform.forward;
+        if (IsCliffAhead(forward))
+            threat += 0.25f;
+
+        Transform nearestHazard = FindNearestHazard(_hazardAvoidRadius);
+        if (nearestHazard != null)
+        {
+            float d = Vector3.Distance(transform.position, nearestHazard.position);
+            threat += Mathf.Clamp01(1f - (d / Mathf.Max(0.01f, _hazardAvoidRadius))) * 0.45f;
+        }
+
+        threat += Mathf.Clamp01(_stuckSeconds / 5f) * 0.2f;
+        return Mathf.Clamp01(threat);
+    }
+
+    private float ComputeExpeditionUrgency()
+    {
+        if (GameServices.Expedition == null)
+            return 0.3f;
+
+        return GameServices.Expedition.Phase switch
+        {
+            ExpeditionPhase.Basecamp => 0.15f,
+            ExpeditionPhase.Climbing => 0.55f,
+            ExpeditionPhase.Returning => 0.9f,
+            ExpeditionPhase.Result => 0.1f,
+            _ => 0.3f
+        };
+    }
+
+    private Vector3 ApplyHazardAvoidance(Vector3 dir)
+    {
+        Transform nearest = FindNearestHazard(_hazardAvoidRadius);
+        if (nearest == null)
+            return dir;
+
+        Vector3 away = transform.position - nearest.position;
+        away.y = 0f;
+        float distance = away.magnitude;
+        if (distance <= 0.01f)
+            return dir;
+
+        float weight = 1f - Mathf.Clamp01(distance / Mathf.Max(0.01f, _hazardAvoidRadius));
+        Vector3 blended = (dir + away.normalized * (weight * 1.4f)).normalized;
+        return blended.sqrMagnitude > 0.0001f ? blended : dir;
+    }
+
+    private Vector3 ApplyObstacleAvoidance(Vector3 dir)
+    {
+        var ray = new Ray(transform.position + Vector3.up * 0.5f, dir);
+        if (!Physics.Raycast(ray, out RaycastHit hit, 1.2f, _groundLayer, QueryTriggerInteraction.Ignore))
+            return dir;
+
+        Vector3 tangent = Vector3.Cross(Vector3.up, hit.normal).normalized;
+        if (Vector3.Dot(tangent, dir) < 0f)
+            tangent = -tangent;
+
+        TryJump();
+        Vector3 adjusted = (dir + tangent * 0.85f).normalized;
+        return adjusted.sqrMagnitude > 0.0001f ? adjusted : dir;
+    }
+
+    private bool IsCliffAhead(Vector3 dir)
+    {
+        Vector3 aheadOrigin = transform.position + dir * 0.9f + Vector3.up * 0.25f;
+        return !Physics.Raycast(
+            aheadOrigin,
+            Vector3.down,
+            2.6f,
+            _groundLayer,
+            QueryTriggerInteraction.Ignore);
+    }
+
+    private Vector3 PickExploreWaypoint()
+    {
+        Vector3 best = _homePos;
+        float bestScore = float.NegativeInfinity;
+
+        for (int i = 0; i < 10; i++)
+        {
+            Vector2 xz = Random.insideUnitCircle * _exploreRadius;
+            Vector3 candidate = new Vector3(
+                _homePos.x + xz.x,
+                transform.position.y + Random.Range(-2f, 7f),
+                _homePos.z + xz.y);
+
+            if (!TryProjectToGround(candidate, out Vector3 grounded))
+                continue;
+
+            float altitudeGain = grounded.y - transform.position.y;
+            float distFromCurrent = Vector3.Distance(transform.position, grounded);
+            float hazardPenalty = 0f;
+
+            Transform nearbyHazard = FindNearestHazardFrom(grounded, _hazardAvoidRadius);
+            if (nearbyHazard != null)
+            {
+                float hd = Vector3.Distance(grounded, nearbyHazard.position);
+                hazardPenalty = 1f - Mathf.Clamp01(hd / Mathf.Max(0.01f, _hazardAvoidRadius));
+            }
+
+            float score = (altitudeGain * 0.35f)
+                          + (Mathf.Clamp01(distFromCurrent / _exploreRadius) * 0.25f)
+                          - (hazardPenalty * 0.8f);
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = grounded;
+            }
+        }
+
+        return best;
+    }
+
+    private bool TryProjectToGround(Vector3 worldPoint, out Vector3 groundedPoint)
+    {
+        Vector3 rayOrigin = worldPoint + Vector3.up * 12f;
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, 28f, _groundLayer, QueryTriggerInteraction.Ignore))
+        {
+            groundedPoint = hit.point;
+            return true;
+        }
+
+        groundedPoint = worldPoint;
+        return false;
+    }
+
+    private void EnsureGroundMaskValid()
+    {
+        int mask = _groundLayer.value;
+        int defaultLayer = LayerMask.NameToLayer("Default");
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        int playerLayer = LayerMask.NameToLayer("Player");
+
+        bool missingDefault = defaultLayer >= 0 && (mask & (1 << defaultLayer)) == 0;
+        bool missingGround = groundLayer >= 0 && (mask & (1 << groundLayer)) == 0;
+        bool includesPlayer = playerLayer >= 0 && (mask & (1 << playerLayer)) != 0;
+        bool includesIgnoreRaycast = (mask & (1 << 2)) != 0;
+
+        if (missingDefault || missingGround || includesPlayer || includesIgnoreRaycast)
+            ResolveGroundMask();
+    }
+
+    private void ResolveGroundMask()
+    {
+        // 現在値に依存せず、毎回マスクを再構成して不正状態を自己修復する。
+        int mask = Physics.DefaultRaycastLayers;
+
+        int defaultLayer = LayerMask.NameToLayer("Default");
+        if (defaultLayer >= 0)
+            mask |= 1 << defaultLayer;
+
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        if (groundLayer >= 0)
+            mask |= 1 << groundLayer;
+
+        // 自己コライダー誤検知を避けるため、Player レイヤーだけ除外する。
+        int playerLayer = LayerMask.NameToLayer("Player");
+        if (playerLayer >= 0)
+            mask &= ~(1 << playerLayer);
+
+        // Ignore Raycast は常に除外。
+        mask &= ~(1 << 2);
+        _groundLayer = mask;
+    }
+
+    private void EnsureScoreRegistration()
+    {
+        IScoreService score = GameServices.Score;
+        if (score == null)
+            return;
+
+        score.RegisterPlayer(GetInstanceID(), gameObject.name);
+    }
+
+    private RelicCarrier FindNearestRelicCandidate()
+    {
+        float best = Mathf.Infinity;
+        RelicCarrier bestRelic = null;
+        for (int i = 0; i < _relicBuffer.Count; i++)
+        {
+            RelicCarrier relic = _relicBuffer[i];
+            if (relic == null)
+                continue;
+
+            if (relic.IsBeingCarried && relic != _carriedRelic)
+                continue;
+
+            float d = Vector3.Distance(transform.position, relic.transform.position);
+            if (d < best)
+            {
+                best = d;
+                bestRelic = relic;
+            }
+        }
+
+        return bestRelic;
+    }
+
+    private RelicBase FindNearestRelicBaseCandidate()
+    {
+        float best = Mathf.Infinity;
+        RelicBase bestRelic = null;
+        for (int i = 0; i < _relicBaseBuffer.Count; i++)
+        {
+            RelicBase relic = _relicBaseBuffer[i];
+            if (relic == null || relic.IsDestroyed || relic.IsHeld)
+                continue;
+
+            float d = Vector3.Distance(transform.position, relic.transform.position);
+            if (d < best)
+            {
+                best = d;
+                bestRelic = relic;
+            }
+        }
+
+        return bestRelic;
+    }
+
+    private ShelterZone FindNearestShelter()
+    {
+        float best = Mathf.Infinity;
+        ShelterZone bestShelter = null;
+        for (int i = 0; i < _shelterBuffer.Count; i++)
+        {
+            ShelterZone shelter = _shelterBuffer[i];
+            if (shelter == null)
+                continue;
+
+            float d = Vector3.Distance(transform.position, shelter.transform.position);
+            if (d < best)
+            {
+                best = d;
+                bestShelter = shelter;
+            }
+        }
+
+        return bestShelter;
+    }
+
+    private PlayerHealthSystem FindNearestAlivePlayer()
+    {
+        IReadOnlyList<PlayerHealthSystem> players = PlayerHealthSystem.RegisteredPlayers;
+        float best = Mathf.Infinity;
+        PlayerHealthSystem bestPlayer = null;
+
+        for (int i = 0; i < players.Count; i++)
+        {
+            PlayerHealthSystem player = players[i];
+            if (player == null || player.IsDead || player.gameObject == gameObject)
+                continue;
+
+            float d = Vector3.Distance(transform.position, player.transform.position);
+            if (d < best)
+            {
+                best = d;
+                bestPlayer = player;
+            }
+        }
+
+        return bestPlayer;
+    }
+
+    private Transform FindNearestHazard(float withinDistance)
+    {
+        return FindNearestHazardFrom(transform.position, withinDistance);
+    }
+
+    private Transform FindNearestHazardFrom(Vector3 from, float withinDistance)
+    {
+        float best = withinDistance;
+        Transform nearest = null;
+        for (int i = 0; i < _hazardBuffer.Count; i++)
+        {
+            Transform hazard = _hazardBuffer[i];
+            if (hazard == null)
+                continue;
+
+            float d = Vector3.Distance(from, hazard.position);
+            if (d < best)
+            {
+                best = d;
+                nearest = hazard;
+            }
+        }
+
+        return nearest;
+    }
+
+    private void UpdateAnimator(bool moving, bool grounded)
+    {
+        if (_animator == null)
+            return;
+
+        float targetSpeed = moving ? 1f : 0f;
+        _currentSpeed = Mathf.SmoothDamp(_currentSpeed, targetSpeed, ref _speedVelocity, _animSmoothTime);
+
+        _animator.SetFloat(SpeedHash, _currentSpeed);
+        _animator.SetFloat(SpeedBlendHash, 0f);
+        _animator.SetBool(IsGroundedHash, grounded);
+    }
+
     public void TakeDamage(float amount)
     {
-        if (_isDead || amount <= 0f) return;
+        if (_isDead || amount <= 0f)
+            return;
+
         _currentHp = Mathf.Max(0f, _currentHp - amount);
-        if (_currentHp <= 0f) Die();
+        if (_currentHp <= 0f)
+            Die();
     }
 
-    // ── 死亡 / リスポーン ─────────────────────────────────────
     private void Die()
     {
-        if (_isDead) return;
+        if (_isDead)
+            return;
 
-        _isDead            = true;
-        _rb.isKinematic    = true;
+        _isDead = true;
+        _isMoving = false;
+        _rb.isKinematic = true;
         _rb.linearVelocity = Vector3.zero;
 
-        Debug.Log($"[NPC] {gameObject.name} が死亡しました");
+        if (_carriedRelic != null)
+        {
+            _carriedRelic.Drop(Vector3.zero);
+            _carriedRelic = null;
+        }
+
         StartCoroutine(RespawnRoutine());
     }
 
@@ -265,23 +814,30 @@ public class NPCController : MonoBehaviour
         yield return new WaitForSeconds(_respawnDelay);
 
         transform.position = _homePos;
-        _currentHp         = _maxHp;
-        _isDead            = false;
-        _isMoving          = false;
-        _rb.isKinematic    = false;
+        _currentHp = _maxHp;
+        _isDead = false;
+        _rb.isKinematic = false;
+        _rb.linearVelocity = Vector3.zero;
+        _stuckSeconds = 0f;
+        _stuckSampleTimer = 0f;
+        _targetRelic = null;
+        _carriedRelic = null;
+        _assistTarget = null;
 
-        PickWaypoint();
-        Debug.Log($"[NPC] {gameObject.name} がリスポーンしました");
+        RefreshSensors(force: true);
+        ThinkAndSetGoal(force: true);
     }
 
-    // ── デバッグ表示 ─────────────────────────────────────────
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.cyan;
-        Gizmos.DrawLine(transform.position, _waypoint);
-        Gizmos.DrawWireSphere(_waypoint, 0.4f);
+        Gizmos.DrawWireSphere(Application.isPlaying ? _homePos : transform.position, _exploreRadius);
 
-        Gizmos.color = new Color(0f, 1f, 1f, 0.15f);
-        Gizmos.DrawWireSphere(_homePos, _wanderRadius);
+        if (_hasGoalPosition)
+        {
+            Gizmos.color = Color.yellow;
+            Gizmos.DrawLine(transform.position, _goalPosition);
+            Gizmos.DrawWireSphere(_goalPosition, 0.35f);
+        }
     }
 }

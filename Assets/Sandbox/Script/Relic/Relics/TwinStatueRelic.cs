@@ -1,4 +1,6 @@
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物⑥「鎖付き双子像」
@@ -94,6 +96,8 @@ public class TwinStatueRelic : RelicBase
             _isChainSnagged = true;
             _snagTimer = SNAG_TIMEOUT;
             Debug.Log("[TwinStatue] 「鎖引っかかった！」「3本足レースかよ」");
+            // GDD §15.2 — relic_twins_chain（鎖引っかかりのエッジトリガー）
+            PPAudioManager.Instance?.PlaySE(SoundId.RelicTwinsChain, transform.position);
         }
 
         if (_isChainSnagged)

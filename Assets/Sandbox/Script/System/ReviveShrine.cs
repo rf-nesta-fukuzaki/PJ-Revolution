@@ -1,5 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §4.2 — 復活の祠。
@@ -52,6 +54,9 @@ public class ReviveShrine : MonoBehaviour
         if (_ambientParticles != null) _ambientParticles.Stop();
         if (_reviveParticles != null) _reviveParticles.Play();
         UpdateVisuals();
+
+        // GDD §15.2 — shrine_activate（祠の発動音）
+        PPAudioManager.Instance?.PlaySE(SoundId.ShrineActivate, transform.position);
 
         Debug.Log($"[ReviveShrine] 祠を使用: {name}");
     }

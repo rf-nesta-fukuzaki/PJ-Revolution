@@ -70,7 +70,18 @@ public class StretcherItem : ItemBase
         attachPoint = null;
         if (player == null) return false;
 
-        if (_driverA == null)
+        // 最寄りの空き端が _snapRadius 以内にあるときのみ乗り込める。
+        // これで離れた場所からワープで掴めないよう制約する。
+        Transform nearest        = GetNearestFreeEnd(player.transform, out float nearestDist);
+        bool      withinSnapRange = nearest != null && nearestDist <= _snapRadius;
+
+        if (!withinSnapRange)
+        {
+            Debug.Log($"[Stretcher] 端から遠すぎる ({nearestDist:F1}m > {_snapRadius:F1}m)。もっと近づいてから掴んでください");
+            return false;
+        }
+
+        if (_driverA == null && nearest == _endA)
         {
             _driverA    = player;
             _carrierA   = player.transform;
@@ -79,7 +90,7 @@ public class StretcherItem : ItemBase
             return true;
         }
 
-        if (_driverB == null && _driverA != player)
+        if (_driverB == null && _driverA != player && nearest == _endB)
         {
             _driverB    = player;
             _carrierB   = player.transform;
@@ -89,6 +100,25 @@ public class StretcherItem : ItemBase
         }
 
         return false;
+    }
+
+    /// <summary>指定 Transform から最も近い「空き」担架端を返す（出距離付き）。</summary>
+    private Transform GetNearestFreeEnd(Transform from, out float dist)
+    {
+        dist = float.PositiveInfinity;
+        Transform result = null;
+
+        if (_endA != null && _driverA == null)
+        {
+            float dA = Vector3.Distance(from.position, _endA.position);
+            if (dA < dist) { dist = dA; result = _endA; }
+        }
+        if (_endB != null && _driverB == null)
+        {
+            float dB = Vector3.Distance(from.position, _endB.position);
+            if (dB < dist) { dist = dB; result = _endB; }
+        }
+        return result;
     }
 
     /// <summary>プレイヤーが担架を離す。</summary>

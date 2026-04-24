@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.1 — 全遺物の基底クラス。
@@ -104,6 +106,10 @@ public abstract class RelicBase : MonoBehaviour
         _currentHp     = _maxHp;
         _lastCondition = RelicCondition.Perfect;
         RebuildVisual();
+
+        // GDD §14.9: 遺物発見トリガーを自動装着（未アタッチ時のみ）。
+        if (GetComponent<RelicDiscoveryTrigger>() == null)
+            gameObject.AddComponent<RelicDiscoveryTrigger>();
     }
 
     /// <summary>RelicDefinitionSO の値を自身のフィールドに適用する。</summary>
@@ -163,6 +169,12 @@ public abstract class RelicBase : MonoBehaviour
             Debug.Assert(newCondition > prev || newCondition == RelicCondition.Destroyed,
                 $"[Contract] RelicBase: 状態は悪化方向にしか変化しません ({prev} → {newCondition})");
             OnConditionChanged?.Invoke(prev, newCondition);
+
+            // GDD §15.2 — relic_damage_light / relic_damage_heavy（ティア悪化時）
+            if (newCondition == RelicCondition.Damaged)
+                PPAudioManager.Instance?.PlaySE(SoundId.RelicDamageLight, transform.position);
+            else if (newCondition == RelicCondition.HeavilyDamaged)
+                PPAudioManager.Instance?.PlaySE(SoundId.RelicDamageHeavy, transform.position);
         }
 
         OnDamageReceived(damage, source);
@@ -226,6 +238,10 @@ public abstract class RelicBase : MonoBehaviour
     private void HandleDestruction()
     {
         _isDestroyed = true;
+
+        // GDD §15.2 — relic_destroyed（破壊確定時の大破音）
+        PPAudioManager.Instance?.PlaySE(SoundId.RelicDestroyed, transform.position);
+
         OnRelicBroken?.Invoke(this);
         OnBroken();
     }
@@ -241,6 +257,9 @@ public abstract class RelicBase : MonoBehaviour
     {
         _isHeld = true;
         _rb.isKinematic = false;
+
+        // GDD §15.2 — relic_grab（遺物を持ち上げた音）
+        PPAudioManager.Instance?.PlaySE(SoundId.RelicGrab, transform.position);
     }
 
     public virtual void OnPutDown()

@@ -1,5 +1,7 @@
 using System.Collections;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「緊急無線機」
@@ -43,6 +45,9 @@ public class EmergencyRadioItem : ItemBase
         _isBroadcasting = true;
         ConsumeDurability(_maxDurability * 0.8f);  // 大量消耗
 
+        // GDD §15.2 — radio_activate
+        PPAudioManager.Instance?.PlaySE(SoundId.RadioActivate, transform.position);
+
         Debug.Log("[EmergencyRadio] 緊急ブロードキャスト開始！プロキシミティ制限解除");
 
         // ProximityVoiceChat がある場合は距離制限を解除
@@ -61,8 +66,6 @@ public class EmergencyRadioItem : ItemBase
         ConsumeDurability(_maxDurability);  // 使用後は壊れる
         Debug.Log("[EmergencyRadio] ブロードキャスト終了");
     }
-
-    protected override float GetUseDurabilityDrain() => _maxDurability;
 
     protected override void OnItemBroken()
     {

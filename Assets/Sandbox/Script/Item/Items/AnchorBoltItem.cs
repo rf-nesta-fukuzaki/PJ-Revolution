@@ -1,4 +1,6 @@
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「アンカーボルト（×3）」
@@ -76,14 +78,15 @@ public class AnchorBoltItem : ItemBase
         // RopeManager にアンカーポイントとして登録（実装があれば）
         GameServices.Ropes?.RegisterAnchorPoint(anchor.transform);
 
+        // GDD §15.2 — anchor_bolt_set
+        PPAudioManager.Instance?.PlaySE(SoundId.AnchorBoltSet, position);
+
         _chargesLeft--;
         GameServices.Score?.RecordRopePlacement(playerId);
         ConsumeDurability(100f / _maxCharges);
 
         Debug.Log($"[AnchorBolt] 設置完了。残り {_chargesLeft}/{_maxCharges} 個");
     }
-
-    protected override float GetUseDurabilityDrain() => 100f / _maxCharges;
 
     public override bool TryUse()
     {

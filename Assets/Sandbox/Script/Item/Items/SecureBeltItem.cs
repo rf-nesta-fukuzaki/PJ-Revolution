@@ -1,4 +1,6 @@
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「固定ベルト」
@@ -53,6 +55,9 @@ public class SecureBeltItem : ItemBase
         relic.transform.SetParent(playerBack);
         relic.transform.localPosition = _backOffset;
         relic.transform.localRotation = Quaternion.identity;
+
+        // GDD §15.2 — belt_attach（ベルトのバックル音）
+        PPAudioManager.Instance?.PlaySE(SoundId.BeltAttach, relic.transform.position);
 
         Debug.Log($"[SecureBelt] {relic.RelicName} を背中に固定");
         return true;

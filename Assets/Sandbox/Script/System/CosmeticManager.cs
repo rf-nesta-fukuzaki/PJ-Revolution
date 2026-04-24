@@ -23,7 +23,34 @@ public class CosmeticManager : MonoBehaviour
         "hat_explorer",    // 遺物を完品で 1 個以上回収
         "pack_standard",   // 最初から解放
         "pack_large",      // 3 遺物以上回収
-        "pack_expedition"  // 全遺物完品回収
+        "pack_expedition", // 全遺物完品回収
+
+        // ── GDD §12.6 メタ進行（累積チームスコア閾値による解放）──
+        "hat_adventurer_brown",       //    500pt — 冒険者キャップ（茶）
+        "pack_duck_pattern",          //  1,500pt — アヒル柄バックパック
+        "skin_ancient_robe_blue",     //  3,000pt — 古代文明ローブ（青）
+        "hat_priest_mask",            //  5,000pt — 祭司の仮面
+        "pack_golden_duck",           //  8,000pt — 黄金あひるバックパック
+        "hat_crystal_crown",          // 12,000pt — クリスタルの冠
+        "skin_ruin_explorer_suit",    // 18,000pt — 遺跡探検家スーツ
+        "pack_ancient_wings",         // 25,000pt — 古代文明の翼（装飾背負い物）
+        "skin_legend_hunter_gold",    // 35,000pt — 伝説のハンタースーツ（金）
+        "frame_ancient_master"        // 50,000pt — 「古代文明マスター」称号フレーム
+    };
+
+    /// <summary>GDD §12.6 表: 累積チームスコア閾値と解放コスメ ID の対応。</summary>
+    public static readonly (int scoreThreshold, string cosmeticId)[] CUMULATIVE_UNLOCKS =
+    {
+        (   500, "hat_adventurer_brown"),
+        ( 1_500, "pack_duck_pattern"),
+        ( 3_000, "skin_ancient_robe_blue"),
+        ( 5_000, "hat_priest_mask"),
+        ( 8_000, "pack_golden_duck"),
+        (12_000, "hat_crystal_crown"),
+        (18_000, "skin_ruin_explorer_suit"),
+        (25_000, "pack_ancient_wings"),
+        (35_000, "skin_legend_hunter_gold"),
+        (50_000, "frame_ancient_master")
     };
 
     public event System.Action<string> OnCosmeticUnlocked;
@@ -104,5 +131,20 @@ public class CosmeticManager : MonoBehaviour
         }
         if (allPerfect)
             Unlock("pack_expedition");
+    }
+
+    /// <summary>
+    /// GDD §12.6 メタ進行: 累積チームスコアに応じて対応するコスメティックを解放する。
+    /// SaveManager.UpdateFromResult 直後に呼び、しきい値を超えたアイテムを一度に解放する。
+    /// </summary>
+    public void ProcessCumulativeRewards(int cumulativeTeamScore)
+    {
+        if (cumulativeTeamScore <= 0) return;
+
+        foreach (var (threshold, id) in CUMULATIVE_UNLOCKS)
+        {
+            if (cumulativeTeamScore >= threshold)
+                Unlock(id);
+        }
     }
 }

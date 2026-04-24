@@ -9,7 +9,7 @@ using TMPro;
 ///
 /// タブ：グラフィック / オーディオ / 操作 / アクセシビリティ
 ///
-/// 設定は PlayerPrefs に保存（§18.1 settings.json に相当）。
+/// 設定は settings.json（GDD §18.6）へ保存し、互換のため PlayerPrefs にも同期する。
 /// 閉じるボタン押下またはシーン開始時に ApplyAll() で即時反映。
 ///
 /// アクセス方法：
@@ -101,6 +101,8 @@ public class SettingsManager : MonoBehaviour
 
     // ── FPS 上限テーブル ──────────────────────────────────────
     private static readonly int[] FPS_OPTIONS = { 30, 60, 120, 0 };   // 0 = 無制限
+    private SettingsGameplaySnapshot _loadedGameplaySnapshot = SettingsGameplaySnapshot.Default;
+    private bool _hasLoadedGameplaySnapshot;
 
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
@@ -112,8 +114,9 @@ public class SettingsManager : MonoBehaviour
 
     private void Start()
     {
-        Settings = Load();
+        Settings = LoadSettings();
         ApplyAll(Settings);
+        ApplyLoadedGameplaySnapshot();
         BindUI();
         PopulateUI(Settings);
         ShowTab(0);
@@ -322,6 +325,10 @@ public class SettingsManager : MonoBehaviour
             if (canvas.renderMode != RenderMode.WorldSpace)
                 canvas.scaleFactor = scale;
         }
+
+        // GDD §14.7: 色覚サポート。パレットサービスへモードを伝搬し、購読済み UI を自動再着色。
+        if (ColorBlindPaletteService.Instance != null)
+            ColorBlindPaletteService.Instance.SetModeInt(s.colorBlindMode);
     }
 
     // ── マイクテスト（GDD §14.7）────────────────────────────
@@ -364,6 +371,33 @@ public class SettingsManager : MonoBehaviour
     // ── 保存 / 読み込み ──────────────────────────────────────
     public void Save(SettingsData s)
     {
+        SaveToPlayerPrefs(s);
+
+        string playerDisplayName = SaveManager.Instance != null
+            ? SaveManager.Instance.PlayerDisplayName
+            : string.Empty;
+        bool tutorialHintsEnabled = SaveManager.Instance == null
+            || SaveManager.Instance.IsTutorialHintsEnabled();
+        SettingsJsonStore.Save(Application.persistentDataPath, s, playerDisplayName, tutorialHintsEnabled);
+    }
+
+    private SettingsData LoadSettings()
+    {
+        if (SettingsJsonStore.TryLoad(Application.persistentDataPath, out var loaded, out var gameplay))
+        {
+            _loadedGameplaySnapshot = gameplay;
+            _hasLoadedGameplaySnapshot = true;
+            SaveToPlayerPrefs(loaded);
+            return loaded;
+        }
+
+        _loadedGameplaySnapshot = SettingsGameplaySnapshot.Default;
+        _hasLoadedGameplaySnapshot = false;
+        return LoadFromPlayerPrefs();
+    }
+
+    private static void SaveToPlayerPrefs(SettingsData s)
+    {
         PlayerPrefs.SetInt(KEY_RESOLUTION,     s.resolutionIndex);
         PlayerPrefs.SetInt(KEY_WINDOW_MODE,    s.windowMode);
         PlayerPrefs.SetInt(KEY_QUALITY,        s.qualityLevel);
@@ -387,7 +421,7 @@ public class SettingsManager : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    private static SettingsData Load()
+    private static SettingsData LoadFromPlayerPrefs()
     {
         return new SettingsData(
             resolutionIndex:   PlayerPrefs.GetInt(KEY_RESOLUTION,     Screen.resolutions.Length - 1),
@@ -411,6 +445,18 @@ public class SettingsManager : MonoBehaviour
             reduceCameraShake: PlayerPrefs.GetInt(KEY_CAMERA_SHAKE,   0) == 1,
             crosshairColorHex: PlayerPrefs.GetString(KEY_CROSSHAIR_HEX, "#FFFFFF")
         );
+    }
+
+    private void ApplyLoadedGameplaySnapshot()
+    {
+        if (!_hasLoadedGameplaySnapshot) return;
+        if (SaveManager.Instance == null) return;
+
+        string loadedName = _loadedGameplaySnapshot.PlayerDisplayName;
+        if (!string.IsNullOrWhiteSpace(loadedName))
+            SaveManager.Instance.PlayerDisplayName = loadedName;
+
+        SaveManager.Instance.SetTutorialHintsEnabled(_loadedGameplaySnapshot.TutorialHintsEnabled);
     }
 }
 

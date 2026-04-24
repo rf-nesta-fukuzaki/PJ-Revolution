@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.1 — プレイヤーインベントリ。
@@ -52,6 +54,9 @@ public class PlayerInventory : MonoBehaviour
         _items.Add(item);
         _cachedWeight += item.Weight;
         item.OnStoredInInventory(this);
+
+        // GDD §15.2 — item_pickup
+        PPAudioManager.Instance?.PlaySE(SoundId.ItemPickup, item.transform.position);
         return true;
     }
 
@@ -60,6 +65,18 @@ public class PlayerInventory : MonoBehaviour
         if (!_items.Remove(item)) return;
         _cachedWeight -= item.Weight;
         item.OnRemovedFromInventory();
+    }
+
+    /// <summary>
+    /// GDD §15.2 — item_drop。手持ち→地面への明示的な落下。
+    /// 投擲（<see cref="ThrowItem"/>）や壊れた結果の消失には使用しない。
+    /// </summary>
+    public void DropItem(ItemBase item)
+    {
+        if (!_items.Contains(item)) return;
+        Vector3 dropPos = item.transform.position;
+        Remove(item);
+        PPAudioManager.Instance?.PlaySE(SoundId.ItemDrop, dropPos);
     }
 
     public bool HasItem(string itemName)
@@ -94,6 +111,9 @@ public class PlayerInventory : MonoBehaviour
         var rb = item.GetComponent<Rigidbody>();
         rb.isKinematic = false;
         rb.AddForce(direction * force, ForceMode.Impulse);
+
+        // GDD §15.2 — item_throw
+        PPAudioManager.Instance?.PlaySE(SoundId.ItemThrow, item.transform.position);
 
         Debug.Log($"[Inventory] {item.ItemName} を投げた");
     }

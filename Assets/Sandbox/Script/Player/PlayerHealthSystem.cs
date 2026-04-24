@@ -142,4 +142,24 @@ public class PlayerHealthSystem : MonoBehaviour
         // GhostSystem に遷移を委譲
         GetComponent<GhostSystem>()?.EnterGhostMode();
     }
+
+    /// <summary>
+    /// 死亡状態から復活して HP を回復する。祠復活 or ExpeditionManager のソロフォールバック
+    /// リスポーン（_respawnDelay 経由）から呼ばれる。
+    /// </summary>
+    public void Revive(float hpRestored)
+    {
+        if (hpRestored < 0f)
+        {
+            Debug.LogError(
+                $"[Contract] PlayerHealthSystem.Revive: hpRestored は 0 以上でなければなりません " +
+                $"(value={hpRestored}, player={gameObject.name})");
+            return;
+        }
+
+        _isDead    = false;
+        _currentHp = Mathf.Clamp(hpRestored, 0.01f, _maxHp);
+
+        Debug.Log($"[Health] {gameObject.name} が復活 (HP={_currentHp:F0}/{_maxHp:F0})");
+    }
 }

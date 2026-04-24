@@ -33,6 +33,9 @@ public class EmoteSystem : NetworkBehaviour
     // Animator.StringToHash をキャッシュ — SetTrigger 呼び出し時の文字列アロケーションを回避
     private static readonly int[] EMOTE_TRIGGER_HASHES = BuildEmoteTriggerHashes();
 
+    // GDD §16.2 — EmoteType int パラメータ (1〜6、0=非再生)
+    private static readonly int EmoteTypeHash = Animator.StringToHash("EmoteType");
+
     private static int[] BuildEmoteTriggerHashes()
     {
         var hashes = new int[EMOTE_NAMES.Length];
@@ -54,6 +57,8 @@ public class EmoteSystem : NetworkBehaviour
     private PlayerHealthSystem _health;
     private PlayerStateMachine _stateMachine;
     private ExplorerController _controller;
+    private ClimbingController _climbing;
+    private PlayerInteraction  _interaction;
 
     // ── ローカル状態 ─────────────────────────────────────────
     private bool _wheelOpen;
@@ -66,6 +71,8 @@ public class EmoteSystem : NetworkBehaviour
         _health       = GetComponent<PlayerHealthSystem>();
         _stateMachine = GetComponent<PlayerStateMachine>();
         _controller   = GetComponent<ExplorerController>();
+        _climbing     = GetComponent<ClimbingController>();
+        _interaction  = GetComponent<PlayerInteraction>();
 
         Debug.Assert(_stateMachine != null,
             "[EmoteSystem] PlayerStateMachine が同一 GameObject に見つかりません");
@@ -82,6 +89,17 @@ public class EmoteSystem : NetworkBehaviour
         // 幽霊状態・ラグドール中はエモート不可
         if (_stateMachine != null && !_stateMachine.IsAlive) return;
 
+        // GDD §4.10 — クライミング中・運搬中はエモート不可
+        if (IsGameplayBlockingEmote())
+        {
+            if (_wheelOpen)
+            {
+                _wheelOpen = false;
+                _wheelRoot?.SetActive(false);
+            }
+            return;
+        }
+
         // T キーでホイール開閉（エモート再生中は不可）
         if (Input.GetKeyDown(EMOTE_KEY))
         {
@@ -96,11 +114,22 @@ public class EmoteSystem : NetworkBehaviour
         if (Input.GetMouseButtonDown(0) && _hoveredSlot >= 0)
             SelectEmote(_hoveredSlot);
 
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(EMOTE_KEY))
+        // Escape でホイールを閉じる。T（EMOTE_KEY）は line 104 のトグルで処理済みのためここでは見ない。
+        if (Input.GetKeyDown(KeyCode.Escape))
         {
             _wheelOpen = false;
             _wheelRoot?.SetActive(false);
         }
+    }
+
+    /// <summary>
+    /// GDD §4.10 — クライミング中・運搬中はエモート不可のための判定。
+    /// </summary>
+    private bool IsGameplayBlockingEmote()
+    {
+        if (_climbing    != null && _climbing.IsClimbing)           return true;
+        if (_interaction != null && _interaction.IsCarryingRelic)   return true;
+        return false;
     }
 
     // ── スロット選択 ─────────────────────────────────────────
@@ -144,6 +173,9 @@ public class EmoteSystem : NetworkBehaviour
             return;
         }
 
+        // GDD §4.10 — 選択確定の瞬間にクライミング/運搬開始していないかを再確認
+        if (IsGameplayBlockingEmote()) return;
+
         SendEmoteServerRpc((byte)index);
     }
 
@@ -171,12 +203,19 @@ public class EmoteSystem : NetworkBehaviour
         if (_controller != null) _controller.enabled = false;
 
         if (_animator != null)
+        {
             _animator.SetTrigger(EMOTE_TRIGGER_HASHES[index]);
+            // GDD §16.2 — EmoteType int (1〜6)
+            _animator.SetInteger(EmoteTypeHash, index + 1);
+        }
 
         Debug.Log($"[Emote] {EMOTE_NAMES[index]}");
         yield return new WaitForSeconds(EMOTE_DURATION);
 
         if (_controller != null) _controller.enabled = true;
+
+        // EmoteType を 0（非再生）に戻す
+        _animator?.SetInteger(EmoteTypeHash, 0);
 
         // 死亡中でなければ Alive に戻す
         if (_stateMachine != null && _stateMachine.IsEmoting)

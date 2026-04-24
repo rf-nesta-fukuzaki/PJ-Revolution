@@ -1,5 +1,7 @@
 using System.Collections;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 // ── GDD §10.4 神殿トラップ（ゾーン4専用）──────────────────────
 //
@@ -73,6 +75,9 @@ public class PressurePlateArrow : MonoBehaviour
                                    Quaternion.Euler(90f, 0f, 0f);
 
         arrow.AddComponent<ArrowProjectile>().Init(dir, ARROW_SPEED, ARROW_DAMAGE, ARROW_LIFETIME);
+
+        // GDD §15.2 — trap_arrow（矢の射出音）
+        PPAudioManager.Instance?.PlaySE(SoundId.TrapArrow, spawn.position);
     }
 
     private IEnumerator ResetAfter(float delay)
@@ -167,6 +172,9 @@ public class PendulumLog : MonoBehaviour
                                + Vector3.up * 0.5f;
             rb.AddForce(knockDir.normalized * KNOCKBACK_FORCE, ForceMode.Impulse);
         }
+
+        // GDD §15.2 — trap_pendulum（丸太がプレイヤーに命中した瞬間のウッドヒット音）
+        PPAudioManager.Instance?.PlaySE(SoundId.TrapPendulum, transform.position);
 
         Debug.Log("[PendulumLog] プレイヤーに命中！30 ダメージ + 吹き飛ばし");
     }

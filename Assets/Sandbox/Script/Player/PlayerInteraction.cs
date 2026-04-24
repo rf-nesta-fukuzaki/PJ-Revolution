@@ -31,6 +31,11 @@ public class PlayerInteraction : MonoBehaviour
     // ── スコアサービス（Singleton 直結を排除） ────────────────
     private IScoreService ScoreService => GameServices.Score;
 
+    /// <summary>
+    /// 現在遺物を持ち運んでいるか（GDD §6.2 カメラモード「運搬」判定用）。
+    /// </summary>
+    public bool IsCarryingRelic => _carriedRelic != null;
+
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
     {
@@ -139,9 +144,28 @@ public class PlayerInteraction : MonoBehaviour
     // ── F: アイテム使用 ─────────────────────────────────────
     private void HandleUse()
     {
+        // GDD §5.2 — アイテム毎に必要な引数が違うので、既定の TryUse() ではなく
+        // 専用 API に型別ディスパッチする。既定の TryUse() に頼ると
+        //   - 照準/座標を必要とするアイテム（アンカー/フレア/グラップリング/テント）は空撃ち
+        //   - 運搬中の遺物を対象とするアイテム（梱包キット/サーマルケース）は対象不明
+        // になるため、ここで正しいパラメータを供給する。
+        int playerId = GetInstanceID();
         foreach (var item in _inventory.Items)
         {
-            if (item.TryUse())
+            bool used = item switch
+            {
+                AnchorBoltItem    anchor  => anchor.TryPlaceAnchor(_cameraTransform, playerId),
+                FlareGunItem      flare   => flare.TryFire(_cameraTransform),
+                GrapplingHookItem hook    => hook.Fire(_cameraTransform.position, _cameraTransform.forward),
+                BivouacTentItem   tent    => tent.TryPlace(transform.position, transform.rotation),
+                ThermalCaseItem   thermal => _carriedRelic != null
+                                              && thermal.TryProtectRelic(_carriedRelic.GetComponent<RelicBase>()),
+                PackingKitItem    packing => _carriedRelic != null
+                                              && packing.ApplyToRelic(_carriedRelic.GetComponent<RelicBase>()),
+                _                         => item.TryUse()
+            };
+
+            if (used)
             {
                 Debug.Log($"[Interaction] {item.ItemName} を使用");
                 return;

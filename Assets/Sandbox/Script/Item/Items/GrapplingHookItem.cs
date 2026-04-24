@@ -1,4 +1,7 @@
+using System.Collections;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「グラップリングフック」
@@ -12,9 +15,8 @@ public class GrapplingHookItem : ItemBase
     [Header("グラップリング設定")]
     [SerializeField] private float   _maxRange       = 25f;
     [SerializeField] private float   _pullForce      = 600f;
-#pragma warning disable CS0414
-    [SerializeField] private float   _hookFlySpeed   = 40f;   // 将来のプロジェクタイル演出用
-#pragma warning restore CS0414
+    [Tooltip("発射後、フックが標的に到達するまでの飛翔速度 (m/s)。視覚演出用。")]
+    [SerializeField] private float   _hookFlySpeed   = 40f;
     [SerializeField] private LayerMask _hookableLayers;
 
     private Vector3    _anchorPoint;
@@ -48,6 +50,9 @@ public class GrapplingHookItem : ItemBase
     {
         if (_isBroken || _isGrappling) return false;
 
+        // GDD §15.2 — grappling_fire（命中失敗を問わず発射時に鳴らす）
+        PPAudioManager.Instance?.PlaySE(SoundId.GrapplingFire, origin);
+
         if (!Physics.Raycast(origin, direction.normalized, out RaycastHit hit, _maxRange, _hookableLayers))
         {
             Debug.Log("[GrapplingHook] ミス");
@@ -62,10 +67,55 @@ public class GrapplingHookItem : ItemBase
         if (_playerRb == null)
             _playerRb = FindFirstObjectByType<ExplorerController>()?.GetComponent<Rigidbody>();
 
+        // 飛翔演出：発射点 → 標的へ _hookFlySpeed でフックが飛ぶビジュアル
+        // GDD §15.2 — grappling_hit SE は HookFlyRoutine 到達時に発火（ビジュアル同期）
+        SpawnFlyingHook(origin, _anchorPoint);
+
         ConsumeDurability(GetUseDurabilityDrain());
 
         Debug.Log($"[GrapplingHook] 引っかかった: {hit.collider.name} ({_lineLength:F1}m)");
         return true;
+    }
+
+    // ── フック飛翔演出 ────────────────────────────────────────
+    private void SpawnFlyingHook(Vector3 origin, Vector3 target)
+    {
+        if (_hookVisual != null) Destroy(_hookVisual);
+
+        var vis = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        vis.name = "FlyingHook";
+        var col = vis.GetComponent<Collider>();
+        if (col != null) Destroy(col);
+        vis.transform.position   = origin;
+        vis.transform.localScale = new Vector3(0.12f, 0.12f, 0.28f);
+        vis.transform.rotation   = Quaternion.LookRotation((target - origin).sqrMagnitude > 0.001f
+            ? (target - origin).normalized : Vector3.forward);
+
+        _hookVisual = vis;
+        StartCoroutine(HookFlyRoutine(vis, origin, target));
+    }
+
+    private IEnumerator HookFlyRoutine(GameObject vis, Vector3 origin, Vector3 target)
+    {
+        float dist     = Vector3.Distance(origin, target);
+        float speed    = Mathf.Max(_hookFlySpeed, 0.1f);
+        float duration = dist / speed;
+        float elapsed  = 0f;
+
+        while (elapsed < duration && vis != null && _isGrappling)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            vis.transform.position = Vector3.Lerp(origin, target, t);
+            yield return null;
+        }
+
+        if (vis != null && _isGrappling)
+        {
+            vis.transform.position = target;   // 到達後は標的に張り付いてロープの終端ビジュアルとして残す
+            // GDD §15.2 — grappling_hit（着弾音はフック到達と同期）
+            PPAudioManager.Instance?.PlaySE(SoundId.GrapplingHit, target);
+        }
     }
 
     /// <summary>グラップリングを解除する。</summary>
@@ -73,6 +123,11 @@ public class GrapplingHookItem : ItemBase
     {
         _isGrappling = false;
         _playerRb    = null;
+        if (_hookVisual != null)
+        {
+            Destroy(_hookVisual);
+            _hookVisual = null;
+        }
         Debug.Log("[GrapplingHook] 解除");
     }
 

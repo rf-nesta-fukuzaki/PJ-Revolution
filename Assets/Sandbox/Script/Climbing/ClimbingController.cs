@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §3.1 — ポイント＆グラブ方式の登攀コントローラー。
@@ -11,7 +13,7 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody))]
 public class ClimbingController : MonoBehaviour
 {
-    private const string IceAxeItemId = "アイスアックス";
+    // IceAxeItem.ItemNameKey を参照して重複宣言を排除（リネーム時の食い違いを防ぐ）。
 
     [Header("検出設定")]
     [SerializeField] private float _detectionRadius  = 2.5f;
@@ -27,9 +29,12 @@ public class ClimbingController : MonoBehaviour
 
     private Rigidbody         _rb;
     private PlayerInventory   _inventory;
+    private Animator          _animator;
     private GrabPoint         _nearestGrabPoint;
     private GrabPoint         _currentGrabPoint;
     private bool              _isClimbing;
+
+    private static readonly int IsClimbingHash = Animator.StringToHash("IsClimbing");
 
     // ハイライト管理
     private readonly HashSet<GrabPoint> _highlighted = new();
@@ -47,6 +52,7 @@ public class ClimbingController : MonoBehaviour
     {
         _rb        = GetComponent<Rigidbody>();
         _inventory = GetComponent<PlayerInventory>();
+        _animator  = GetComponentInChildren<Animator>();
         if (_stamina == null)
             _stamina = GetComponent<StaminaSystem>();
     }
@@ -126,8 +132,9 @@ public class ClimbingController : MonoBehaviour
     {
         if (_nearestGrabPoint == null) return;
 
-        // 氷壁グリップが必要なポイントのチェック
-        if (_nearestGrabPoint.RequireIceAxe && !HasIceAxe()) return;
+        // GDD §5.2 — 氷壁グリップに必要なアイスアックスを検証し、1 回分の耐久を消費する。
+        // 破損（15 回到達）済みなら掴めない。
+        if (_nearestGrabPoint.RequireIceAxe && !ConsumeIceAxeUse()) return;
 
         if (!_nearestGrabPoint.TryOccupy()) return;
 
@@ -138,6 +145,12 @@ public class ClimbingController : MonoBehaviour
         _rb.linearVelocity  = Vector3.zero;
         _rb.angularVelocity = Vector3.zero;
 
+        // Animator: IsClimbing (GDD §16.2)
+        _animator?.SetBool(IsClimbingHash, true);
+
+        // GDD §15.2 — climb_grab
+        PPAudioManager.Instance?.PlaySE(SoundId.ClimbGrab, _currentGrabPoint.transform.position);
+
         Debug.Log($"[Climbing] グラブ: {_currentGrabPoint.name}");
     }
 
@@ -145,9 +158,17 @@ public class ClimbingController : MonoBehaviour
     {
         if (_currentGrabPoint == null) return;
 
+        Vector3 grabPos = _currentGrabPoint.transform.position;
+
         _currentGrabPoint.Release();
         _currentGrabPoint = null;
         _isClimbing       = false;
+
+        // Animator: IsClimbing (GDD §16.2)
+        _animator?.SetBool(IsClimbingHash, false);
+
+        // GDD §15.2 — climb_release
+        PPAudioManager.Instance?.PlaySE(SoundId.ClimbRelease, grabPos);
 
         // 上方向への勢い付与（プレイヤーが次のポイントへ跳べるように）
         _rb.AddForce(Vector3.up * _releaseImpulse + transform.forward * _releaseImpulse * 0.5f,
@@ -160,6 +181,7 @@ public class ClimbingController : MonoBehaviour
         if (_currentGrabPoint == null)
         {
             _isClimbing = false;
+            _animator?.SetBool(IsClimbingHash, false);
             return;
         }
 
@@ -205,7 +227,13 @@ public class ClimbingController : MonoBehaviour
     }
 
     // ── ユーティリティ ────────────────────────────────────────
-    private bool HasIceAxe() => _inventory != null && _inventory.HasItem(IceAxeItemId);
+    // GDD §5.2 — 氷壁グラブ時の耐久消費。成功時のみ掴める。
+    private bool ConsumeIceAxeUse()
+    {
+        if (_inventory == null) return false;
+        var axe = _inventory.GetItem(IceAxeItem.ItemNameKey) as IceAxeItem;
+        return axe != null && axe.TryUse();
+    }
 
     private void OnDrawGizmosSelected()
     {

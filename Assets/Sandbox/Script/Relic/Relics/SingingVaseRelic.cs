@@ -2,6 +2,8 @@ using System.Collections;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物④「歌う壺」
@@ -90,6 +92,8 @@ public class SingingVaseRelic : RelicBase
         {
             _audio.clip = _songClips[UnityEngine.Random.Range(0, _songClips.Length)];
             _audio.Play();
+            // GDD §15.2 — relic_pot_sing（歌い始めのエッジトリガー SE）
+            PPAudioManager.Instance?.PlaySE(SoundId.RelicPotSing, transform.position);
         }
         else if (_currentVolume <= 0.05f && _audio.isPlaying)
         {

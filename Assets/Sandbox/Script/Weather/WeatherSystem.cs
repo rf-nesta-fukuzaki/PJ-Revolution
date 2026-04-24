@@ -1,5 +1,7 @@
 using System;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 using Random = UnityEngine.Random;
 
 /// <summary>
@@ -35,11 +37,18 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
     private Vector3      _currentWindDir;
     private float        _currentWindSpeed;
     private float        _targetWindSpeed;
+    // 風速の低周波オシレーションに使用（自然な突風リズム）
     private float        _windPhase;
+    private const float  WIND_GUST_FREQUENCY  = 0.15f;  // Hz（約 6.7 秒周期）
+    private const float  WIND_GUST_AMPLITUDE  = 0.25f;  // 目標風速に対する比率
 
     // 風向きをランダムに変化させるためのノイズフェーズ
     private float _windDirPhaseX;
     private float _windDirPhaseZ;
+
+    // GDD §15.2 — wind_gust のエッジトリガー用（突風の閾値を一度だけ超えた瞬間に発火）
+    private const float GUST_THRESHOLD = 12f;
+    private bool _wasAboveGustThreshold;
 
     public WeatherType  CurrentWeather  => _currentWeather;
     public Vector3      CurrentWind     => _currentWindDir * _currentWindSpeed;
@@ -104,6 +113,19 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
         if (_rainParticles != null) _rainParticles.gameObject.SetActive(next == WeatherType.Rain);
         if (_snowParticles != null) _snowParticles.gameObject.SetActive(next == WeatherType.Blizzard);
 
+        // GDD §15.2 — 天候アンビエント SE（遷移トリガー）
+        SoundId ambientId = next switch
+        {
+            WeatherType.Rain     => SoundId.RainAmbient,
+            WeatherType.Blizzard => SoundId.BlizzardAmbient,
+            _                    => SoundId.WindAmbient,
+        };
+        PPAudioManager.Instance?.PlaySE2D(ambientId);
+
+        // GDD §15.1 — 吹雪中は BGM 音量を -40% にダック（その他は 100%）
+        float bgmScale = next == WeatherType.Blizzard ? 0.6f : 1f;
+        PPAudioManager.Instance?.SetBGMVolumeScale(bgmScale);
+
         OnWeatherChanged?.Invoke(next);
         Debug.Log($"[Weather] 天候変化: {next}  風速目標: {_targetWindSpeed:F1} m/s");
     }
@@ -129,6 +151,12 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
         _currentWindSpeed = Mathf.Lerp(_currentWindSpeed, _targetWindSpeed,
                                         Time.deltaTime * _windChangeSpeed);
 
+        // 低周波突風オシレーション: sin 波で ±WIND_GUST_AMPLITUDE を加算
+        // 突風中（_targetWindSpeed 大）ほど絶対変化量も大きくなる（比率適用のため）。
+        _windPhase += Time.deltaTime * WIND_GUST_FREQUENCY * Mathf.PI * 2f;
+        float gustMod = Mathf.Sin(_windPhase) * WIND_GUST_AMPLITUDE * _targetWindSpeed;
+        _currentWindSpeed = Mathf.Max(0f, _currentWindSpeed + gustMod * Time.deltaTime);
+
         // 風向きをゆっくり変化（Perlin Noise で滑らか）
         _windDirPhaseX += Time.deltaTime * 0.08f;
         _windDirPhaseZ += Time.deltaTime * 0.06f;
@@ -139,6 +167,12 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
         Vector3 targetDir = new Vector3(dx, 0f, dz).normalized;
         _currentWindDir = Vector3.Slerp(_currentWindDir, targetDir,
                                          Time.deltaTime * _windChangeSpeed * 0.5f);
+
+        // GDD §15.2 — wind_gust（突風しきい値を立ち上がりエッジで越えたら一度だけ鳴らす）
+        bool nowAbove = _currentWindSpeed >= GUST_THRESHOLD;
+        if (nowAbove && !_wasAboveGustThreshold)
+            PPAudioManager.Instance?.PlaySE2D(SoundId.WindGust);
+        _wasAboveGustThreshold = nowAbove;
     }
 
     // ── フォグ ────────────────────────────────────────────────

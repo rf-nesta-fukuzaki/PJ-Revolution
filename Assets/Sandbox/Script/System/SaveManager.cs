@@ -111,6 +111,9 @@ public class SaveManager : MonoBehaviour
 
         Save();
         Debug.Log($"[SaveManager] 遠征結果を保存。累積スコア: {Profile.stats.cumulativeTeamScore}");
+
+        // GDD §12.6: 累積チームスコアに応じたメタ進行コスメ解放。
+        CosmeticManager.Instance?.ProcessCumulativeRewards(Profile.stats.cumulativeTeamScore);
     }
 
     // ── ヒント管理（GDD §21.2）──────────────────────────────
@@ -131,6 +134,17 @@ public class SaveManager : MonoBehaviour
     public void SetTutorialHintsEnabled(bool enabled)
     {
         Profile.tutorial.hintsEnabled = enabled;
+        Save();
+    }
+
+    // ── ショップチュートリアル完了フラグ（GDD §21.3）──────────
+    public bool IsShopGuideCompleted() =>
+        Profile.tutorial.shopGuideCompleted;
+
+    public void MarkShopGuideCompleted()
+    {
+        if (Profile.tutorial.shopGuideCompleted) return;
+        Profile.tutorial.shopGuideCompleted = true;
         Save();
     }
 

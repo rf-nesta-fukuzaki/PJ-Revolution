@@ -1,6 +1,8 @@
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §4.2 — 偵察幽霊システム（NetworkBehaviour 版）。
@@ -34,16 +36,18 @@ public class GhostSystem : NetworkBehaviour
     private Rigidbody           _rb;
     private Collider[]          _colliders;
     private Renderer[]          _renderers;
+    private Animator            _animator;
     private PlayerHealthSystem  _health;
     private PlayerStateMachine  _stateMachine;
+
+    private static readonly int IsGhostHash = Animator.StringToHash("IsGhost");
 
     // ── ローカル状態 ─────────────────────────────────────────
     private bool          _hasRevived;
     private Material[][]  _cachedMaterials;
 
     // ── 後方互換プロパティ（既存コードの IsGhost 参照を維持）──
-    public bool IsGhost           => _stateMachine != null && _stateMachine.IsGhost;
-    public int  GhostContributions { get; private set; }
+    public bool IsGhost => _stateMachine != null && _stateMachine.IsGhost;
 
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
@@ -51,6 +55,7 @@ public class GhostSystem : NetworkBehaviour
         _rb           = GetComponent<Rigidbody>();
         _colliders    = GetComponentsInChildren<Collider>();
         _renderers    = GetComponentsInChildren<Renderer>();
+        _animator     = GetComponentInChildren<Animator>();
         _health       = GetComponent<PlayerHealthSystem>();
         _stateMachine = GetComponent<PlayerStateMachine>();
 
@@ -82,6 +87,9 @@ public class GhostSystem : NetworkBehaviour
         if (nowGhost == wasGhost) return;
 
         SetGhostVisuals(nowGhost);
+
+        // Animator: IsGhost (GDD §16.2)
+        _animator?.SetBool(IsGhostHash, nowGhost);
 
         if (nowGhost)
         {
@@ -161,7 +169,13 @@ public class GhostSystem : NetworkBehaviour
         _hasRevived = true;
 
         _stateMachine.Transition(PlayerState.Alive);
-        _health.Heal(50f);
+        // PlayerHealthSystem._isDead を解除して HP を部分回復（Heal は死亡中早期 return するため Revive を使用）
+        _health.Revive(50f);
+
+        // GDD §15.2 — shrine_revive（復活完了音。本人への 2D フィードバック）
+        if (IsOwner)
+            PPAudioManager.Instance?.PlaySE2D(SoundId.ShrineRevive);
+
         Debug.Log("[Ghost] 祠で復活！");
     }
 

@@ -1,4 +1,6 @@
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物①「黄金のアヒル像」
@@ -54,6 +56,9 @@ public class GoldenDuckRelic : RelicBase
 
     private void PlayRollSound()
     {
+        // GDD §15.2 — relic_duck_roll（アヒル転がり音）
+        PPAudioManager.Instance?.PlaySE(SoundId.RelicDuckRoll, transform.position);
+
         if (_audioSource == null) return;
         // AudioClip 未アサイン時は無音で通過
         if (_audioSource.clip == null) return;

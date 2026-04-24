@@ -1,6 +1,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §2.1 — 遠征（ラン）全体のフロー管理。
@@ -13,15 +15,15 @@ public class ExpeditionManager : MonoBehaviour
     [Header("参照")]
     [SerializeField] private ResultScreen _resultScreen;
     [SerializeField] private SpawnManager _spawnManager;
+    [SerializeField] private BasecampShop _basecampShop;
 
     [Header("フェードUI")]
     [SerializeField] private CanvasGroup _fadeCanvas;
     [SerializeField] private float       _fadeDuration = 1.0f;
 
     [Header("ゲームオーバー")]
-#pragma warning disable CS0414
-    [SerializeField] private float       _respawnDelay  = 5f;  // 将来のリスポーン遅延処理用
-#pragma warning restore CS0414
+    [Tooltip("ソロ/オフライン時、GhostSystem を持たないプレイヤーが死亡した際の自動リスポーンまでの待機秒数。")]
+    [SerializeField] private float       _respawnDelay  = 5f;
     [SerializeField] private Transform[] _checkpoints;
 
     // ── 状態 ─────────────────────────────────────────────────
@@ -52,7 +54,10 @@ public class ExpeditionManager : MonoBehaviour
 
         // BasecampShop がある場合は OnDepart ボタンから StartExpedition() を呼ぶ。
         // ショップが存在しない場合（テストシーン等）は即時開始する。
-        if (BasecampShop.Instance == null)
+        if (_basecampShop == null)
+            _basecampShop = Object.FindFirstObjectByType<BasecampShop>();
+
+        if (_basecampShop == null)
             StartExpedition();
     }
 
@@ -68,6 +73,10 @@ public class ExpeditionManager : MonoBehaviour
 
         _expeditionStarted     = true;
         _expeditionElapsedTime = 0f;
+
+        // GDD §5.2 — BivouacTent「1遠征1個」制限をここで解除。
+        // 新しい遠征の開始＝前回までの設置記録をクリアする唯一の正当なタイミング。
+        BivouacTentItem.ResetExpeditionFlag();
 
         TransitionPhase(ExpeditionPhase.Climbing);
         ExpeditionEvents.RaiseExpeditionStarted();   // HUD への直接依存を排除
@@ -177,16 +186,51 @@ public class ExpeditionManager : MonoBehaviour
     // ── 死亡リスポーン ────────────────────────────────────────
     public void OnPlayerDied(PlayerHealthSystem player)
     {
+        GameServices.Score?.RecordFall(player.GetInstanceID());
+
         var ghost = player.GetComponent<GhostSystem>();
-        if (ghost == null || ghost.IsGhost)
+        if (ghost == null)
         {
-            // 全員死亡チェック
+            // ソロ / オフライン: GhostSystem が無いので _respawnDelay 秒後に自動リスポーン
+            StartCoroutine(SoloRespawnRoutine(player));
+            return;
+        }
+
+        if (ghost.IsGhost)
+        {
+            // 既にゴースト状態 = 再死亡 → 全員死亡チェック
             CheckAllDead();
             return;
         }
 
-        GameServices.Score?.RecordFall(player.GetInstanceID());
-        Debug.Log($"[Expedition] {player.name} が死亡");
+        Debug.Log($"[Expedition] {player.name} が死亡 (ゴーストモード移行)");
+    }
+
+    /// <summary>
+    /// GhostSystem を持たないプレイヤー向けのフォールバックリスポーン。
+    /// _respawnDelay 秒待機後、最寄りのチェックポイントへ転送し HP を回復する。
+    /// </summary>
+    private IEnumerator SoloRespawnRoutine(PlayerHealthSystem player)
+    {
+        Debug.Log($"[Expedition] {player.name} を {_respawnDelay:F1} 秒後にリスポーンします");
+        yield return new WaitForSeconds(_respawnDelay);
+
+        if (player == null) yield break;
+
+        var respawnPoint = GetRespawnPoint();
+        if (respawnPoint != null)
+        {
+            var rb = player.GetComponent<Rigidbody>();
+            if (rb != null) rb.linearVelocity = Vector3.zero;
+            player.transform.position = respawnPoint.position;
+            player.transform.rotation = respawnPoint.rotation;
+        }
+        else
+        {
+            Debug.LogWarning("[Expedition] リスポーン地点が見つかりません。現在地で復活します");
+        }
+
+        player.Revive(player.MaxHp);
     }
 
     private void CheckAllDead()
@@ -205,8 +249,22 @@ public class ExpeditionManager : MonoBehaviour
         if (!anyAlive)
         {
             Debug.Log("[Expedition] 全員死亡。遺物ゼロで帰還。");
+            StartCoroutine(PlayWipeoutSequence());
             ReturnToBase(false);
         }
+    }
+
+    /// <summary>
+    /// GDD §15.1 — 全滅ジングル演出：BGM 2 秒フェードアウト → 1 秒無音 → 全滅ジングル再生。
+    /// </summary>
+    private IEnumerator PlayWipeoutSequence()
+    {
+        var audio = PPAudioManager.Instance;
+        if (audio == null) yield break;
+
+        audio.StopBGM();                     // 2 秒クロスフェードで BGM がフェードアウト
+        yield return new WaitForSeconds(3f); // BGM フェード 2s + 無音 1s
+        audio.PlaySE2D(SoundId.WipeoutJingle);
     }
 
     // ── フェード ─────────────────────────────────────────────

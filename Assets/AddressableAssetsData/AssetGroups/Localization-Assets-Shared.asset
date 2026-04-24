@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Localization-Assets-Shared
+  m_EditorClassIdentifier: Unity.Addressables.Editor::UnityEditor.AddressableAssets.Settings.AddressableAssetGroup
+  m_GroupName: Localization-Assets-Shared
+  m_GUID: 0e25c9c2ea19a406fa18650abed8ed87
+  m_SerializeEntries:
+  - m_GUID: 192da2229cc5448ddb4d2ca1734b4262
+    m_Address: Assets/Sandbox/Localization/Tables/Weather Shared Data.asset
+    m_ReadOnly: 1
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 2ef1a3375d7604d6097a22d82f23fdf4
+    m_Address: Assets/Sandbox/Localization/Tables/UI Shared Data.asset
+    m_ReadOnly: 1
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 575ef54547a554e1c9f1bc1e947a319d
+    m_Address: Assets/Sandbox/Localization/Tables/Title Shared Data.asset
+    m_ReadOnly: 1
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7ac0f2fca7ece42178907c124cf5f741
+    m_Address: Assets/Sandbox/Localization/Tables/Relic Shared Data.asset
+    m_ReadOnly: 1
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 7d48b516f728a4e38ba0c30c645f85eb
+    m_Address: Assets/Sandbox/Localization/Tables/Stone Shared Data.asset
+    m_ReadOnly: 1
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 8e60f59bfcf24473f99985b80983f456
+    m_Address: Assets/Sandbox/Localization/Tables/Item Shared Data.asset
+    m_ReadOnly: 1
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 1
+  m_Settings: {fileID: 11400000, guid: 4f6886f6a901a451bb4246655e309be0, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: cf894d718b06d4cd7b3ff105c250ee03, type: 2}
+    - {fileID: 11400000, guid: 070fc9d29328a402e816256e14ea1a61, type: 2}

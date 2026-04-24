@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -31,6 +32,7 @@ using UnityEngine;
 /// F7 : 幽霊モードで祠を自動発見（ReviveShrine インタラクトをシミュレート）
 /// F8 : 天候を次へ切り替え
 /// F9 : スタミナをゼロにする（スタミナ切れ挙動テスト）
+/// F10: デバッグオーバーレイ表示切替
 /// </summary>
 public class OfflineTestBootstrapper : MonoBehaviour
 {
@@ -50,6 +52,7 @@ public class OfflineTestBootstrapper : MonoBehaviour
     private GUIStyle  _headerStyle;
     private string    _statusMsg  = "起動中...";
     private float     _msgTimer;
+    private float     _cachedUiScale = -1f;
 
     // ── ライフサイクル ────────────────────────────────────────
     private void Start()
@@ -87,6 +90,16 @@ public class OfflineTestBootstrapper : MonoBehaviour
             Debug.Log($"[OfflineBoot] UDP ポート {port} を使用します。");
         }
 
+        // SpawnManager が Host 起動前に同一遺物プレハブを複数生成すると、
+        // NGO の ScenePlacedObjects 登録で GlobalObjectIdHash が衝突して StartHost が失敗する。
+        // ここで重複クローンを間引き、1フレーム待って破棄を反映してから起動する。
+        int trimmed = TrimDuplicateNetworkRelicClones();
+        if (trimmed > 0)
+        {
+            Debug.Log($"[OfflineBoot] Host 起動前に重複遺物クローンを {trimmed} 個削除しました。");
+            yield return null;
+        }
+
         // Host モードで起動（= Server + Client の両役を同一プロセスで担う）
         bool ok = nm.StartHost();
         if (!ok)
@@ -107,6 +120,35 @@ public class OfflineTestBootstrapper : MonoBehaviour
         Debug.Log("[OfflineBoot] NGO Host 起動完了。ゲームループをオフラインで検証開始。");
     }
 
+    /// <summary>
+    /// Host 起動前にシーン上の重複した Network 遺物クローンを除去する。
+    /// 同一プレハブ由来の "(Clone)" が複数あると NGO がハッシュ衝突を起こすため、
+    /// 1個を残して残りを破棄する。
+    /// </summary>
+    private static int TrimDuplicateNetworkRelicClones()
+    {
+        var relics = Object.FindObjectsByType<RelicBase>(FindObjectsSortMode.None);
+        var seenNames = new HashSet<string>();
+        int removed = 0;
+
+        foreach (var relic in relics)
+        {
+            if (relic == null) continue;
+
+            var go = relic.gameObject;
+            if (!go.name.Contains("(Clone)")) continue;
+            if (!relic.TryGetComponent<NetworkObject>(out _)) continue;
+
+            string key = go.name.Replace("(Clone)", string.Empty).Trim();
+            if (seenNames.Add(key)) continue;
+
+            Object.Destroy(go);
+            removed++;
+        }
+
+        return removed;
+    }
+
     // ── Update ────────────────────────────────────────────────
     private void Update()
     {
@@ -118,6 +160,12 @@ public class OfflineTestBootstrapper : MonoBehaviour
 
     private void HandleDebugKeys()
     {
+        if (Input.GetKeyDown(KeyCode.F10))
+        {
+            _showDebugOverlay = !_showDebugOverlay;
+            SetMsg(_showDebugOverlay ? "F10: デバッグUI ON" : "F10: デバッグUI OFF");
+        }
+
         if (Input.GetKeyDown(KeyCode.F1)) KillLocalPlayer();
         if (Input.GetKeyDown(KeyCode.F2)) CallHelicopter();
         if (Input.GetKeyDown(KeyCode.F3)) ForceReturn();
@@ -211,13 +259,15 @@ public class OfflineTestBootstrapper : MonoBehaviour
             shrine.Use();
             SetMsg($"F7: {shrine.gameObject.name} で復活");
 
-            // GhostSystem を直接 Alive に戻す
+            // GhostSystem を直接 Alive に戻す。
+            // Heal() は _isDead=true のとき早期 return するため、Revive(50f) で
+            // _isDead を明示的に解除してから HP を設定する（GhostSystem.Revive と同じ経路）。
             var ghost = Object.FindFirstObjectByType<GhostSystem>();
             if (ghost != null && ghost.IsGhost)
             {
                 var sm = ghost.GetComponent<PlayerStateMachine>();
                 sm?.Transition(PlayerState.Alive);
-                ghost.GetComponent<PlayerHealthSystem>()?.Heal(50f);
+                ghost.GetComponent<PlayerHealthSystem>()?.Revive(50f);
             }
             return;
         }
@@ -253,7 +303,12 @@ public class OfflineTestBootstrapper : MonoBehaviour
     {
         if (!_showDebugOverlay) return;
 
-        EnsureStyles();
+        float uiScale     = Mathf.Clamp(Screen.height / 1080f, 0.9f, 1.35f);
+        float panelWidth  = Mathf.Clamp(_overlayWidth * uiScale, 320f, 460f);
+        float panelHeight = Mathf.Clamp(370f * uiScale, 360f, 560f);
+        float panelPad    = 12f * uiScale;
+
+        EnsureStyles(uiScale);
 
         var em  = ExpeditionManager.Instance;
         var nm  = NetworkManager.Singleton;
@@ -279,38 +334,49 @@ public class OfflineTestBootstrapper : MonoBehaviour
         sb.AppendLine("[F7] 祠で幽霊復活");
         sb.AppendLine("[F8] 天候切り替え");
         sb.AppendLine("[F9] スタミナゼロ");
+        sb.AppendLine("[F10] デバッグUI ON/OFF");
         sb.AppendLine("─────────────────");
         sb.Append($"{msgColor}");
         sb.Append(_statusMsg);
         sb.Append("</color>");
 
-        float h = 370f;
-        GUI.Box(new Rect(10f, 10f, _overlayWidth, h), GUIContent.none, _boxStyle);
-        GUI.Label(new Rect(16f, 16f, _overlayWidth - 12f, h - 12f), sb.ToString(), _labelStyle);
+        GUI.Box(new Rect(10f, 10f, panelWidth, panelHeight), GUIContent.none, _boxStyle);
+        GUI.Label(
+            new Rect(10f + panelPad, 10f + panelPad, panelWidth - panelPad * 2f, panelHeight - panelPad * 2f),
+            sb.ToString(),
+            _labelStyle
+        );
     }
 
-    private void EnsureStyles()
+    private void EnsureStyles(float uiScale)
     {
-        if (_boxStyle != null) return;
-
-        _boxStyle = new GUIStyle(GUI.skin.box)
+        if (_boxStyle == null)
         {
-            normal  = { background = MakeTex(2, 2, new Color(0f, 0f, 0f, 0.7f)) },
-        };
+            _boxStyle = new GUIStyle(GUI.skin.box)
+            {
+                normal = { background = MakeTex(2, 2, new Color(0f, 0f, 0f, 0.7f)) },
+            };
 
-        _labelStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize  = 13,
-            richText  = true,
-            wordWrap  = true,
-            alignment = TextAnchor.UpperLeft,
-            normal    = { textColor = Color.white },
-        };
+            _labelStyle = new GUIStyle(GUI.skin.label)
+            {
+                richText = true,
+                wordWrap = true,
+                alignment = TextAnchor.UpperLeft,
+                normal = { textColor = Color.white },
+            };
 
-        _headerStyle = new GUIStyle(_labelStyle)
-        {
-            fontStyle = FontStyle.Bold,
-        };
+            _headerStyle = new GUIStyle(_labelStyle)
+            {
+                fontStyle = FontStyle.Bold,
+            };
+        }
+
+        if (Mathf.Abs(_cachedUiScale - uiScale) < 0.01f) return;
+
+        int fontSize = Mathf.RoundToInt(Mathf.Lerp(15f, 20f, Mathf.InverseLerp(0.9f, 1.35f, uiScale)));
+        _labelStyle.fontSize = fontSize;
+        _headerStyle.fontSize = fontSize + 1;
+        _cachedUiScale = uiScale;
     }
 
     private static Texture2D MakeTex(int w, int h, Color col)

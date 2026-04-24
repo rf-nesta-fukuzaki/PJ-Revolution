@@ -24,5 +24,7 @@ EditorBuildSettings:
     path: Assets/Sandbox/Scene/OfflineTestScene.unity
     guid: b2882173a1ba843398b4a4fb4ee20f6e
   m_configObjects:
+    com.unity.addressableassets: {fileID: 11400000, guid: 280dd378a05db445bb7cb0256ec62b29, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+    com.unity.localization.settings: {fileID: 11400000, guid: f9203b34e66fa4f768be7c1dd11fb79d, type: 2}
   m_UseUCBPForAssetBundles: 0

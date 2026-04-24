@@ -1,5 +1,7 @@
 using System.Collections;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.5 — Ragdoll システム。
@@ -93,6 +95,9 @@ public class RagdollSystem : MonoBehaviour
         _stateMachine.Transition(PlayerState.Ragdoll);
         SetRagdollActive(true);
         if (_controller != null) _controller.enabled = false;
+
+        // GDD §15.2 — ragdoll_impact（高速衝突で Ragdoll 発動の瞬間に鳴らす）
+        PPAudioManager.Instance?.PlaySE(SoundId.RagdollImpact, transform.position);
 
         yield return new WaitForSeconds(duration);
 

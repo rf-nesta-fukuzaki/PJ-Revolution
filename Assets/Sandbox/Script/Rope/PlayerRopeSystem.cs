@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §3.2 — プレイヤー間ロープ物理システム。
@@ -13,6 +15,8 @@ public class PlayerRopeSystem : MonoBehaviour
     private const int   DEFAULT_NODE_COUNT       = 20;
     private const int   CONSTRAINT_ITERATIONS    = 10;
     private const float WIND_NOISE_SCALE         = 0.5f;
+    // GDD §15.2 — 張力警告 (rope_tension) を再生する閾値（破断力の何％で鳴らすか）
+    private const float TENSION_WARN_RATIO       = 0.7f;
 
     // ── Inspector ───────────────────────────────────────────
     [Header("設定 (ScriptableObject — 未設定時はデフォルト値を使用)")]
@@ -42,6 +46,8 @@ public class PlayerRopeSystem : MonoBehaviour
     private bool         _isConnected;
     private float        _currentLength;
     private float        _windPhase;
+    // GDD §15.2 — 張力警告 SE を高張力エッジで一度だけ鳴らすためのヒステリシス
+    private bool         _wasUnderTensionWarning;
 
     public bool IsConnected => _isConnected;
 
@@ -82,17 +88,33 @@ public class PlayerRopeSystem : MonoBehaviour
         ReplaceNodes(playerA.position, playerB.position);
 
         _lineRenderer.enabled = true;
+
+        // GDD §15.2 — rope_connect
+        Vector3 midpoint = (playerA.position + playerB.position) * 0.5f;
+        PPAudioManager.Instance?.PlaySE(SoundId.RopeConnect, midpoint);
+
         Debug.Log("[PlayerRope] ロープ接続完了");
     }
 
     /// <summary>ロープを切断する。</summary>
-    public void Disconnect()
+    public void Disconnect() => DisconnectInternal(broken: false);
+
+    private void DisconnectInternal(bool broken)
     {
+        // GDD §15.2 — 切断音: 自発切断は rope_cut、張力超過は rope_snap
+        if (_isConnected && _playerA != null && _playerB != null)
+        {
+            Vector3 midpoint = (_playerA.position + _playerB.position) * 0.5f;
+            var id = broken ? SoundId.RopeSnap : SoundId.RopeCut;
+            PPAudioManager.Instance?.PlaySE(id, midpoint);
+        }
+
         _isConnected = false;
         _playerA     = null;
         _playerB     = null;
         _lineRenderer.enabled = false;
-        Debug.Log("[PlayerRope] ロープ切断！");
+        _wasUnderTensionWarning = false;
+        Debug.Log(broken ? "[PlayerRope] ロープ切断（張力超過）！" : "[PlayerRope] ロープ切断！");
     }
 
     private void ReplaceNodes(Vector3 start, Vector3 end)
@@ -204,10 +226,20 @@ public class PlayerRopeSystem : MonoBehaviour
         Vector3 relVel    = _playerA.linearVelocity - _playerB.linearVelocity;
         float   tension   = relVel.magnitude * _playerA.mass;
 
+        // GDD §15.2 — 張力限界付近で rope_tension をエッジ発火（ギシギシ音）
+        float warnThreshold = BreakForce * TENSION_WARN_RATIO;
+        bool nowWarn = tension >= warnThreshold && tension < BreakForce;
+        if (nowWarn && !_wasUnderTensionWarning)
+        {
+            Vector3 midpoint = (_playerA.position + _playerB.position) * 0.5f;
+            PPAudioManager.Instance?.PlaySE(SoundId.RopeTension, midpoint);
+        }
+        _wasUnderTensionWarning = nowWarn;
+
         if (tension > BreakForce)
         {
             Debug.Log("[PlayerRope] 過負荷でロープ切断！");
-            Disconnect();
+            DisconnectInternal(broken: true);
         }
     }
 

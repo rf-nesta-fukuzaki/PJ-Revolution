@@ -797,6 +797,37 @@ Transform:
   - {fileID: 8332819721214122192}
   m_Father: {fileID: 8737343090010369737}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &4524160961628194472
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1357672760763579195}
+  m_Layer: 0
+  m_Name: EmoteWheelRoot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!4 &1357672760763579195
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4524160961628194472}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 4817960627122335807}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &4590907067398666738
 GameObject:
   m_ObjectHideFlags: 0
@@ -1451,9 +1482,17 @@ GameObject:
   - component: {fileID: 8927202349596267162}
   - component: {fileID: 4053111732647355377}
   - component: {fileID: 7246976554021801234}
-  m_Layer: 0
+  - component: {fileID: 159643610277619976}
+  - component: {fileID: 4830932203262622806}
+  - component: {fileID: 7972166250680855618}
+  - component: {fileID: 7131426512217271973}
+  - component: {fileID: 8813035843723706591}
+  - component: {fileID: 6057484028611607488}
+  - component: {fileID: 5094000429150195543}
+  - component: {fileID: 7053425756427770781}
+  m_Layer: 6
   m_Name: PlayerPrefab
-  m_TagString: Untagged
+  m_TagString: Player
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -1473,6 +1512,7 @@ Transform:
   m_Children:
   - {fileID: 7391374295900570248}
   - {fileID: 3386240692319218044}
+  - {fileID: 1357672760763579195}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &250075740550027782
@@ -1621,7 +1661,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ExplorerController
   _walkSpeed: 5
   _sprintSpeed: 10
-  _jumpForce: 6
+  _jumpForce: 5.9
+  _airControlMaxSpeed: 1.5
+  _airControlAcceleration: 6
   _groundCheckOffsetY: -0.9
   _groundCheckRadius: 0.3
   _groundLayer:
@@ -1629,6 +1671,7 @@ MonoBehaviour:
     m_Bits: 8
   _animSmoothTime: 0.1
   _blendSmoothTime: 0.1
+  _stamina: {fileID: 0}
 --- !u!114 &512954159524851834
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1686,6 +1729,7 @@ MonoBehaviour:
   _highAltitude: 2000
   _altitudeDrainBonus: 5
   _hasOxygenTank: 0
+  _shelterRegenMultiplier: 2
 --- !u!114 &5948772295929697014
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1948,6 +1992,142 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerStateMachine
   ShowTopMostFoldoutHeaderGroup: 1
+--- !u!114 &159643610277619976
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7854537658936286442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 46b887e973ce341d38fff4c5b0d3075a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ThrowController
+  _cameraTransform: {fileID: 0}
+  _simulatedMass: 1
+  _trajectoryStepSeconds: 0.2
+--- !u!114 &4830932203262622806
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7854537658936286442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b9f70a910f9524185b0962202360d717, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShelterOccupant
+--- !u!114 &7972166250680855618
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7854537658936286442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e41144d2012ed4c77addd48d1ef26b91, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FrostbiteDamage
+  _hazardConfig: {fileID: 11400000, guid: b0b2151739f4845ea9fd0c241710a76a, type: 2}
+  _weatherSystemRef: {fileID: 0}
+--- !u!114 &7131426512217271973
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7854537658936286442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b4f2eced819d4e7f972f4fd35bc1f76, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AltitudeSicknessEffect
+  _hazardConfig: {fileID: 11400000, guid: b0b2151739f4845ea9fd0c241710a76a, type: 2}
+  _postProcessVolume: {fileID: 0}
+--- !u!114 &8813035843723706591
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7854537658936286442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 28ab62be4d577413b92e9f04006175d4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WeatherFrictionAdapter
+  _baseFriction: 0.6
+  _minFriction: 0.05
+--- !u!114 &6057484028611607488
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7854537658936286442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a92c211c82d9421d9a202fc2c8c4333, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PinSystem
+  ShowTopMostFoldoutHeaderGroup: 1
+  _cameraTransform: {fileID: 0}
+  _wheelPanel: {fileID: 0}
+--- !u!114 &5094000429150195543
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7854537658936286442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: be701474c47b64333a99d3c34fd46977, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EmoteSystem
+  ShowTopMostFoldoutHeaderGroup: 1
+  _wheelRoot: {fileID: 4524160961628194472}
+  _slots:
+  - _background: {fileID: 0}
+    _icon: {fileID: 0}
+    _label: {fileID: 0}
+  - _background: {fileID: 0}
+    _icon: {fileID: 0}
+    _label: {fileID: 0}
+  - _background: {fileID: 0}
+    _icon: {fileID: 0}
+    _label: {fileID: 0}
+  - _background: {fileID: 0}
+    _icon: {fileID: 0}
+    _label: {fileID: 0}
+  - _background: {fileID: 0}
+    _icon: {fileID: 0}
+    _label: {fileID: 0}
+  - _background: {fileID: 0}
+    _icon: {fileID: 0}
+    _label: {fileID: 0}
+  _emoteIcons: []
+--- !u!114 &7053425756427770781
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7854537658936286442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1a8a3e49401304f249f9488f3d702344, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RagdollSystem
+  _config: {fileID: 0}
+  _ragdollBodies: []
+  _ragdollColliders: []
+  _mainRigidbody: {fileID: 0}
+  _mainCollider: {fileID: 0}
+  _animator: {fileID: 0}
 --- !u!1 &8062847359705364633
 GameObject:
   m_ObjectHideFlags: 0

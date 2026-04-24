@@ -1,4 +1,6 @@
 using UnityEngine;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物⑦「ぬるぬる聖なる魚像」
@@ -9,14 +11,15 @@ using UnityEngine;
 public class SlipperyFishStatueRelic : RelicBase
 {
     [Header("滑り設定")]
-#pragma warning disable CS0414
-    [SerializeField] private float _slipTorque       = 8f;    // 保持中に加わるトルク（将来のAddTorque実装用）
-#pragma warning restore CS0414
+    [SerializeField] private float _slipTorque       = 8f;    // 保持中に加わる squirm トルク (N·m, GDD §6.2)
     [SerializeField] private float _slipInterval     = 1.2f;  // 滑り発生間隔
     [SerializeField] private float _slipChance       = 0.4f;  // 毎インターバルの滑り確率
     [SerializeField] private float _dropImpulse      = 4f;    // 滑り落ちたときの初速
 
-    private float _slipTimer;
+    private float   _slipTimer;
+
+    // Perlin noise によるスクワーム用フェーズ（各軸独立オフセット）
+    private Vector3 _squirmPhase;
 
     protected override void Awake()
     {
@@ -27,6 +30,12 @@ public class SlipperyFishStatueRelic : RelicBase
         _impactThreshold  = 1f;
 
         base.Awake();
+
+        // Squirm phase をランダム初期化（個体差を出すため）
+        _squirmPhase = new Vector3(
+            Random.value * 100f,
+            Random.value * 100f,
+            Random.value * 100f);
 
         // 非常に低い摩擦（コンポーネント取得は base.Awake() 後に行う）
         var col = GetComponent<Collider>();
@@ -54,6 +63,24 @@ public class SlipperyFishStatueRelic : RelicBase
         TrySlip();
     }
 
+    /// <summary>
+    /// GDD §6.2 — 保持中にウネウネと squirm するトルクを適用。
+    /// Perlin noise ベースの連続的な揺れで、魚が手の中で暴れている感触を作る。
+    /// </summary>
+    private void FixedUpdate()
+    {
+        if (_isDestroyed || !_isHeld) return;
+        if (_rb == null || _rb.isKinematic) return;
+
+        float t = Time.time;
+        Vector3 torqueDir = new Vector3(
+            (Mathf.PerlinNoise(_squirmPhase.x, t * 0.8f) - 0.5f) * 2f,
+            (Mathf.PerlinNoise(_squirmPhase.y, t * 0.9f) - 0.5f) * 2f,
+            (Mathf.PerlinNoise(_squirmPhase.z, t * 1.1f) - 0.5f) * 2f);
+
+        _rb.AddTorque(torqueDir * _slipTorque, ForceMode.Force);
+    }
+
     private void TrySlip()
     {
         if (Random.value > _slipChance) return;
@@ -71,6 +98,9 @@ public class SlipperyFishStatueRelic : RelicBase
             Random.Range(-1f, 1f)).normalized;
 
         carrier.Drop(slipDir * _dropImpulse);
+
+        // GDD §15.2 — relic_fish_slip（ツルッと滑って手から抜ける SE）
+        PPAudioManager.Instance?.PlaySE(SoundId.RelicFishSlip, transform.position);
     }
 
     protected override Color GizmoColor => new Color(0.49f, 0.78f, 0.83f);

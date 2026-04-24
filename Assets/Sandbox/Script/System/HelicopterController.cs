@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 using TMPro;
+using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §2.4 — ヘリコプター演出・搭乗システム。
@@ -30,14 +32,28 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
     [Header("搭乗 UI")]
     [SerializeField] private TextMeshProUGUI _boardingTimerText;
 
+    [Header("到着カウントダウン UI (GDD §2.4)")]
+    [SerializeField] private TextMeshProUGUI _arrivalTimerText;
+
     // ── 状態 ─────────────────────────────────────────────────
     private bool    _isActive;
     private bool    _isBoarding;
     private float   _boardingTimer;
+    private bool    _isArriving;
+    private float   _arrivalTimer;
     private Vector3 _helipadPosition;
 
     /// <summary>搭乗フェーズが進行中か（PlayerInteraction から参照）。</summary>
     public bool    IsBoarding      => _isBoarding;
+
+    /// <summary>ヘリ到着待機中か（HUD 連動用）。</summary>
+    public bool    IsArriving      => _isArriving;
+
+    /// <summary>到着までの残り秒数（HUD 表示用）。</summary>
+    public float   ArrivalRemaining => Mathf.Max(_arrivalTimer, 0f);
+
+    /// <summary>搭乗猶予の残り秒数（HUD 表示用）。</summary>
+    public float   BoardingRemaining => Mathf.Max(_boardingTimer, 0f);
 
     /// <summary>ヘリパッドのワールド座標（PlayerInteraction の距離チェック用）。</summary>
     public Vector3 HelipadPosition => _helipadPosition;
@@ -55,6 +71,19 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
+
+        // HUD 文字がシーン開始直後に常時見える状態を避ける。
+        if (_boardingTimerText != null)
+        {
+            _boardingTimerText.text = string.Empty;
+            _boardingTimerText.gameObject.SetActive(false);
+        }
+
+        if (_arrivalTimerText != null)
+        {
+            _arrivalTimerText.text = string.Empty;
+            _arrivalTimerText.gameObject.SetActive(false);
+        }
     }
 
     public override void OnDestroy()
@@ -71,6 +100,19 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
 
     private void Update()
     {
+        // ヘリ到着カウントダウン (GDD §2.4)
+        if (_isArriving)
+        {
+            _arrivalTimer -= Time.deltaTime;
+            UpdateArrivalUI();
+            if (_arrivalTimer <= 0f)
+            {
+                _isArriving = false;
+                if (_arrivalTimerText != null)
+                    _arrivalTimerText.gameObject.SetActive(false);
+            }
+        }
+
         if (!_isBoarding) return;
 
         _boardingTimer -= Time.deltaTime;
@@ -113,8 +155,16 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
     private void AnnounceHelicopterClientRpc(Vector3 helipadPos)
     {
         _helipadPosition = helipadPos;
+
+        // GDD §2.4 — 全クライアントで同期されたカウントダウン開始。
+        // ARRIVAL_DELAY は固定秒数でサーバー側のシーケンスと完全に並走するため、
+        // NetworkVariable ではなく各クライアント独立のタイマーで十分一致する。
+        _isArriving   = true;
+        _arrivalTimer = ARRIVAL_DELAY;
+        if (_arrivalTimerText != null)
+            _arrivalTimerText.gameObject.SetActive(true);
+
         Debug.Log("[Heli] ヘリが呼ばれました！60秒後に到着します。");
-        // TODO: HUD に「ヘリ到着まで ○○秒」カウントダウン表示
     }
 
     // ── 到着シーケンス ────────────────────────────────────────
@@ -135,8 +185,10 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
     [Rpc(SendTo.ClientsAndHost)]
     private void NotifyApproachClientRpc()
     {
+        // GDD §15.2 — heli_approach（接近時の遠くのローター音）
+        PPAudioManager.Instance?.PlaySE(SoundId.HeliApproach, _helipadPosition);
+
         Debug.Log("[Heli] ヘリのローター音が聞こえてきた！あと20秒！");
-        // TODO: AudioSource でローター音を段階的に大きくする
     }
 
     [Rpc(SendTo.ClientsAndHost)]
@@ -154,6 +206,10 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
 
         _isActive = true;
         StartCoroutine(LandingAnimation(startPos, hoverPos));
+
+        // GDD §15.2 — heli_hover（ホバリング時の近距離ローター音）
+        PPAudioManager.Instance?.PlaySE(SoundId.HeliHover, hoverPos);
+
         Debug.Log("[Heli] ヘリが到着！");
     }
 
@@ -228,6 +284,11 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
             _boardingTimerText.gameObject.SetActive(false);
 
         StartCoroutine(DepartureAnimation());
+
+        // GDD §15.2 — heli_depart（離陸時の上昇ローター音）
+        Vector3 seOrigin = _heliVisual != null ? _heliVisual.transform.position : _helipadPosition;
+        PPAudioManager.Instance?.PlaySE(SoundId.HeliDepart, seOrigin);
+
         Debug.Log("[Heli] ヘリが離陸！");
     }
 
@@ -281,6 +342,14 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
         int s = Mathf.CeilToInt(_boardingTimer);
         _boardingTimerText.text = $"搭乗猶予: {s}秒";
         _boardingTimerText.color = s <= 10 ? Color.red : Color.white;
+    }
+
+    private void UpdateArrivalUI()
+    {
+        if (_arrivalTimerText == null) return;
+        int s = Mathf.CeilToInt(_arrivalTimer);
+        _arrivalTimerText.text = $"ヘリ到着まで: {s}秒";
+        _arrivalTimerText.color = s <= 20 ? new Color(1f, 0.8f, 0.2f) : Color.white;
     }
 
     // ── ヘリパッド検索 ────────────────────────────────────────

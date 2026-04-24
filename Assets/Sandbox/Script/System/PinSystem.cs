@@ -26,6 +26,16 @@ public class PinSystem : NetworkBehaviour
     // ── 共有マテリアル（Shader.Find はアプリ起動時に1回だけ）────
     private static Material s_pinSharedMaterial;
 
+    // ── 全アクティブピンのクライアント側レジストリ（HUD ミニコンパス用）──
+    // クライアントごとのローカル追跡。SpawnPinClientRpc で追加・寿命切れで除去。
+    private static readonly List<(Transform transform, PinType type)> s_activePins = new();
+
+    /// <summary>
+    /// クライアント側で認識している全アクティブピン（HUD ミニコンパス等の表示用）。
+    /// 外部コードは読み取り専用として扱うこと（変更禁止）。
+    /// </summary>
+    public static IReadOnlyList<(Transform transform, PinType type)> ActivePins => s_activePins;
+
     // ── GDD 定数 ─────────────────────────────────────────────
     private const float PIN_LIFETIME       = 60f;    // 秒
     private const float DELETE_HOLD_TIME   = 2f;     // 長押し削除
@@ -61,6 +71,8 @@ public class PinSystem : NetworkBehaviour
     private PinType _selectedType   = PinType.Danger;
     private bool    _wheelOpen;
     private float   _holdTimer;
+    // 長押し削除が発火したら、このホールド中は KeyUp で設置しないためのガード。
+    private bool    _deleteFiredThisHold;
     private readonly List<PinRecord> _myPins = new();  // 自分が設置したピン
 
     // ── ライフサイクル ────────────────────────────────────────
@@ -83,23 +95,31 @@ public class PinSystem : NetworkBehaviour
     // ── 入力処理 ─────────────────────────────────────────────
     private void HandlePinInput()
     {
-        // F キー長押し → 最古のピンを削除
+        // 新たなホールド開始でガードをリセット
+        if (Input.GetKeyDown(PIN_KEY))
+            _deleteFiredThisHold = false;
+
+        // F キー長押し → 最古のピンを削除（ホールド中に 1 回だけ）
         if (Input.GetKey(PIN_KEY))
         {
             _holdTimer += Time.deltaTime;
-            if (_holdTimer >= DELETE_HOLD_TIME)
+            if (!_deleteFiredThisHold && _holdTimer >= DELETE_HOLD_TIME)
             {
                 DeleteOldestPin();
-                _holdTimer = 0f;
+                _deleteFiredThisHold = true;
+                _holdTimer           = 0f;
             }
         }
 
         if (Input.GetKeyUp(PIN_KEY))
         {
-            // 短押し: ホイールを切り替えるか即時設置（現在の選択種で設置）
-            if (_holdTimer < 0.3f)
+            // 短押し: 即時設置（現在の選択種で設置）。
+            // ただしこのホールドで削除が既に発火していれば、リセット直後の _holdTimer が
+            // 0.3s 未満の状態で拾われて誤設置してしまうのでガードする。
+            if (!_deleteFiredThisHold && _holdTimer < 0.3f)
                 TryPlacePin(_selectedType);
-            _holdTimer = 0f;
+            _holdTimer           = 0f;
+            _deleteFiredThisHold = false;
         }
 
         // 数字キー 1-3 でピン種別を切替
@@ -162,6 +182,9 @@ public class PinSystem : NetworkBehaviour
         if (IsOwner && OwnerClientId == ownerClientId)
             _myPins.Add(new PinRecord(go, Time.time));
 
+        // グローバルレジストリに追加（ミニコンパス等の HUD 用）
+        s_activePins.Add((go.transform, type));
+
         StartCoroutine(DestroyAfter(go, PIN_LIFETIME));
     }
 
@@ -172,9 +195,12 @@ public class PinSystem : NetworkBehaviour
         if (_myPins.Count == 0) return;
 
         // 最古（先頭）のピンを削除
-        if (_myPins[0].pinObject != null)
+        var oldest = _myPins[0].pinObject;
+        if (oldest != null)
         {
-            Destroy(_myPins[0].pinObject);
+            var t = oldest.transform;
+            s_activePins.RemoveAll(p => p.transform == t);
+            Destroy(oldest);
             Debug.Log("[PinSystem] 最古のピンを削除");
         }
         _myPins.RemoveAt(0);
@@ -202,10 +228,67 @@ public class PinSystem : NetworkBehaviour
         Object.Destroy(head.GetComponent<Collider>());
         SetColor(head, color);
 
-        // ラベル（TextMeshPro が使えない環境は省略）
-        // TODO: 距離テキスト表示（SetActive で最適化可能）
+        // GDD §4.9 — 距離テキスト（ローカルカメラからの距離を常時ビルボード表示）
+        var labelGo = new GameObject("PinLabel");
+        labelGo.transform.SetParent(root.transform);
+        labelGo.transform.localPosition = new Vector3(0f, 1.55f, 0f);
+        var tmp = labelGo.AddComponent<TextMeshPro>();
+        tmp.text             = label;
+        tmp.fontSize         = 3f;
+        tmp.color            = color;
+        tmp.alignment        = TextAlignmentOptions.Center;
+        tmp.textWrappingMode = TextWrappingModes.NoWrap;
+        labelGo.transform.localScale = Vector3.one * 0.5f;
+        labelGo.AddComponent<PinLabelBillboard>().Setup(tmp, label);
 
         return root;
+    }
+
+    // ── 距離表示 + ビルボード ─────────────────────────────────
+    /// <summary>
+    /// GDD §4.9 — ピンのラベル: ローカルカメラに向けて billboard し、
+    /// 「{label} {distance}m」形式で残距離を表示する。遠距離では非表示化してコスト最適化。
+    /// </summary>
+    private sealed class PinLabelBillboard : MonoBehaviour
+    {
+        private const float MAX_DISPLAY_DISTANCE = 80f;  // これ以上の距離ではラベル非表示
+        private const float UPDATE_INTERVAL      = 0.2f; // 距離テキストの更新頻度（秒）
+
+        private TextMeshPro _tmp;
+        private string      _baseLabel;
+        private float       _updateTimer;
+
+        internal void Setup(TextMeshPro tmp, string baseLabel)
+        {
+            _tmp       = tmp;
+            _baseLabel = baseLabel;
+        }
+
+        private void LateUpdate()
+        {
+            if (_tmp == null) return;
+            var cam = Camera.main;
+            if (cam == null) return;
+
+            // 距離チェック（遠距離は完全に非表示に）
+            float dist = Vector3.Distance(cam.transform.position, transform.position);
+            bool  show = dist <= MAX_DISPLAY_DISTANCE;
+            if (_tmp.gameObject.activeSelf != show)
+                _tmp.gameObject.SetActive(show);
+            if (!show) return;
+
+            // ビルボード（Y 軸のみ回転して常にカメラ側を向く）
+            Vector3 toCam = cam.transform.position - transform.position;
+            toCam.y = 0f;
+            if (toCam.sqrMagnitude > 0.001f)
+                transform.rotation = Quaternion.LookRotation(-toCam.normalized);
+
+            // 距離テキスト更新（毎フレームは無駄なので間引き）
+            _updateTimer -= Time.deltaTime;
+            if (_updateTimer > 0f) return;
+            _updateTimer = UPDATE_INTERVAL;
+            _tmp.text = $"{_baseLabel} {Mathf.RoundToInt(dist)}m";
+        }
     }
 
     /// <summary>
@@ -249,7 +332,13 @@ public class PinSystem : NetworkBehaviour
     private static IEnumerator DestroyAfter(GameObject go, float seconds)
     {
         yield return new WaitForSeconds(seconds);
-        if (go != null) Destroy(go);
+        if (go != null)
+        {
+            // グローバルレジストリからも除去（HUD 用）
+            var t = go.transform;
+            s_activePins.RemoveAll(p => p.transform == t);
+            Destroy(go);
+        }
     }
 
     // ── 残りピン数プロパティ ──────────────────────────────────
