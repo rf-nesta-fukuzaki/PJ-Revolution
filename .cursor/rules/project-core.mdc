@@ -1,0 +1,24 @@
+---
+description: PJ-Revolution project goals and global implementation rules
+alwaysApply: true
+---
+
+# PJ-Revolution Core Rules
+
+- Respond in Japanese for this project.
+- Project goal: build **Peak Idiots / Peak Plunder**, a casual first-person co-op mountain climbing game where rope, grappling, hazards, relic carrying, route discovery, checkpoints, and summit arrival create funny failure moments.
+- Primary playable target is `Assets/Sandbox/Scenes/Gameplay.unity` / Stage01 Mountain01.
+- Use Unity `6000.3.x`, URP, Input System, Netcode for GameObjects, and the existing `Assets/Sandbox` architecture.
+- Prefer existing systems before adding new ones: `ExpeditionManager`, `SpawnManager`, `RouteGate`, `ReviveShrine`, `GameServices`, `PlayerRopeSystem`, `RopeManager`, `AudioManager`, `SoundId`.
+- Do not add external art/audio dependencies for core implementation. Use Unity primitives, generated materials, placeholder prefabs, or procedural clips when assets are missing.
+- Keep gameplay implementation practical and playable first. Visual polish is secondary unless the task is explicitly about polish.
+- Preserve existing user changes. Do not revert unrelated modifications.
+- Step or feature completion should leave compile errors at zero. If Unity cannot run on the current machine, state that validation must be done on a Unity-equipped machine.
+- When committing only do so if explicitly requested by the user, except where the user has already asked to follow the project step process.
+
+## Documentation Sources
+
+- `CLAUDE.md` is the high-level game direction and staged implementation plan.
+- `docs/map-stage01/` is the authoritative Stage01 MAP design.
+- `memory/PROJECT_MEMORY.md` is the compact working memory for Cursor agents.
+- If documents conflict with current code, inspect current code and update the smallest correct source of truth.

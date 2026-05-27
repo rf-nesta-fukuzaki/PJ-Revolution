@@ -1,0 +1,24 @@
+---
+description: Stage01 Mountain01 map generation and validation rules
+globs: Assets/Sandbox/**,docs/map-stage01/**
+alwaysApply: false
+---
+
+# Stage01 MAP Rules
+
+- Treat `docs/map-stage01/` as the Stage01 MAP specification.
+- Do high-volume scene construction through Unity Editor APIs, mainly `Stage01MapBuilder`, not by hand-editing `.unity` YAML.
+- Main build menu: `Peak Plunder > Stage01 > Build Gameplay Scene`.
+- Main validation menu: `Peak Plunder > Stage01 > Validate Gameplay Scene`.
+- Generated scene target: `Assets/Sandbox/Scenes/Gameplay.unity`.
+- Generated assets include `Assets/Sandbox/Terrain/MountainTerrainData.asset`, `Assets/Sandbox/Materials/Stage01/*.mat`, and Stage01 hazard/item prefabs.
+- Preserve exact hierarchy names used by code and validator:
+  `World`, `Mountain`, `Basecamp`, `Zone1_Forest`, `Zone2_RockySlope`, `Zone3_CliffWall`, `Zone4_TempleRuins`, `Zone5_IceWall`, `Zone6_Summit`,
+  `GrappableRocks`, `IcePatches`, `Checkpoints`, `RouteGates`, `RelicSpawnPoints`, `PlayerSpawnPoints`, `HazardSpawnPoints`.
+- Stage01 terrain target: 300m x 300m, height 220m, resolution 513, seed 42 unless intentionally changing the map.
+- Required gameplay counts: `GrappableRocks >= 50`, Zone1 trees `>= 20`, `IcePatch >= 12`, `RouteGate >= 4`, `ReviveShrine >= 6`, `ZoneCheckpoint >= 5`.
+- Required spawn counts: Relic `9`, Hazard `9`, Item `5`.
+- Tags/layers must include `Grappable`, `Checkpoint`, `ReturnZone`, `SummitGoal`, `Ground`, `Grappable`, and `Hazard` as applicable.
+- Checkpoints use two concepts: `Checkpoints/Checkpoint_01..04` for respawn Transforms, and `World/Zone*/Checkpoint_ZoneN` with `ZoneCheckpoint` triggers.
+- Summit completion uses `SummitGoalTrigger`, `SoundId.Summit`, and `ExpeditionManager.ReturnToBase(true)`.
+- After Stage01 changes, validation expectation is `[Stage01 Validate] OK`. If Unity is unavailable here, document that Unity-side validation is pending.

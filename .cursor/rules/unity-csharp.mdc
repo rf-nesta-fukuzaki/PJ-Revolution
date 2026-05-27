@@ -1,0 +1,20 @@
+---
+description: Unity C# coding conventions for Assets scripts
+globs: Assets/**/*.cs
+alwaysApply: false
+---
+
+# Unity C# Rules
+
+- Runtime code must not depend on `UnityEditor`. Put editor-only tools under `Assets/Sandbox/Script/Editor/` or guard them with `#if UNITY_EDITOR`.
+- Prefer serialized private fields for Inspector tuning: `[SerializeField] private ...`.
+- Keep MonoBehaviour lifecycle predictable: cache components in `Awake`, cross-object lookups in `Start` when needed, physics in `FixedUpdate`, visual camera work in `LateUpdate`.
+- Use Unity 6 APIs consistently, including `Rigidbody.linearVelocity` where this project already uses it.
+- Avoid scene-wide `Find*` calls in hot paths. If needed, use `GameServices` or cache once.
+- For service access, prefer established project flows: `GameServices`, existing singleton instances, `ExpeditionEvents`, `AudioManager`, and `SoundId`.
+- Do not create duplicate manager concepts if `ExpeditionManager`, `SpawnManager`, `GameStateManager`, `ScoreTracker`, or `AudioManager` already owns the behavior.
+- For player detection, use `CompareTag("Player")`.
+- For interactable/grapple targets, set Tag `Grappable`, Layer `Grappable`, a Collider, and kinematic Rigidbody when appropriate.
+- For networked objects, check `NetworkObject`, ownership, spawn/despawn timing, and parent-child constraints before changing transforms or RPC flow.
+- New gameplay code should fail softly in the editor with clear `Debug.LogWarning`/`Debug.LogError` when required scene references are missing.
+- Do not silently swallow exceptions or ignore missing required dependencies in runtime gameplay.
