@@ -93,5 +93,9 @@ namespace PeakPlunder.Audio
 
         // ── BGM ジングル (GDD §15.1) ───────────────────────────
         WipeoutJingle,
+
+        // ── Stage01 MAP 追加 SE ────────────────────────────────
+        Checkpoint,
+        Summit,
     }
 }

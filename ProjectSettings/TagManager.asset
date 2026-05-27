@@ -13,6 +13,7 @@ TagManager:
   - ReturnZone
   - DepartureGate
   - Relic
+  - SummitGoal
   layers:
   - Default
   - TransparentFX
@@ -30,6 +31,8 @@ TagManager:
   - Relic
   - Ghost
   - RagdollBone
+  - Grappable
+  - Hazard
   - 
   - 
   - 
