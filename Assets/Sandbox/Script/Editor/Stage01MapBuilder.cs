@@ -77,6 +77,7 @@ public static class Stage01MapBuilder
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
         AssetDatabase.SaveAssets();
+        Stage01MapValidator.ValidateGameplayScene();
         Debug.Log("[Stage01MapBuilder] Stage01 Gameplay scene build complete.");
     }
 
