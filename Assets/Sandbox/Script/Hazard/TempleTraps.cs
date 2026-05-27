@@ -43,6 +43,13 @@ public class PressurePlateArrow : MonoBehaviour
         var target = other.GetComponentInParent<PlayerHealthSystem>();
         Vector3 targetPos = other.transform.position + Vector3.up;
 
+        if (_arrowSpawnPoints == null || _arrowSpawnPoints.Length == 0)
+        {
+            Debug.LogWarning($"[PressurePlateArrow] 矢の射出口が未設定です: {name}");
+            StartCoroutine(ResetAfter(RESET_DELAY));
+            return;
+        }
+
         foreach (var spawnPoint in _arrowSpawnPoints)
         {
             if (spawnPoint == null) continue;
@@ -73,6 +80,12 @@ public class PressurePlateArrow : MonoBehaviour
         Vector3 dir = (targetPos - spawn.position).normalized;
         arrow.transform.rotation = Quaternion.LookRotation(dir) *
                                    Quaternion.Euler(90f, 0f, 0f);
+
+        var col = arrow.GetComponent<Collider>();
+        if (col != null) col.isTrigger = true;
+        var rb = arrow.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
 
         arrow.AddComponent<ArrowProjectile>().Init(dir, ARROW_SPEED, ARROW_DAMAGE, ARROW_LIFETIME);
 

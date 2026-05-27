@@ -89,6 +89,10 @@ public static class Stage01MapValidator
         report.Require(gameManager.GetComponent<ExpeditionManager>() != null, "GameManager has ExpeditionManager");
         report.Require(gameManager.GetComponent<ScoreTracker>() != null, "GameManager has ScoreTracker");
         report.Require(gameManager.GetComponent<PeakPlunder.Audio.AudioManager>() != null, "GameManager has AudioManager");
+
+        var returnPoint = GameObject.Find("ReturnPoint");
+        report.Require(returnPoint?.GetComponent<ReturnZone>() != null, "ReturnPoint has ReturnZone");
+        report.Require(returnPoint?.GetComponent<Unity.Netcode.NetworkObject>() != null, "ReturnPoint has NetworkObject");
     }
 
     private static void ValidateGeneratedAssets(ValidationReport report)

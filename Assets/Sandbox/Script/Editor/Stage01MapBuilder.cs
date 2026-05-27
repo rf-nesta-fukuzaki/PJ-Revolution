@@ -200,6 +200,8 @@ public static class Stage01MapBuilder
 
         var returnPoint = CreateChild(basecamp, "ReturnPoint");
         returnPoint.transform.position = Pos(0f, -140f, 1f);
+        if (returnPoint.GetComponent<Unity.Netcode.NetworkObject>() == null)
+            returnPoint.AddComponent<Unity.Netcode.NetworkObject>();
         returnPoint.AddComponent<ReturnZone>();
         Stage01EditorUtil.TrySetTag(returnPoint, "ReturnZone");
 
@@ -651,7 +653,20 @@ internal sealed class Stage01Prefabs
         go.GetComponent<Renderer>().sharedMaterial = material;
         var col = go.GetComponent<BoxCollider>();
         if (col != null) col.isTrigger = true;
-        go.AddComponent<PressurePlateArrow>();
+        var pressure = go.AddComponent<PressurePlateArrow>();
+        var arrowA = new GameObject("ArrowSpawn_A");
+        arrowA.transform.SetParent(go.transform);
+        arrowA.transform.localPosition = new Vector3(-4f, 1.5f, 0f);
+        var arrowB = new GameObject("ArrowSpawn_B");
+        arrowB.transform.SetParent(go.transform);
+        arrowB.transform.localPosition = new Vector3(4f, 1.5f, 0f);
+
+        var so = new SerializedObject(pressure);
+        var points = so.FindProperty("_arrowSpawnPoints");
+        points.arraySize = 2;
+        points.GetArrayElementAtIndex(0).objectReferenceValue = arrowA.transform;
+        points.GetArrayElementAtIndex(1).objectReferenceValue = arrowB.transform;
+        so.ApplyModifiedProperties();
         return SavePrefab(go, path);
     }
 

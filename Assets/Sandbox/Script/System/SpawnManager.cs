@@ -51,6 +51,7 @@ public class SpawnManager : MonoBehaviour
     // ── 全レイヤー実行 ───────────────────────────────────────
     public void RunAllLayers()
     {
+        EnsureSceneCache();
         ClearAll();
         InjectRelicPool();
         GenerateLayer2_Routes();
@@ -58,6 +59,14 @@ public class SpawnManager : MonoBehaviour
         GenerateLayer5_Hazards();
         GenerateLayer5_DroppedItems();
         PairTwinStatues();
+    }
+
+    private void EnsureSceneCache()
+    {
+        if (_allSpawnPoints == null)
+            _allSpawnPoints = FindObjectsByType<SpawnPoint>(FindObjectsSortMode.None);
+        if (_allRouteGates == null)
+            _allRouteGates = FindObjectsByType<RouteGate>(FindObjectsSortMode.None);
     }
 
     // ── 遺物プール注入 ────────────────────────────────────────

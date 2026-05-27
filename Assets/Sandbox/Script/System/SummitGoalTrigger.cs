@@ -6,7 +6,6 @@ using PPAudioManager = PeakPlunder.Audio.AudioManager;
 /// Stage01 mountain summit trigger. Entering the summit ends the expedition
 /// through the existing ExpeditionManager return flow.
 /// </summary>
-[RequireComponent(typeof(Collider))]
 public class SummitGoalTrigger : MonoBehaviour
 {
     [Header("演出")]
