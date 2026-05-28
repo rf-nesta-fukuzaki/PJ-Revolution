@@ -21,18 +21,32 @@ public class MountainTerrainGenerator : MonoBehaviour
     [Header("Terrain サイズ")]
     [SerializeField] private float _terrainWidth  = 300f;
     [SerializeField] private float _terrainLength = 300f;
-    [SerializeField] private float _terrainHeight = 220f;
+    [SerializeField] private float _terrainHeight = 520f;
     [SerializeField] private int   _resolution    = 513;    // 2^n+1 必須
 
-    // ── Perlin ノイズ ──────────────────────────────────────────
-    [Header("Perlin ノイズ")]
+    // ── fBm 山岳ノイズ ─────────────────────────────────────────
+    [Header("fBm 山岳ノイズ")]
     [SerializeField] private int   _seed   = 42;
-    [SerializeField] private float _scale1 = 0.007f;
-    [SerializeField] private float _amp1   = 0.55f;
-    [SerializeField] private float _scale2 = 0.022f;
-    [SerializeField] private float _amp2   = 0.22f;
-    [SerializeField] private float _scale3 = 0.065f;
-    [SerializeField] private float _amp3   = 0.07f;
+    [SerializeField] private float _scale1 = 0.0065f; // 1層目: 大きな山体
+    [SerializeField] private float _amp1   = 0.62f;
+    [SerializeField] private float _scale2 = 0.020f;  // 2層目: 尾根・谷
+    [SerializeField] private float _amp2   = 0.34f;
+    [SerializeField] private float _scale3 = 0.075f;  // 3層目: 岩肌
+    [SerializeField] private float _amp3   = 0.12f;
+
+    [Header("登山ルート整形")]
+    [SerializeField] private float _routeNoiseScale = 0.018f;
+    [SerializeField] private float _routeMeanderMeters = 14f;
+    [SerializeField] private float _routeBaseWidth = 24f;
+    [SerializeField] private float _routeSummitWidth = 5.5f;
+    [SerializeField, Range(0f, 1f)] private float _routeFlattenStrength = 0.29f;
+
+    [Header("山肌ディテール")]
+    [SerializeField, Range(1, 8)] private int _fractalOctaves = 6;
+    [SerializeField, Range(0.1f, 0.9f)] private float _fractalPersistence = 0.47f;
+    [SerializeField] private float _fractalLacunarity = 2.12f;
+    [SerializeField] private float _domainWarpScale = 0.010f;
+    [SerializeField] private float _domainWarpMeters = 18f;
 
     // ── マテリアル ─────────────────────────────────────────────
     [Header("Terrain Material (任意 / 未設定=デフォルト)")]
@@ -44,7 +58,7 @@ public class MountainTerrainGenerator : MonoBehaviour
     private static readonly float[] s_zoneNz =
         { 0.04f, 0.18f, 0.35f, 0.52f, 0.65f, 0.78f, 0.93f };
     private static readonly float[] s_zoneH =
-        { 0.00f, 0.11f, 0.30f, 0.55f, 0.64f, 0.82f, 1.00f };
+        { 0.00f, 0.055f, 0.26f, 0.64f, 0.76f, 0.94f, 1.00f };
 
     // ── 内部キャッシュ ─────────────────────────────────────────
     private Terrain _terrain;
@@ -165,49 +179,175 @@ public class MountainTerrainGenerator : MonoBehaviour
         int res     = _resolution;
         var heights = new float[res, res];
 
-        // seed から再現可能なオフセット値を生成
-        float ox1 = (_seed * 7919 % 9973) / 99.73f;
-        float oz1 = (_seed * 6271 % 9973) / 99.73f;
-        float ox2 = (_seed * 4013 % 9973) / 99.73f;
-        float oz2 = (_seed * 3571 % 9973) / 99.73f;
-        float ox3 = (_seed * 2011 % 9973) / 99.73f;
-        float oz3 = (_seed * 1999 % 9973) / 99.73f;
-
-        float totalAmp = _amp1 + _amp2 + _amp3;
-
         for (int zi = 0; zi < res; zi++)
         {
             float nz    = (float)zi / (res - 1);
             float baseH = ZoneProfile(nz);
+            float worldZ = Mathf.Lerp(-_terrainLength * 0.5f, _terrainLength * 0.5f, nz);
+            float routeCenterX = ComputeRouteCenterX(worldZ, nz);
+            float routeWidth = Mathf.Lerp(_routeBaseWidth, _routeSummitWidth, baseH);
 
             for (int xi = 0; xi < res; xi++)
             {
                 float nx = (float)xi / (res - 1);
+                float worldX = Mathf.Lerp(-_terrainWidth * 0.5f, _terrainWidth * 0.5f, nx);
 
-                // ① 稜線: 山頂ほど細く、麓ほど広い
-                float halfW = Mathf.Lerp(0.48f, 0.10f, baseH);
-                float dx    = Mathf.Abs(nx - 0.5f);
-                float ridge = Mathf.Clamp01(1f - dx / Mathf.Max(halfW, 0.001f));
-                ridge = ridge * ridge;  // 二乗で側面を急峻に
+                Vector2 warped = DomainWarp(worldX, worldZ);
 
-                // ② Perlin ノイズ（3 オクターブ）
-                float n1 = Mathf.PerlinNoise(xi * _scale1 + ox1, zi * _scale1 + oz1) * _amp1;
-                float n2 = Mathf.PerlinNoise(xi * _scale2 + ox2, zi * _scale2 + oz2) * _amp2;
-                float n3 = Mathf.PerlinNoise(xi * _scale3 + ox3, zi * _scale3 + oz3) * _amp3;
-                float noise = (n1 + n2 + n3) / totalAmp;  // 0〜1 に正規化
+                // ① 1層目: 大きく緩やかなfBm。山全体の塊と主峰のうねりを作る。
+                float macro = SignedFbm(warped.x, warped.y, _scale1, _fractalOctaves, _fractalPersistence, _fractalLacunarity, 11);
 
-                // ③ 合算: ゾーンプロファイル × 稜線 + ノイズ補正
-                float h = baseH * ridge + noise * 0.12f * ridge;
+                // ② 2層目: Ridged fBm。尾根・谷・切り立った岩壁の骨格を作る。
+                float ridgeNoise = RidgedFbm(warped.x, warped.y, _scale2, 5, 0.54f, 2.08f, 23);
 
-                // ④ ベースキャンプ付近を平坦化（プレイヤーが立てるように）
-                if (nz < 0.09f)
-                    h *= Mathf.SmoothStep(0f, 1f, nz / 0.09f);
+                // ③ 3層目: 高周波Ridged fBm。近距離で見える岩肌のデコボコを作る。
+                float rockNoise = RidgedFbm(warped.x, warped.y, _scale3, 5, 0.50f, 2.18f, 37);
+
+                float ridgeDistance = Mathf.Abs(worldX - routeCenterX * 0.35f);
+                float mainHalfWidth = Mathf.Lerp(_terrainWidth * 0.58f, _terrainWidth * 0.10f, Mathf.Pow(baseH, 0.85f));
+                float mountainEnvelope = 1f - Smooth01(ridgeDistance / Mathf.Max(mainHalfWidth, 0.001f));
+                mountainEnvelope = Mathf.Pow(Mathf.Clamp01(mountainEnvelope), Mathf.Lerp(1.15f, 3.25f, baseH));
+
+                float sideMask = Smooth01(ridgeDistance / Mathf.Max(mainHalfWidth * 0.72f, 0.001f)) * mountainEnvelope;
+                float cliffBand = Bell(nz, 0.35f, 0.050f) + Bell(nz, 0.53f, 0.045f) + Bell(nz, 0.76f, 0.055f);
+                float summitSpike = Mathf.Pow(Mathf.Clamp01(nz), 2.65f) * Mathf.Pow(mountainEnvelope, 1.55f) * 0.16f;
+
+                float h = baseH * Mathf.Lerp(0.025f, 1.08f, mountainEnvelope);
+                h += macro * _amp1 * 0.18f * Mathf.Lerp(0.35f, 1f, mountainEnvelope);
+                h += ridgeNoise * _amp2 * 0.42f * baseH * mountainEnvelope;
+                h += rockNoise * _amp3 * 0.90f * baseH * Mathf.SmoothStep(0.16f, 0.9f, baseH);
+                h += sideMask * ridgeNoise * 0.16f * baseH;
+                h += cliffBand * (0.12f + rockNoise * 0.08f) * Mathf.SmoothStep(0.25f, 0.98f, mountainEnvelope);
+                h += summitSpike;
+
+                // 侵食谷。登山路から離れた斜面を削り、山体を「丘」ではなく険しい峰に見せる。
+                float valley = RidgedFbm(warped.x + 91.7f, warped.y - 43.2f, 0.014f, 4, 0.56f, 2.05f, 71);
+                float routeDistance = Mathf.Abs(worldX - routeCenterX);
+                float routeMask = 1f - Smooth01((routeDistance - routeWidth * 0.36f) / Mathf.Max(routeWidth * 0.64f, 0.001f));
+                h -= valley * 0.10f * baseH * (1f - routeMask) * Mathf.SmoothStep(0.12f, 0.9f, mountainEnvelope);
+
+                // 中央登山路は「通れるが怖い」程度にだけ均す。
+                float routeSurface = baseH + cliffBand * 0.055f + macro * 0.028f + ridgeNoise * 0.025f + rockNoise * 0.008f;
+                h = Mathf.Lerp(h, routeSurface, routeMask * _routeFlattenStrength);
+
+                // ゾーンの見せ場は、プロップが置きやすく歩ける台地として軽く整形する。
+                h = ApplyPlateaus(h, worldX, worldZ);
+
+                // ベースキャンプ付近を平坦化（プレイヤーが立てるように）。
+                if (nz < 0.10f)
+                    h *= Mathf.SmoothStep(0f, 1f, nz / 0.10f);
 
                 heights[zi, xi] = Mathf.Clamp01(h);
             }
         }
 
         return heights;
+    }
+
+    private float ComputeRouteCenterX(float worldZ, float nz)
+    {
+        float baseNoise = FractalNoise(0f, worldZ, _routeNoiseScale, 3, 0.5f, 2f, 53) - 0.5f;
+        float summitTaper = 1f - Mathf.SmoothStep(0.78f, 0.96f, nz);
+        float basecampTaper = Mathf.SmoothStep(0.08f, 0.22f, nz);
+        return baseNoise * 2f * _routeMeanderMeters * summitTaper * basecampTaper;
+    }
+
+    private float ApplyPlateaus(float height, float worldX, float worldZ)
+    {
+        height = ApplyPlateau(height, worldX, worldZ, 0f, -130f, 36f, 18f, 0.018f, 0.92f);
+        height = ApplyPlateau(height, worldX, worldZ, 0f, 62f, 26f, 20f, ZoneProfile(WorldZToNz(62f)) + 0.015f, 0.58f);
+        height = ApplyPlateau(height, worldX, worldZ, 0f, 132f, 24f, 18f, 0.965f, 0.82f);
+        return height;
+    }
+
+    private float ApplyPlateau(float height, float worldX, float worldZ, float centerX, float centerZ, float width, float length, float targetHeight, float strength)
+    {
+        float dx = Mathf.Abs(worldX - centerX) / Mathf.Max(width * 0.5f, 0.001f);
+        float dz = Mathf.Abs(worldZ - centerZ) / Mathf.Max(length * 0.5f, 0.001f);
+        float distance = Mathf.Max(dx, dz);
+        float mask = 1f - Smooth01((distance - 0.65f) / 0.35f);
+        return Mathf.Lerp(height, targetHeight, mask * strength);
+    }
+
+    private float WorldZToNz(float worldZ)
+    {
+        return Mathf.InverseLerp(-_terrainLength * 0.5f, _terrainLength * 0.5f, worldZ);
+    }
+
+    private Vector2 DomainWarp(float x, float z)
+    {
+        float wx = SignedFbm(x, z, _domainWarpScale, 3, 0.55f, 2.0f, 101);
+        float wz = SignedFbm(x + 37.1f, z - 19.7f, _domainWarpScale, 3, 0.55f, 2.0f, 131);
+        return new Vector2(x + wx * _domainWarpMeters, z + wz * _domainWarpMeters);
+    }
+
+    private float SignedFbm(float x, float z, float scale, int octaves, float persistence, float lacunarity, int salt)
+    {
+        return FractalNoise(x, z, scale, octaves, persistence, lacunarity, salt) * 2f - 1f;
+    }
+
+    private float RidgedFbm(float x, float z, float scale, int octaves, float persistence, float lacunarity, int salt)
+    {
+        float frequency = Mathf.Max(scale, 0.0001f);
+        float amplitude = 1f;
+        float total = 0f;
+        float normalizer = 0f;
+        float ox = SeedOffset(salt);
+        float oz = SeedOffset(salt + 1);
+
+        for (int i = 0; i < octaves; i++)
+        {
+            float n = Mathf.PerlinNoise(x * frequency + ox, z * frequency + oz) * 2f - 1f;
+            float ridge = 1f - Mathf.Abs(n);
+            total += ridge * ridge * amplitude;
+            normalizer += amplitude;
+            amplitude *= persistence;
+            frequency *= lacunarity;
+            ox += 23.41f;
+            oz += 31.77f;
+        }
+
+        return normalizer > 0f ? total / normalizer : 0f;
+    }
+
+    private float FractalNoise(float x, float z, float scale, int octaves, float persistence, float lacunarity, int salt)
+    {
+        float frequency = Mathf.Max(scale, 0.0001f);
+        float amplitude = 1f;
+        float total = 0f;
+        float normalizer = 0f;
+        float ox = SeedOffset(salt);
+        float oz = SeedOffset(salt + 1);
+
+        for (int i = 0; i < octaves; i++)
+        {
+            total += Mathf.PerlinNoise(x * frequency + ox, z * frequency + oz) * amplitude;
+            normalizer += amplitude;
+            amplitude *= persistence;
+            frequency *= lacunarity;
+            ox += 17.13f;
+            oz += 29.71f;
+        }
+
+        return normalizer > 0f ? total / normalizer : 0f;
+    }
+
+    private float SeedOffset(int salt)
+    {
+        int value = Mathf.Abs((_seed * 73856093) ^ (salt * 19349663));
+        return (value % 100000) * 0.001f;
+    }
+
+    private static float Smooth01(float t)
+    {
+        t = Mathf.Clamp01(t);
+        return t * t * (3f - 2f * t);
+    }
+
+    private static float Bell(float value, float center, float width)
+    {
+        float t = Mathf.Abs(value - center) / Mathf.Max(width, 0.0001f);
+        return 1f - Smooth01(t);
     }
 
     /// <summary>nz (0=ベースキャンプ, 1=山頂) を正規化高度 0〜1 に変換する。</summary>

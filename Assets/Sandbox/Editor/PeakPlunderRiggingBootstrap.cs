@@ -2,7 +2,9 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+#if PEAKPLUNDER_USE_ANIMATION_RIGGING
 using UnityEngine.Animations.Rigging;
+#endif
 
 namespace PeakPlunder.EditorTools
 {
@@ -34,6 +36,9 @@ namespace PeakPlunder.EditorTools
         [MenuItem("Tools/PeakPlunder/Create Rig Template")]
         public static void CreateRigTemplate()
         {
+#if !PEAKPLUNDER_USE_ANIMATION_RIGGING
+            Debug.LogWarning("[PeakPlunder] PEAKPLUNDER_USE_ANIMATION_RIGGING は未定義。Animation Rigging パッケージ導入後に Player Settings へ追加してください。");
+#else
             if (!Directory.Exists(PREFAB_DIR))
                 Directory.CreateDirectory(PREFAB_DIR);
 
@@ -64,8 +69,10 @@ namespace PeakPlunder.EditorTools
             AssetDatabase.Refresh();
 
             Debug.Log($"[PeakPlunder] Rig template created at {PREFAB_PATH}: {(prefab != null ? prefab.name : "null")}");
+#endif
         }
 
+#if PEAKPLUNDER_USE_ANIMATION_RIGGING
         private static void AddTwoBoneIK(GameObject parent, string name)
         {
             var go = new GameObject(name);
@@ -74,6 +81,7 @@ namespace PeakPlunder.EditorTools
             ik.weight = 1f;
             // data は Inspector から差し込む想定（Root/Mid/Tip/Target/Hint）
         }
+#endif
     }
 }
 #endif

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-#if UNITY_LOCALIZATION_AVAILABLE
+#if PEAKPLUNDER_USE_UNITY_LOCALIZATION
 using UnityEngine.Localization;
 using UnityEngine.Localization.Settings;
 #endif
@@ -18,9 +18,9 @@ namespace PeakPlunder.Localization
     /// 呼び出し例:
     ///   string label = LocalizedText.Get(LocalizationKeys.UIMainMenuPlay);
     ///
-    /// 本実装はパッケージ有無で挙動が切り替わる（UNITY_LOCALIZATION_AVAILABLE）。
+    /// 本実装はパッケージ有無で挙動が切り替わる（PEAKPLUNDER_USE_UNITY_LOCALIZATION）。
     /// パッケージ導入後、Project Settings > Player > Scripting Define Symbols に
-    /// "UNITY_LOCALIZATION_AVAILABLE" を追加すると実運用モードに切り替わる。
+    /// "PEAKPLUNDER_USE_UNITY_LOCALIZATION" を追加すると実運用モードに切り替わる。
     /// </summary>
     public static class LocalizedText
     {
@@ -38,7 +38,7 @@ namespace PeakPlunder.Localization
         {
             if (string.IsNullOrEmpty(key)) return string.Empty;
 
-#if UNITY_LOCALIZATION_AVAILABLE
+#if PEAKPLUNDER_USE_UNITY_LOCALIZATION
             try
             {
                 var table = LocalizationSettings.StringDatabase.GetTable(tableName);

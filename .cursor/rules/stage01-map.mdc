@@ -15,7 +15,7 @@ alwaysApply: false
 - Preserve exact hierarchy names used by code and validator:
   `World`, `Mountain`, `Basecamp`, `Zone1_Forest`, `Zone2_RockySlope`, `Zone3_CliffWall`, `Zone4_TempleRuins`, `Zone5_IceWall`, `Zone6_Summit`,
   `GrappableRocks`, `IcePatches`, `Checkpoints`, `RouteGates`, `RelicSpawnPoints`, `PlayerSpawnPoints`, `HazardSpawnPoints`.
-- Stage01 terrain target: 300m x 300m, height 220m, resolution 513, seed 42 unless intentionally changing the map.
+- Stage01 terrain target: 300m x 300m, height 520m, resolution 513, seed 42 unless intentionally changing the map.
 - Required gameplay counts: `GrappableRocks >= 50`, Zone1 trees `>= 20`, `IcePatch >= 12`, `RouteGate >= 4`, `ReviveShrine >= 6`, `ZoneCheckpoint >= 5`.
 - Required spawn counts: Relic `9`, Hazard `9`, Item `5`.
 - Tags/layers must include `Grappable`, `Checkpoint`, `ReturnZone`, `SummitGoal`, `Ground`, `Grappable`, and `Hazard` as applicable.

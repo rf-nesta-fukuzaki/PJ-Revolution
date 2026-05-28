@@ -80,7 +80,7 @@ Visual: Cube + TextMeshPro テキスト
 | 項目 | 値 |
 |------|-----|
 | World Z | -110 〜 -50 |
-| 標高 | 5 〜 66m |
+| 標高 | 5 〜 135m |
 | 勾配 | 緩やか（約15°） |
 | GameObject名 | `Zone1_Forest` |
 
@@ -184,7 +184,7 @@ Hazard_Z2_Rock_01 (→ HazardSpawnPoints 親の下):
 | 項目 | 値 |
 |------|-----|
 | World Z | -50 〜 +5 |
-| 標高 | 66 〜 121m |
+| 標高 | 135 〜 315m |
 | 勾配 | 中程度（約25°） |
 | GameObject名 | `Zone2_RockySlope` |
 
@@ -268,7 +268,7 @@ Hazard_Z2_Rock_02: Position(-10, terrain+70, -15), ZoneId=2
 | 項目 | 値 |
 |------|-----|
 | World Z | +5 〜 +45 |
-| 標高 | 121 〜 141m |
+| 標高 | 315 〜 425m |
 | 勾配 | 急峻（40〜60°、一部垂直） |
 | GameObject名 | `Zone3_CliffWall` |
 
@@ -335,7 +335,7 @@ Hazard_Z3_Collapse_02: Position(-15, terrain, +30), ZoneId=3
 | 項目 | 値 |
 |------|-----|
 | World Z | +45 〜 +80 |
-| 標高 | 141 〜 180m |
+| 標高 | 380 〜 470m |
 | 勾配 | やや急（約30°） |
 | GameObject名 | `Zone4_TempleRuins` |
 
@@ -418,7 +418,7 @@ Hazard_Z4_Trap_01: Position(0, terrain, +58), ZoneId=4
 | 項目 | 値 |
 |------|-----|
 | World Z | +80 〜 +120 |
-| 標高 | 180 〜 210m |
+| 標高 | 455 〜 505m |
 | 勾配 | 急（35〜50°） |
 | GameObject名 | `Zone5_IceWall` |
 
@@ -502,7 +502,7 @@ Hazard_Z5_Ice_02: Position(-5, terrain+35, +110), ZoneId=5
 | 項目 | 値 |
 |------|-----|
 | World Z | +120 〜 +150 |
-| 標高 | 210 〜 220m |
+| 標高 | 505 〜 520m |
 | 勾配 | 緩やか（到達したら山頂台地） |
 | GameObject名 | `Zone6_Summit` |
 
@@ -516,7 +516,7 @@ Hazard_Z5_Ice_02: Position(-5, terrain+35, +110), ZoneId=5
 **① 山頂フラッグ（ゴールの目印）**
 ```
 SummitFlag:
-  位置: (0, 220, +135)        ← 山の最高点付近
+  位置: (0, terrain, +135)    ← 山の最高点付近。YはTerrain SampleHeightで決定
   Cylinder（幹）: Scale(0.15, 5, 0.15), Color=#C0C0C0（銀色の旗竿）
   Cube（旗）: Scale(2, 1.2, 0.05), Position(1, 5, 0), Color=#FFD700（金色）
   Tag="Grappable"（旗竿をグラップルポイントに）

@@ -1,6 +1,6 @@
 using System.Collections;
+using System.Reflection;
 using UnityEngine;
-using UnityEngine.Animations.Rigging;
 
 /// <summary>
 /// GDD §16.3 — クライミング時のハンド IK バインダー。
@@ -30,8 +30,8 @@ public class ClimbingIKBinder : MonoBehaviour
     public enum Handedness { Right, Left, Both }
 
     [Header("IK コンストレイント")]
-    [SerializeField] private TwoBoneIKConstraint _rightHandIK;
-    [SerializeField] private TwoBoneIKConstraint _leftHandIK;
+    [SerializeField] private Component _rightHandIK;
+    [SerializeField] private Component _leftHandIK;
 
     [Header("参照")]
     [SerializeField] private ClimbingController _climbing;
@@ -125,26 +125,57 @@ public class ClimbingIKBinder : MonoBehaviour
         ApplyWeight(_leftHandIK,  lTarget);
     }
 
-    private static void AssignTarget(TwoBoneIKConstraint c, Transform target)
+    private static void AssignTarget(Component c, Transform target)
     {
         if (c == null) return;
-        var data   = c.data;
-        data.target = target;
-        c.data      = data;
+
+        var dataProperty = c.GetType().GetProperty("data", BindingFlags.Instance | BindingFlags.Public);
+        if (dataProperty == null || !dataProperty.CanRead || !dataProperty.CanWrite)
+            return;
+
+        object data = dataProperty.GetValue(c);
+        if (data == null) return;
+
+        var dataType = data.GetType();
+        var targetField = dataType.GetField("target", BindingFlags.Instance | BindingFlags.Public);
+        if (targetField != null)
+        {
+            targetField.SetValue(data, target);
+            dataProperty.SetValue(c, data);
+            return;
+        }
+
+        var targetProperty = dataType.GetProperty("target", BindingFlags.Instance | BindingFlags.Public);
+        if (targetProperty != null && targetProperty.CanWrite)
+        {
+            targetProperty.SetValue(data, target);
+            dataProperty.SetValue(c, data);
+        }
     }
 
-    private static float Weight(TwoBoneIKConstraint c) =>
-        c == null ? 0f : c.weight;
-
-    private static void ApplyWeight(TwoBoneIKConstraint c, float w)
+    private static float Weight(Component c)
     {
-        if (c == null) return;
-        c.weight = w;
+        if (c == null) return 0f;
+
+        var weightProperty = c.GetType().GetProperty("weight", BindingFlags.Instance | BindingFlags.Public);
+        if (weightProperty == null || !weightProperty.CanRead) return 0f;
+
+        object value = weightProperty.GetValue(c);
+        return value is float weight ? weight : 0f;
     }
 
-    private static void SetWeightImmediate(TwoBoneIKConstraint c, float w)
+    private static void ApplyWeight(Component c, float w)
     {
         if (c == null) return;
-        c.weight = w;
+
+        var weightProperty = c.GetType().GetProperty("weight", BindingFlags.Instance | BindingFlags.Public);
+        if (weightProperty != null && weightProperty.CanWrite)
+            weightProperty.SetValue(c, w);
+    }
+
+    private static void SetWeightImmediate(Component c, float w)
+    {
+        if (c == null) return;
+        ApplyWeight(c, w);
     }
 }

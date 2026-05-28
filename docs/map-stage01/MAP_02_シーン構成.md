@@ -17,7 +17,9 @@
 │
 ├── World
 │   ├── Mountain (MountainTerrainGenerator)          ← ★ 地形生成の親
-│   │   └── [MountainTerrain]                        ← Generate実行後に自動生成
+│   │   ├── [MountainTerrain]                        ← Generate実行後に自動生成
+│   │   ├── PeakScaleLandmarks                       ← 巨大岩壁・外周連峰・山頂尖塔
+│   │   └── PeakAscentSetpieces                      ← 細い岩棚・ロープ壁・ナイフリッジ
 │   │
 │   ├── Basecamp                                     ← ゾーンマーカー(名前が重要)
 │   │   ├── BasecampShopArea (BasecampShop)          ← 既存
@@ -140,7 +142,7 @@ MountainTerrainGenerator:
   [Terrain サイズ]
   _terrainWidth  = 300
   _terrainLength = 300
-  _terrainHeight = 220
+  _terrainHeight = 520
   _resolution    = 513
 
   [Perlin ノイズ]

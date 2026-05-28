@@ -108,7 +108,7 @@ float y = terrain.SampleHeight(new Vector3(x, 0, z));
 World座標範囲:
   X: -150 〜 +150 (幅 300m)
   Z: -150 〜 +150 (奥行 300m)
-  Y:   0  〜 +220 (高さ)
+  Y:   0  〜 +520 (高さ)
 
 方向:
   Z+ = 山頂方向（北）

@@ -1,5 +1,5 @@
 #if UNITY_EDITOR
-using PeakPlunder.Audio;
+using PPAudioManager = PeakPlunder.Audio.AudioManager;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -59,6 +59,8 @@ public static class Stage01MapBuilder
 
         generator.Generate();
         var terrain = Terrain.activeTerrain;
+        BuildPeakScaleLandmarks(mountain, terrain, materials);
+        BuildPeakAscentSetpieces(mountain, terrain, materials);
 
         GrappableRockPlacer.PlaceRocks(rocksRoot);
         BuildBasecamp(basecamp, playerSpawnRoot, materials);
@@ -141,7 +143,7 @@ public static class Stage01MapBuilder
         if (go.GetComponent<SpawnManager>() == null) go.AddComponent<SpawnManager>();
         if (go.GetComponent<ExpeditionManager>() == null) go.AddComponent<ExpeditionManager>();
         if (go.GetComponent<ScoreTracker>() == null) go.AddComponent<ScoreTracker>();
-        if (go.GetComponent<AudioManager>() == null) go.AddComponent<AudioManager>();
+        if (go.GetComponent<PPAudioManager>() == null) go.AddComponent<PPAudioManager>();
         return go;
     }
 
@@ -171,16 +173,153 @@ public static class Stage01MapBuilder
         var so = new SerializedObject(generator);
         so.FindProperty("_terrainWidth").floatValue = 300f;
         so.FindProperty("_terrainLength").floatValue = 300f;
-        so.FindProperty("_terrainHeight").floatValue = 220f;
+        so.FindProperty("_terrainHeight").floatValue = 520f;
         so.FindProperty("_resolution").intValue = 513;
         so.FindProperty("_seed").intValue = 42;
-        so.FindProperty("_scale1").floatValue = 0.007f;
-        so.FindProperty("_amp1").floatValue = 0.55f;
-        so.FindProperty("_scale2").floatValue = 0.022f;
-        so.FindProperty("_amp2").floatValue = 0.22f;
-        so.FindProperty("_scale3").floatValue = 0.065f;
-        so.FindProperty("_amp3").floatValue = 0.07f;
+        so.FindProperty("_scale1").floatValue = 0.0065f;
+        so.FindProperty("_amp1").floatValue = 0.62f;
+        so.FindProperty("_scale2").floatValue = 0.020f;
+        so.FindProperty("_amp2").floatValue = 0.34f;
+        so.FindProperty("_scale3").floatValue = 0.075f;
+        so.FindProperty("_amp3").floatValue = 0.12f;
+        so.FindProperty("_routeMeanderMeters").floatValue = 14f;
+        so.FindProperty("_routeBaseWidth").floatValue = 24f;
+        so.FindProperty("_routeSummitWidth").floatValue = 5.5f;
+        so.FindProperty("_routeFlattenStrength").floatValue = 0.29f;
+        so.FindProperty("_fractalOctaves").intValue = 6;
+        so.FindProperty("_fractalPersistence").floatValue = 0.47f;
+        so.FindProperty("_fractalLacunarity").floatValue = 2.12f;
+        so.FindProperty("_domainWarpScale").floatValue = 0.010f;
+        so.FindProperty("_domainWarpMeters").floatValue = 18f;
         so.ApplyModifiedProperties();
+    }
+
+    private static void BuildPeakScaleLandmarks(GameObject mountain, Terrain terrain, Stage01Materials materials)
+    {
+        var root = CreateChild(mountain, "PeakScaleLandmarks");
+
+        CreateSkylinePeak(root, "SkylinePeak_North_01", -92f, 136f, 38f, 185f, 0.85f, terrain, materials.Snow);
+        CreateSkylinePeak(root, "SkylinePeak_North_02", -42f, 145f, 31f, 225f, 1.15f, terrain, materials.Snow);
+        CreateSkylinePeak(root, "SkylinePeak_North_03", 38f, 144f, 34f, 215f, 0.65f, terrain, materials.Snow);
+        CreateSkylinePeak(root, "SkylinePeak_North_04", 96f, 134f, 40f, 178f, 1.35f, terrain, materials.Snow);
+        CreateSkylinePeak(root, "SkylinePeak_West_01", -132f, -24f, 34f, 150f, 0.25f, terrain, materials.Rock);
+        CreateSkylinePeak(root, "SkylinePeak_West_02", -136f, 58f, 42f, 190f, 1.75f, terrain, materials.Stone);
+        CreateSkylinePeak(root, "SkylinePeak_East_01", 130f, -10f, 36f, 165f, 2.15f, terrain, materials.Rock);
+        CreateSkylinePeak(root, "SkylinePeak_East_02", 134f, 76f, 44f, 205f, 2.65f, terrain, materials.Snow);
+
+        CreateMegaRock(root, "MegaFace_Z2_Left", -58f, -30f, new Vector3(18f, 92f, 34f), new Vector3(0f, -8f, -6f), terrain, materials.Rock);
+        CreateMegaRock(root, "MegaFace_Z2_Right", 56f, -20f, new Vector3(20f, 105f, 38f), new Vector3(0f, 12f, 7f), terrain, materials.Rock);
+        CreateMegaRock(root, "CliffGate_Z3_Left", -34f, 22f, new Vector3(14f, 118f, 28f), new Vector3(0f, -18f, -4f), terrain, materials.Stone);
+        CreateMegaRock(root, "CliffGate_Z3_Right", 32f, 30f, new Vector3(15f, 126f, 30f), new Vector3(0f, 15f, 5f), terrain, materials.Stone);
+        CreateMegaRock(root, "TempleBackWall_Z4", 0f, 78f, new Vector3(58f, 88f, 12f), new Vector3(-4f, 0f, 0f), terrain, materials.Temple);
+        CreateMegaRock(root, "IceNeedle_Z5_Left", -30f, 105f, new Vector3(10f, 128f, 12f), new Vector3(0f, -8f, -3f), terrain, materials.Ice);
+        CreateMegaRock(root, "IceNeedle_Z5_Right", 29f, 112f, new Vector3(9f, 142f, 11f), new Vector3(0f, 10f, 4f), terrain, materials.Ice);
+        CreateMegaRock(root, "SummitShoulder_Left", -26f, 132f, new Vector3(16f, 116f, 24f), new Vector3(0f, -12f, -5f), terrain, materials.Snow);
+        CreateMegaRock(root, "SummitShoulder_Right", 24f, 134f, new Vector3(17f, 124f, 24f), new Vector3(0f, 11f, 4f), terrain, materials.Snow);
+        CreateMegaRock(root, "SummitNeedle_Back", 0f, 148f, new Vector3(20f, 155f, 16f), new Vector3(-7f, 0f, 0f), terrain, materials.Snow);
+    }
+
+    private static void CreateMegaRock(GameObject parent, string name, float x, float z, Vector3 scale, Vector3 rotation, Terrain terrain, Material material)
+    {
+        var rock = CreatePrimitive(parent, name, PrimitiveType.Cube, scale, TerrainPos(terrain, x, z, scale.y * 0.5f), material, worldSpace: true);
+        rock.transform.rotation = Quaternion.Euler(rotation);
+        Stage01EditorUtil.TrySetTag(rock, "Grappable");
+        Stage01EditorUtil.TrySetLayer(rock, "Grappable");
+
+        var rb = rock.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
+    }
+
+    private static void CreateSkylinePeak(GameObject parent, string name, float x, float z, float radius, float height, float phase, Terrain terrain, Material material)
+    {
+        const int sides = 7;
+        var go = new GameObject(name);
+        go.transform.SetParent(parent.transform);
+        go.transform.position = TerrainPos(terrain, x, z, 0f);
+        go.transform.rotation = Quaternion.Euler(0f, phase * 57.29578f, 0f);
+
+        var vertices = new Vector3[sides + 2];
+        vertices[0] = Vector3.zero;
+        for (int i = 0; i < sides; i++)
+        {
+            float angle = (Mathf.PI * 2f * i / sides) + phase;
+            float wobble = 0.72f + Mathf.PerlinNoise(phase * 11f, i * 0.37f) * 0.56f;
+            vertices[i + 1] = new Vector3(Mathf.Cos(angle) * radius * wobble, 0f, Mathf.Sin(angle) * radius * wobble);
+        }
+        vertices[sides + 1] = new Vector3(radius * 0.12f * Mathf.Sin(phase * 3.1f), height, radius * 0.10f * Mathf.Cos(phase * 2.7f));
+
+        var triangles = new int[sides * 6];
+        int t = 0;
+        for (int i = 0; i < sides; i++)
+        {
+            int next = i == sides - 1 ? 1 : i + 2;
+            triangles[t++] = 0;
+            triangles[t++] = next;
+            triangles[t++] = i + 1;
+            triangles[t++] = i + 1;
+            triangles[t++] = next;
+            triangles[t++] = sides + 1;
+        }
+
+        var mesh = new Mesh { name = $"{name}_Mesh" };
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+
+        var filter = go.AddComponent<MeshFilter>();
+        filter.sharedMesh = mesh;
+        var renderer = go.AddComponent<MeshRenderer>();
+        renderer.sharedMaterial = material;
+        var collider = go.AddComponent<MeshCollider>();
+        collider.sharedMesh = mesh;
+
+        Stage01EditorUtil.TrySetTag(go, "Grappable");
+        Stage01EditorUtil.TrySetLayer(go, "Grappable");
+
+        var rb = go.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
+    }
+
+    private static void BuildPeakAscentSetpieces(GameObject mountain, Terrain terrain, Stage01Materials materials)
+    {
+        var root = CreateChild(mountain, "PeakAscentSetpieces");
+
+        CreateRouteLedge(root, "Z2_FirstScaryTraverse_A", -18f, -28f, 4f, new Vector3(20f, 1.2f, 4f), new Vector3(0f, 18f, -5f), terrain, materials.Stone);
+        CreateRouteLedge(root, "Z2_FirstScaryTraverse_B", 7f, -12f, 5f, new Vector3(18f, 1.1f, 3.5f), new Vector3(0f, -22f, 4f), terrain, materials.Stone);
+        CreateClimbWall(root, "Z3_RopeWall_Main", 0f, 18f, 12f, new Vector3(26f, 42f, 5f), new Vector3(-8f, 0f, 0f), terrain, materials.Rock);
+        CreateRouteLedge(root, "Z3_TinyRestShelf", -9f, 38f, 24f, new Vector3(12f, 1f, 4f), new Vector3(0f, 12f, 7f), terrain, materials.Rock);
+        CreateClimbWall(root, "Z4_TempleCliffBack", 0f, 76f, 8f, new Vector3(38f, 34f, 4f), new Vector3(-6f, 0f, 0f), terrain, materials.Temple);
+        CreateRouteLedge(root, "Z5_IceKnifeRidge_A", -8f, 100f, 8f, new Vector3(32f, 1f, 2.2f), new Vector3(0f, 24f, 0f), terrain, materials.Ice);
+        CreateRouteLedge(root, "Z5_IceKnifeRidge_B", 12f, 116f, 10f, new Vector3(28f, 1f, 2f), new Vector3(0f, -18f, 0f), terrain, materials.Ice);
+        CreateClimbWall(root, "Z6_FinalSummitWall", 0f, 126f, 10f, new Vector3(30f, 48f, 5f), new Vector3(-10f, 0f, 0f), terrain, materials.Snow);
+        CreateRouteLedge(root, "Z6_FinalBreathShelf", 0f, 137f, 16f, new Vector3(16f, 1.2f, 5f), new Vector3(0f, 0f, 0f), terrain, materials.Snow);
+    }
+
+    private static void CreateRouteLedge(GameObject parent, string name, float x, float z, float yOffset, Vector3 scale, Vector3 rotation, Terrain terrain, Material material)
+    {
+        var ledge = CreatePrimitive(parent, name, PrimitiveType.Cube, scale, TerrainPos(terrain, x, z, yOffset), material, worldSpace: true);
+        ledge.transform.rotation = Quaternion.Euler(rotation);
+        Stage01EditorUtil.TrySetTag(ledge, "Grappable");
+        Stage01EditorUtil.TrySetLayer(ledge, "Grappable");
+
+        var rb = ledge.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
+    }
+
+    private static void CreateClimbWall(GameObject parent, string name, float x, float z, float yOffset, Vector3 scale, Vector3 rotation, Terrain terrain, Material material)
+    {
+        var wall = CreatePrimitive(parent, name, PrimitiveType.Cube, scale, TerrainPos(terrain, x, z, yOffset + scale.y * 0.5f), material, worldSpace: true);
+        wall.transform.rotation = Quaternion.Euler(rotation);
+        Stage01EditorUtil.TrySetTag(wall, "Grappable");
+        Stage01EditorUtil.TrySetLayer(wall, "Grappable");
+
+        var rb = wall.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        rb.useGravity = false;
     }
 
     private static void BuildBasecamp(GameObject basecamp, GameObject playerSpawnRoot, Stage01Materials materials)
@@ -304,17 +443,17 @@ public static class Stage01MapBuilder
         CreateIcePatch(iceRoot, "IcePatch_Z6_02", 12f, 128f, new Vector3(4f, 0.15f, 4f), terrain, materials);
 
         var flag = CreateChild(zone, "SummitFlag");
-        flag.transform.position = new Vector3(0f, 220f, 135f);
+        flag.transform.position = TerrainPos(terrain, 0f, 135f, 0f);
         CreateGrappablePrimitive(flag, "FlagPole", PrimitiveType.Cylinder, new Vector3(0.15f, 5f, 0.15f), new Vector3(0f, 2.5f, 0f), materials.Metal);
         CreatePrimitive(flag, "Flag", PrimitiveType.Cube, new Vector3(2f, 1.2f, 0.05f), new Vector3(1f, 5f, 0f), materials.Gold);
 
         var summit = CreateChild(zone, "Summit_Geometry");
-        summit.transform.position = new Vector3(0f, 215f, 130f);
+        summit.transform.position = TerrainPos(terrain, 0f, 130f, 0.4f);
         CreatePrimitive(summit, "SummitRuins", PrimitiveType.Cube, new Vector3(20f, 2f, 20f), Vector3.zero, materials.Stone);
         CreateGrappablePrimitive(summit, "SummitAltar", PrimitiveType.Cube, new Vector3(3f, 1f, 3f), new Vector3(0f, 2f, 0f), materials.Temple);
 
         var goal = CreateChild(zone, "SummitGoal");
-        goal.transform.position = new Vector3(0f, 218f, 133f);
+        goal.transform.position = TerrainPos(terrain, 0f, 133f, 3f);
         var sphere = goal.AddComponent<SphereCollider>();
         sphere.radius = 10f;
         sphere.isTrigger = true;
@@ -378,7 +517,10 @@ public static class Stage01MapBuilder
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Exponential;
         RenderSettings.fogColor = new Color(0.78f, 0.85f, 0.91f);
-        RenderSettings.fogDensity = 0.003f;
+        RenderSettings.fogDensity = 0.0016f;
+
+        foreach (var camera in Object.FindObjectsByType<Camera>(FindObjectsSortMode.None))
+            camera.farClipPlane = Mathf.Max(camera.farClipPlane, 1200f);
     }
 
     private static void CreateTree(GameObject parent, string name, float x, float z, Terrain terrain, Stage01Materials materials)

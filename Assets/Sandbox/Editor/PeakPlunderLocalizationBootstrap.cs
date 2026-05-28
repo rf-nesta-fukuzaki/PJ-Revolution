@@ -8,7 +8,7 @@ using PeakPlunder.Localization;
 using UnityEditor;
 using UnityEngine;
 
-#if UNITY_LOCALIZATION_AVAILABLE
+#if PEAKPLUNDER_USE_UNITY_LOCALIZATION
 using UnityEngine.Localization;
 using UnityEngine.Localization.Settings;
 using UnityEngine.Localization.Tables;
@@ -21,7 +21,7 @@ namespace PeakPlunder.EditorTools
     /// GDD §22 — Localization StringTable ブートストラッパー。
     /// Locale (ja/en) と StringTableCollections (UI/Item/Relic/Title/Weather/Stone/Hint/Tip) を作成する。
     ///
-    /// 動作条件: Unity Localization 1.5.4 以降がインストールされていること。
+    /// 動作条件: Unity Localization 1.5.4 以降がインストールされ、PEAKPLUNDER_USE_UNITY_LOCALIZATION が定義されていること。
     /// 起動: Tools > PeakPlunder > Bootstrap Localization
     /// </summary>
     public static class PeakPlunderLocalizationBootstrap
@@ -33,8 +33,8 @@ namespace PeakPlunder.EditorTools
         [MenuItem("Tools/PeakPlunder/Bootstrap Localization")]
         public static void BootstrapLocalization()
         {
-#if !UNITY_LOCALIZATION_AVAILABLE
-            Debug.LogWarning("[PeakPlunder] UNITY_LOCALIZATION_AVAILABLE は未定義。Player Settings に追加してください。");
+#if !PEAKPLUNDER_USE_UNITY_LOCALIZATION
+            Debug.LogWarning("[PeakPlunder] PEAKPLUNDER_USE_UNITY_LOCALIZATION は未定義。Localization パッケージ導入後に Player Settings へ追加してください。");
 #else
             EnsureDirectory(LOCALIZATION_DIR);
             EnsureDirectory(LOCALES_DIR);
@@ -66,7 +66,7 @@ namespace PeakPlunder.EditorTools
             }
         }
 
-#if UNITY_LOCALIZATION_AVAILABLE
+#if PEAKPLUNDER_USE_UNITY_LOCALIZATION
         private static Locale EnsureLocale(string code, string label)
         {
             string path = $"{LOCALES_DIR}/{label} ({code}).asset";
