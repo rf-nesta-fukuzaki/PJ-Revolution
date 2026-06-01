@@ -1,7 +1,6 @@
 using System;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.1 — 全アイテムの基底クラス。
@@ -105,7 +104,7 @@ public abstract class ItemBase : MonoBehaviour
         OnBroken?.Invoke(this);
 
         // GDD §15.2 — item_break
-        PPAudioManager.Instance?.PlaySE(SoundId.ItemBreak, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.ItemBreak, transform.position);
 
         OnItemBroken();
         Debug.Log($"[Item] {_itemName} が壊れた");
@@ -124,7 +123,7 @@ public abstract class ItemBase : MonoBehaviour
         if (speed < _impactDmgThreshold) return;
 
         // GDD §15.2 — item_impact（閾値超え衝突で鳴らす）
-        PPAudioManager.Instance?.PlaySE(SoundId.ItemImpact, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.ItemImpact, transform.position);
 
         float dmg = (speed - _impactDmgThreshold) * _impactDmgScale;
         ConsumeDurability(dmg);

@@ -1,10 +1,10 @@
 using System;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Unity.Netcode;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §17.3 — ポーズメニュー。
@@ -43,7 +43,7 @@ public class PauseMenu : MonoBehaviour
     [SerializeField] private string _mainMenuScene = "MainMenu";
 
     [Header("入力")]
-    [SerializeField] private KeyCode _toggleKey = KeyCode.Escape;
+    [SerializeField] private Key _toggleKey = Key.Escape;
 
     public event Action OnPaused;
     public event Action OnResumed;
@@ -61,7 +61,7 @@ public class PauseMenu : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(_toggleKey))
+        if (InputStateReader.KeyPressedThisFrame(_toggleKey))
             Toggle();
     }
 
@@ -86,7 +86,7 @@ public class PauseMenu : MonoBehaviour
             Time.timeScale = 0f;
 
         // GDD §15.2 — ui_click（メニューを開く音）
-        PPAudioManager.Instance?.PlaySE2D(SoundId.UiClick);
+        GameServices.Audio?.PlaySE2D(SoundId.UiClick);
 
         OnPaused?.Invoke();
     }
@@ -99,7 +99,7 @@ public class PauseMenu : MonoBehaviour
         Time.timeScale = 1f;
 
         // GDD §15.2 — ui_cancel（メニューを閉じる音）
-        PPAudioManager.Instance?.PlaySE2D(SoundId.UiCancel);
+        GameServices.Audio?.PlaySE2D(SoundId.UiCancel);
 
         OnResumed?.Invoke();
     }
@@ -109,7 +109,7 @@ public class PauseMenu : MonoBehaviour
         if (_settingsRoot != null) _settingsRoot.SetActive(true);
         if (_menuRoot != null)     _menuRoot.SetActive(false);
 
-        PPAudioManager.Instance?.PlaySE2D(SoundId.UiClick);
+        GameServices.Audio?.PlaySE2D(SoundId.UiClick);
     }
 
     private void RequestLeave()
@@ -117,7 +117,7 @@ public class PauseMenu : MonoBehaviour
         if (_confirmLeaveRoot != null) _confirmLeaveRoot.SetActive(true);
         if (_menuRoot != null)         _menuRoot.SetActive(false);
 
-        PPAudioManager.Instance?.PlaySE2D(SoundId.UiClick);
+        GameServices.Audio?.PlaySE2D(SoundId.UiClick);
     }
 
     private void CancelLeave()
@@ -125,7 +125,7 @@ public class PauseMenu : MonoBehaviour
         if (_confirmLeaveRoot != null) _confirmLeaveRoot.SetActive(false);
         if (_menuRoot != null)         _menuRoot.SetActive(true);
 
-        PPAudioManager.Instance?.PlaySE2D(SoundId.UiCancel);
+        GameServices.Audio?.PlaySE2D(SoundId.UiCancel);
     }
 
     private void ConfirmLeave()
@@ -133,7 +133,7 @@ public class PauseMenu : MonoBehaviour
         IsPaused = false;
         Time.timeScale = 1f;
 
-        PPAudioManager.Instance?.PlaySE2D(SoundId.UiClick);
+        GameServices.Audio?.PlaySE2D(SoundId.UiClick);
 
         // ネットワークセッションを終了（ホスト切断はセッション終了扱い — GDD §11.3/§17.3）
         if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)

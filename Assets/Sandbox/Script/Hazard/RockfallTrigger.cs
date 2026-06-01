@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §7.1 L5 — 落石ポイント。
@@ -58,7 +57,7 @@ public class RockfallTrigger : MonoBehaviour
     public void Activate()
     {
         // GDD §15.2 — rockfall_warning（ゴロゴロ…落石の予兆）
-        PPAudioManager.Instance?.PlaySE(SoundId.RockfallWarning, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.RockfallWarning, transform.position);
 
         StartCoroutine(SpawnRocks());
         OnActivated?.Invoke();

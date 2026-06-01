@@ -1,0 +1,27 @@
+{
+    "name": "Sandbox.Editor",
+    "rootNamespace": "",
+    "references": [
+        "Sandbox.Runtime",
+        "Unity.TextMeshPro",
+        "Unity.InputSystem",
+        "Unity.Netcode.Runtime",
+        "Unity.Netcode.Components",
+        "Unity.Localization",
+        "Unity.Localization.Editor",
+        "Unity.RenderPipelines.Core.Runtime",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.Animation.Rigging"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

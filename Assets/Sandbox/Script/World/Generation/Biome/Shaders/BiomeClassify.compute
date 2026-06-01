@@ -1,0 +1,79 @@
+#pragma kernel Biome_Classify
+
+// index は Sandbox.World.Config.BiomeId と一致させること
+// 0=Water 1=Sand 2=Grass 3=Forest 4=Rock 5=Snow
+
+cbuffer BiomeConstants
+{
+    float4 _BMisc;       // x=fullRes
+    float4 _Altitudes;   // x=seaLevel y=beachMax z=grassMax w=forestMax
+    float4 _Altitudes2;  // x=snowMin
+    float4 _Slopes;      // x=rockMinSlopeDeg
+    float4 _Blend;       // x=altitudeBlend[m] y=slopeBlend[deg]
+    float4 _Col0;        // Water rgb
+    float4 _Col1;        // Sand
+    float4 _Col2;        // Grass
+    float4 _Col3;        // Forest
+    float4 _Col4;        // Rock
+    float4 _Col5;        // Snow
+}
+
+#define FULL_RES        ((uint)_BMisc.x)
+#define SEA_LEVEL       (_Altitudes.x)
+#define BEACH_MAX       (_Altitudes.y)
+#define GRASS_MAX       (_Altitudes.z)
+#define FOREST_MAX      (_Altitudes.w)
+#define SNOW_MIN        (_Altitudes2.x)
+#define ROCK_MIN_SLOPE  (_Slopes.x)
+
+RWTexture2D<float>  _HeightTex;
+RWTexture2D<float4> _NormalSlopeTex;
+RWTexture2D<float>  _BiomeMaskTex;
+RWTexture2D<float4> _BiomeColorTex;
+
+[numthreads(8, 8, 1)]
+void Biome_Classify(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= FULL_RES || id.y >= FULL_RES) return;
+
+    float h     = _HeightTex[id.xy];
+    float slope = _NormalSlopeTex[id.xy].w; // 斜度 [deg]
+
+    float B  = max(_Blend.x, 0.01);
+    float Bs = max(_Blend.y, 0.01);
+
+    // 高度ベースの所属度（隣接バンドが smoothstep でなめらかに重なる）
+    float wWater   = 1.0 - smoothstep(SEA_LEVEL, SEA_LEVEL + B, h);
+    float wSand    = smoothstep(SEA_LEVEL, SEA_LEVEL + B, h)
+                   * (1.0 - smoothstep(BEACH_MAX - B, BEACH_MAX + B, h));
+    float wGrass   = smoothstep(BEACH_MAX - B, BEACH_MAX + B, h)
+                   * (1.0 - smoothstep(GRASS_MAX - B, GRASS_MAX + B, h));
+    float wForest  = smoothstep(GRASS_MAX - B, GRASS_MAX + B, h)
+                   * (1.0 - smoothstep(FOREST_MAX - B, FOREST_MAX + B, h));
+    float wRockAlt = smoothstep(FOREST_MAX - B, FOREST_MAX + B, h)
+                   * (1.0 - smoothstep(SNOW_MIN - B, SNOW_MIN, h));
+    float wSnow    = smoothstep(SNOW_MIN - B, SNOW_MIN, h);
+
+    // 斜度ベースの Rock。急斜面は植生を抑制（雪冠/水は別扱い）
+    float wRockSlope = smoothstep(ROCK_MIN_SLOPE - Bs, ROCK_MIN_SLOPE + Bs, slope);
+    float veg = 1.0 - wRockSlope;
+    wSand   *= veg;
+    wGrass  *= veg;
+    wForest *= veg;
+
+    wSnow *= (1.0 - wWater);                 // 水中に雪は無し
+    float wRock = max(wRockAlt, wRockSlope) * (1.0 - wSnow); // 山頂の雪が崖に優先
+
+    // ブレンド色
+    float wsum = wWater + wSand + wGrass + wForest + wRock + wSnow + 1e-5;
+    float3 color = (wWater  * _Col0.rgb + wSand  * _Col1.rgb + wGrass * _Col2.rgb
+                  + wForest * _Col3.rgb + wRock  * _Col4.rgb + wSnow  * _Col5.rgb) / wsum;
+
+    // 支配バイオーム index（argmax）
+    float ws[6] = { wWater, wSand, wGrass, wForest, wRock, wSnow };
+    int best = 0; float bestw = ws[0];
+    [unroll] for (int i = 1; i < 6; i++) { if (ws[i] > bestw) { bestw = ws[i]; best = i; } }
+
+    _BiomeMaskTex[id.xy]  = (float)best;
+    _BiomeColorTex[id.xy] = float4(color, 1.0);
+}

@@ -4,22 +4,30 @@
 // SDK が存在するときのみアクティブになる条件付きコンパイル構造。
 //
 // ◆ Vivox (Unity Gaming Services) を使う場合:
-//   1. Package Manager → com.unity.services.vivox を追加
+//   1. Package Manager → com.unity.services.vivox を追加（導入済み: 16.10.0）
 //   2. Project Settings → Player → Scripting Define Symbols に UNITY_VIVOX を追加
-//   3. UGS ダッシュボードで Vivox プロジェクトを作成し AppID / SecretKey を設定
+//   3. UGS ダッシュボードでプロジェクトをリンクし、Vivox を有効化
+//      （Edit > Project Settings > Services でプロジェクト ID を紐付け）
 //
 // ◆ Photon Voice 2 を使う場合:
-//   1. Photon Voice 2 パッケージをインポート（Asset Store or SDKサイト）
+//   1. Photon Voice 2 パッケージをインポート
 //   2. Scripting Define Symbols に PHOTON_VOICE_DEFINED を追加
-//   3. Photon Server Settings に AppID を設定
 //
 // ◆ どちらも未インストールの場合:
 //   ProximityVoiceChat は AudioSource シミュレーションにフォールバック。
-//   本ファイルは空の stub として動作する（コンパイルエラーなし）。
 // ─────────────────────────────────────────────────────────────────────────────
 
 using System;
 using UnityEngine;
+#if UNITY_VIVOX
+using Unity.Services.Core;
+using Unity.Services.Authentication;
+using Unity.Services.Vivox;
+#endif
+#if PHOTON_VOICE_DEFINED
+using Photon.Voice.Unity;
+using Photon.Voice.PUN;
+#endif
 
 /// <summary>
 /// リアル音声バックエンドの共通インターフェース。
@@ -49,21 +57,14 @@ public interface IVoiceBackend : IDisposable
 // Vivox バックエンド実装
 // ─────────────────────────────────────────────────────────────────────────────
 #if UNITY_VIVOX
-using Unity.Services.Vivox;
-using Unity.Services.Core;
-
 public class VivoxBackend : IVoiceBackend
 {
-    private IVivoxService _vivox;
-    private string        _channelName;
-    private bool          _isConnected;
+    private string _channelName;
+    private bool   _isConnected;
 
     public bool IsConnected => _isConnected;
 
-    public VivoxBackend()
-    {
-        _vivox = VivoxService.Instance;
-    }
+    public VivoxBackend() { }
 
     public async void JoinChannel(string channelName, string playerId)
     {
@@ -71,24 +72,33 @@ public class VivoxBackend : IVoiceBackend
         {
             _channelName = channelName;
 
-            // Vivox サインイン（オプション: 匿名ログイン）
-            var loginOpts = new LoginOptions { DisplayName = playerId };
-            await _vivox.LoginAsync(loginOpts);
+            // UGS Core 初期化 & 匿名認証（未済の場合のみ）
+            if (UnityServices.State != ServicesInitializationState.Initialized)
+                await UnityServices.InitializeAsync();
+            if (!AuthenticationService.Instance.IsSignedIn)
+                await AuthenticationService.Instance.SignInAnonymouslyAsync();
 
-            // 近接チャンネル（3D Positional）に参加
+            // Vivox 初期化 & ログイン
+            await VivoxService.Instance.InitializeAsync();
+            var loginOpts = new LoginOptions { DisplayName = playerId };
+            await VivoxService.Instance.LoginAsync(loginOpts);
+
+            // 3D 近接チャンネル（audibleDistance/conversationalDistance は int）
             var channelOpts = new Channel3DProperties(
-                audibleDistance:   32f,
-                conversationalDistance: 1f,
-                audioFadeIntensityByDistance: 1f,
+                audibleDistance: 32,
+                conversationalDistance: 1,
+                audioFadeIntensityByDistanceaudio: 1f,
                 audioFadeModel: AudioFadeModel.InverseByDistance);
 
-            await _vivox.JoinPositionalChannelAsync(channelName, ChatCapability.AudioOnly, channelOpts);
+            await VivoxService.Instance.JoinPositionalChannelAsync(
+                channelName, ChatCapability.AudioOnly, channelOpts);
+
             _isConnected = true;
             Debug.Log($"[Vivox] チャンネル参加: {channelName}");
         }
         catch (Exception e)
         {
-            Debug.LogError($"[Vivox] JoinChannel 失敗: {e.Message}");
+            Debug.LogError($"[Vivox] JoinChannel 失敗: {e.Message}（UGS プロジェクトのリンク/Vivox 有効化を確認してください）");
         }
     }
 
@@ -97,8 +107,8 @@ public class VivoxBackend : IVoiceBackend
         if (!_isConnected) return;
         try
         {
-            await _vivox.LeaveChannelAsync(_channelName);
-            await _vivox.LogoutAsync();
+            await VivoxService.Instance.LeaveChannelAsync(_channelName);
+            await VivoxService.Instance.LogoutAsync();
             _isConnected = false;
             Debug.Log("[Vivox] チャンネル退出");
         }
@@ -112,8 +122,9 @@ public class VivoxBackend : IVoiceBackend
     {
         try
         {
-            int vivoxVol = Mathf.RoundToInt(Mathf.Clamp01(volume) * 100);
-            _vivox.SetInputDeviceVolume(vivoxVol);
+            // Vivox の入力デバイス音量は -50〜50（0=既定）
+            int vivoxVol = Mathf.RoundToInt(Mathf.Lerp(-50f, 50f, Mathf.Clamp01(volume)));
+            VivoxService.Instance.SetInputDeviceVolume(vivoxVol);
         }
         catch (Exception e)
         {
@@ -125,8 +136,8 @@ public class VivoxBackend : IVoiceBackend
     {
         try
         {
-            int vivoxVol = Mathf.RoundToInt(Mathf.Clamp01(volume) * 100);
-            _vivox.SetOutputDeviceVolume(vivoxVol);
+            int vivoxVol = Mathf.RoundToInt(Mathf.Lerp(-50f, 50f, Mathf.Clamp01(volume)));
+            VivoxService.Instance.SetOutputDeviceVolume(vivoxVol);
         }
         catch (Exception e)
         {
@@ -142,21 +153,17 @@ public class VivoxBackend : IVoiceBackend
     {
         if (!_isConnected) return;
 
-        // ProximityVoiceChat が持つ Transform を使って位置を送信する。
-        // Camera.main が存在する場合にリスナーとして使用。
         var cam = Camera.main;
         if (cam == null) return;
 
         Vector3 listenerPos     = cam.transform.position;
         Vector3 listenerForward = cam.transform.forward;
         Vector3 listenerUp      = cam.transform.up;
-
-        // スピーカー位置は距離・方向から概算（実際は各プレイヤー側から送信するのが理想）
-        Vector3 speakerPos = listenerPos + cam.transform.forward * currentDistance;
+        Vector3 speakerPos      = listenerPos + cam.transform.forward * currentDistance;
 
         try
         {
-            _vivox.Set3DPosition(speakerPos, listenerPos, listenerForward, listenerUp);
+            VivoxService.Instance.Set3DPosition(speakerPos, listenerPos, listenerForward, listenerUp, _channelName);
         }
         catch (Exception e)
         {
@@ -172,9 +179,6 @@ public class VivoxBackend : IVoiceBackend
 // Photon Voice 2 バックエンド実装
 // ─────────────────────────────────────────────────────────────────────────────
 #if PHOTON_VOICE_DEFINED
-using Photon.Voice.Unity;
-using Photon.Voice.PUN;
-
 public class PhotonVoiceBackend : IVoiceBackend
 {
     private VoiceConnection _voiceConn;
@@ -190,8 +194,6 @@ public class PhotonVoiceBackend : IVoiceBackend
 
     public void JoinChannel(string channelName, string playerId)
     {
-        // Photon Voice はルームへの参加で自動的に音声チャンネルに入る。
-        // ルーム参加は PhotonNetwork.JoinOrCreateRoom で行う（ゲームロジック側）。
         if (_recorder != null) _recorder.TransmitEnabled = true;
         Debug.Log($"[PhotonVoice] 送信開始: {playerId}");
     }
@@ -207,29 +209,21 @@ public class PhotonVoiceBackend : IVoiceBackend
         if (_recorder != null) _recorder.TransmitEnabled = volume > 0.01f;
     }
 
-    public void SetReceiveVolume(float volume)
-    {
-        // Photon Voice は各 AudioSource で受信する。
-        // AudioSource の volume は ProximityVoiceChat 側で制御済み。
-    }
+    public void SetReceiveVolume(float volume) { }
 
-    public void UpdateProximity(float maxDistance, float currentDistance)
-    {
-        // Photon Voice では距離減衰を AudioSource の spatialBlend + rolloff で実装。
-        // ProximityVoiceChat の ConfigureAudioSource() が担当。
-    }
+    public void UpdateProximity(float maxDistance, float currentDistance) { }
 
     public void Dispose() { }
 }
 #endif  // PHOTON_VOICE_DEFINED
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ファクトリ — ProximityVoiceChat.CreateBackend() から呼ぶ
+// ファクトリ — ProximityVoiceChat.OnNetworkSpawn() から呼ぶ
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// <summary>
 /// 利用可能な SDK に応じて適切な IVoiceBackend を返すファクトリ。
-/// SDK が未インストールの場合は null を返し（AudioSource フォールバック）。
+/// SDK が未インストールの場合は null を返す（AudioSource フォールバック）。
 /// </summary>
 public static class VoiceBackendFactory
 {

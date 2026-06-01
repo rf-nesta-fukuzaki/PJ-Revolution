@@ -2,33 +2,17 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.1 — 全遺物の基底クラス。
-/// HP（状態）システム：衝撃でダメージ蓄積。
-///   完品 100%  → 最高報酬
-///   損傷  50-99% → 減額
-///   大破   1-49% → 大幅減額
-///   破壊     0%  → 価値ゼロ
+/// 耐久: <see cref="RelicDurabilityModel"/> / ビジュアル: <see cref="RelicVisualizer"/>
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
+[RequireComponent(typeof(RelicVisualizer))]
 public abstract class RelicBase : MonoBehaviour
 {
-    private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
-    private static readonly int ColorId = Shader.PropertyToID("_Color");
-    private static readonly int MetallicId = Shader.PropertyToID("_Metallic");
-    private static readonly int SmoothnessId = Shader.PropertyToID("_Smoothness");
-    private static Material s_vizSharedMaterial;
-
-    // ── 定数 ────────────────────────────────────────────────
-    private const float DAMAGE_PERFECT_MIN  = 100f;
-    private const float DAMAGE_DAMAGED_MIN  =  50f;
-    private const float DAMAGE_BROKEN_MIN   =   1f;
-
-    // ── Inspector ───────────────────────────────────────────
     [Header("データ駆動（任意）")]
-    [SerializeField] private RelicDefinitionSO _definition;   // アサインすれば下記フィールドを上書き
+    [SerializeField] private RelicDefinitionSO _definition;
 
     [Header("遺物設定")]
     [SerializeField] protected string _relicName  = "Unknown Relic";
@@ -36,49 +20,34 @@ public abstract class RelicBase : MonoBehaviour
 
     [Header("耐久")]
     [SerializeField, Range(0f, 100f)] protected float _maxHp          = 100f;
-    [SerializeField]                  protected float _impactThreshold = 2f;   // m/s — これ未満の衝突はダメージ無視
-    [SerializeField]                  protected float _damageMultiplier = 1f;  // 壊れやすさ係数
+    [SerializeField]                  protected float _impactThreshold = 2f;
+    [SerializeField]                  protected float _damageMultiplier = 1f;
 
     [Header("物理")]
     [SerializeField] protected bool _isHeld = false;
 
-    // ── 状態 ────────────────────────────────────────────────
-    protected float          _currentHp;
-    protected Rigidbody      _rb;
-    protected bool           _isDestroyed;
-    private RelicCondition   _lastCondition;
+    private RelicDurabilityModel _durability;
+    private RelicVisualizer _visualizer;
+    protected Rigidbody _rb;
+    protected bool _isDestroyed;
+    private RelicCondition _lastCondition;
     private readonly List<MonoBehaviour> _behaviourBuffer = new();
 
-    // ── イベント ────────────────────────────────────────────
-    public event Action<float, float>                OnDamaged;         // (damage, currentHp)
-    public event Action<RelicBase>                   OnRelicBroken;
-    /// <summary>
-    /// 耐久状態のティアが変化した際に発火（Perfect→Damaged 等）。
-    /// UI やオーディオシステムが購読して演出を行う。
-    /// </summary>
-    public event Action<RelicCondition, RelicCondition> OnConditionChanged; // (prev, next)
+    public event Action<float, float> OnDamaged;
+    public event Action<RelicBase> OnRelicBroken;
+    public event Action<RelicCondition, RelicCondition> OnConditionChanged;
 
-    // ── プロパティ ───────────────────────────────────────────
-    public string RelicName    => _relicName;
-    public float  CurrentHp   => _currentHp;
-    public float  MaxHp       => _maxHp;
-    public float  HpPercent   => _maxHp > 0f ? _currentHp / _maxHp * 100f : 0f;
-    public bool   IsDestroyed => _isDestroyed;
-    public bool   IsHeld      => _isHeld;
+    protected RelicDurabilityModel Durability => _durability;
+    protected RelicVisualizer Visualizer => _visualizer;
 
-    public RelicCondition Condition
-    {
-        get
-        {
-            float p = HpPercent;
-            if (p >= DAMAGE_PERFECT_MIN)  return RelicCondition.Perfect;
-            if (p >= DAMAGE_DAMAGED_MIN)  return RelicCondition.Damaged;
-            if (p >= DAMAGE_BROKEN_MIN)   return RelicCondition.HeavilyDamaged;
-            return RelicCondition.Destroyed;
-        }
-    }
+    public string RelicName => _relicName;
+    public float CurrentHp => _durability?.CurrentHp ?? 0f;
+    public float MaxHp => _durability?.MaxHp ?? _maxHp;
+    public float HpPercent => _durability?.HpPercent ?? 0f;
+    public bool IsDestroyed => _isDestroyed;
+    public bool IsHeld => _isHeld;
+    public RelicCondition Condition => _durability?.Condition ?? RelicCondition.Destroyed;
 
-    /// <summary>状態に応じた報酬倍率。</summary>
     public float RewardMultiplier => Condition switch
     {
         RelicCondition.Perfect        => 1.0f,
@@ -89,30 +58,32 @@ public abstract class RelicBase : MonoBehaviour
 
     public int CurrentValue => Mathf.RoundToInt(_baseValue * RewardMultiplier);
 
-    // ── ライフサイクル ────────────────────────────────────────
     protected virtual void Awake()
     {
         _rb = GetComponent<Rigidbody>();
+        _visualizer = GetComponent<RelicVisualizer>();
 
-        // SO がアサインされていれば Inspector フィールドを上書きする。
-        // 派生クラスが Awake でフィールドを設定する場合は base.Awake() より前に行うこと。
         if (_definition != null)
             ApplyDefinition(_definition);
 
-        // 不変条件: MaxHp は正の値でなければならない
-        Debug.Assert(_maxHp > 0f,
-            $"[Contract] RelicBase.Awake: _maxHp は 0 より大きくなければなりません (value={_maxHp}, relic={_relicName})");
+        Contract.Invariant(_maxHp > 0f,
+            $"RelicBase.Awake: _maxHp は 0 より大きくなければなりません (value={_maxHp}, relic={_relicName})");
 
-        _currentHp     = _maxHp;
-        _lastCondition = RelicCondition.Perfect;
+        _durability = new RelicDurabilityModel(_maxHp, _impactThreshold, _damageMultiplier);
+        _lastCondition = _durability.Condition;
         RebuildVisual();
 
-        // GDD §14.9: 遺物発見トリガーを自動装着（未アタッチ時のみ）。
         if (GetComponent<RelicDiscoveryTrigger>() == null)
             gameObject.AddComponent<RelicDiscoveryTrigger>();
+
+        // RelicCarrier も自動付与する。OnPickedUp/OnPutDown の仲介・運搬役で、PlayerInteraction/NPCController/
+        // RelicDamageTracker/TempleTraps など多くの系が relic 上の GetComponent<RelicCarrier> を前提にしている。
+        // 従来どのプレハブ/シーンにも付いておらず拾い上げが成立しなかった（＝pickup SE/VFX が発火しない）配線漏れを解消。
+        // [RequireComponent(typeof(RelicBase))] で安全、保持中以外は FixedUpdate が即 return で不活性。
+        if (GetComponent<RelicCarrier>() == null)
+            gameObject.AddComponent<RelicCarrier>();
     }
 
-    /// <summary>RelicDefinitionSO の値を自身のフィールドに適用する。</summary>
     protected void ApplyDefinition(RelicDefinitionSO def)
     {
         _relicName        = def.RelicName;
@@ -135,8 +106,6 @@ public abstract class RelicBase : MonoBehaviour
         ApplyDamage(damage, collision.gameObject);
     }
 
-    // ── ダメージ計算 ──────────────────────────────────────────
-    /// <summary>衝撃速度からダメージを計算する。派生クラスでオーバーライド可。</summary>
     protected virtual float CalculateDamage(float impactSpeed, Collision collision)
     {
         float excessSpeed = impactSpeed - _impactThreshold;
@@ -145,77 +114,45 @@ public abstract class RelicBase : MonoBehaviour
 
     public void ApplyDamage(float damage, GameObject source = null)
     {
-        // 前提条件: damage は非負の値でなければならない
-        if (damage < 0f)
-        {
-            Debug.LogError(
-                $"[Contract] RelicBase.ApplyDamage: damage は 0 以上でなければなりません " +
-                $"(value={damage}, relic={_relicName}, source={source?.name})");
-            return;
-        }
+        if (_isDestroyed) return;
+        if (!_durability.TryApplyDamage(damage, out float applied)) return;
 
-        if (_isDestroyed || damage <= 0f) return;
+        OnDamaged?.Invoke(applied, _durability.CurrentHp);
+        NotifyConditionChanged();
+        OnDamageReceived(applied, source);
 
-        _currentHp = Mathf.Max(0f, _currentHp - damage);
-        OnDamaged?.Invoke(damage, _currentHp);
-
-        // 条件ティアが変化した場合にイベントを発火（FSM遷移通知）
-        var newCondition = Condition;
-        if (newCondition != _lastCondition)
-        {
-            var prev = _lastCondition;
-            _lastCondition = newCondition;
-            // 不変条件: 遺物の状態は一方向（悪化のみ）に遷移する
-            Debug.Assert(newCondition > prev || newCondition == RelicCondition.Destroyed,
-                $"[Contract] RelicBase: 状態は悪化方向にしか変化しません ({prev} → {newCondition})");
-            OnConditionChanged?.Invoke(prev, newCondition);
-
-            // GDD §15.2 — relic_damage_light / relic_damage_heavy（ティア悪化時）
-            if (newCondition == RelicCondition.Damaged)
-                PPAudioManager.Instance?.PlaySE(SoundId.RelicDamageLight, transform.position);
-            else if (newCondition == RelicCondition.HeavilyDamaged)
-                PPAudioManager.Instance?.PlaySE(SoundId.RelicDamageHeavy, transform.position);
-        }
-
-        OnDamageReceived(damage, source);
-
-        if (_currentHp <= 0f && !_isDestroyed)
+        if (_durability.IsDestroyed && !_isDestroyed)
             HandleDestruction();
     }
 
-    /// <summary>
-    /// 環境由来のダメージ（凍結・高山病・経年劣化等）を与える。
-    /// 物理衝突ダメージとは独立し、ダメージ耐性 (Toughness) の影響を受けない。
-    /// RelicFreezeDamage など環境システムから呼ぶ。
-    /// </summary>
-    public void ApplyEnvironmentalDamage(float damage)
-    {
-        ApplyDamage(damage, null);
-    }
+    public void ApplyEnvironmentalDamage(float damage) => ApplyDamage(damage, null);
 
-    /// <summary>遺物を修復する（HP を増加させる）。ThermalCase など保護アイテムが使用する。</summary>
     public void Repair(float amount)
     {
-        // 前提条件: amount は正の値でなければならない
-        if (amount < 0f)
-        {
-            Debug.LogError(
-                $"[Contract] RelicBase.Repair: amount は 0 以上でなければなりません " +
-                $"(value={amount}, relic={_relicName})");
-            return;
-        }
-
-        if (_isDestroyed || amount <= 0f) return;
-
-        float prevHp = _currentHp;
-        _currentHp = Mathf.Min(_maxHp, _currentHp + amount);
-
-        // 事後条件: HP は MaxHp を超えてはならない
-        Debug.Assert(_currentHp <= _maxHp,
-            $"[Contract] RelicBase.Repair: HP ({_currentHp}) が MaxHp ({_maxHp}) を超えました");
+        if (_isDestroyed) return;
+        _durability.TryRepair(amount);
     }
 
     protected virtual void OnDamageReceived(float damage, GameObject source) { }
+
+    private void NotifyConditionChanged()
+    {
+        var newCondition = Condition;
+        if (newCondition == _lastCondition) return;
+
+        var prev = _lastCondition;
+        _lastCondition = newCondition;
+
+        Contract.Ensures(newCondition > prev || newCondition == RelicCondition.Destroyed,
+            $"RelicBase: 状態は悪化方向にしか変化しません ({prev} → {newCondition})");
+
+        OnConditionChanged?.Invoke(prev, newCondition);
+
+        if (newCondition == RelicCondition.Damaged)
+            GameServices.Audio?.PlaySE(SoundId.RelicDamageLight, transform.position);
+        else if (newCondition == RelicCondition.HeavilyDamaged)
+            GameServices.Audio?.PlaySE(SoundId.RelicDamageHeavy, transform.position);
+    }
 
     private float ApplyDamageModifiers(float baseDamage, Collision collision)
     {
@@ -238,37 +175,29 @@ public abstract class RelicBase : MonoBehaviour
     private void HandleDestruction()
     {
         _isDestroyed = true;
-
-        // GDD §15.2 — relic_destroyed（破壊確定時の大破音）
-        PPAudioManager.Instance?.PlaySE(SoundId.RelicDestroyed, transform.position);
-
+        GameServices.Audio?.PlaySE(SoundId.RelicDestroyed, transform.position);
         OnRelicBroken?.Invoke(this);
         OnBroken();
     }
 
     protected virtual void OnBroken()
     {
-        // 派生クラスで演出をオーバーライド
         Debug.Log($"[Relic] {_relicName} が破壊されました");
     }
 
-    // ── 掴み操作 ─────────────────────────────────────────────
     public virtual void OnPickedUp(Transform holder)
     {
         _isHeld = true;
         _rb.isKinematic = false;
+        GameServices.Audio?.PlaySE(SoundId.RelicGrab, transform.position);
 
-        // GDD §15.2 — relic_grab（遺物を持ち上げた音）
-        PPAudioManager.Instance?.PlaySE(SoundId.RelicGrab, transform.position);
+        // 持ち上げのポンッ（金、小さめ速め）。
+        Sandbox.World.Environment.StylizedImpactFx.CollectPop(
+            transform.position, new Color(1f, 0.80f, 0.25f), 0.9f, 24);
     }
 
-    public virtual void OnPutDown()
-    {
-        _isHeld = false;
-    }
+    public virtual void OnPutDown() => _isHeld = false;
 
-    // ── Gizmos ───────────────────────────────────────────────
-    /// <summary>派生クラスで固有のGizmoカラーを返す。</summary>
     protected virtual Color GizmoColor => Color.white;
 
     protected virtual void OnDrawGizmos()
@@ -298,98 +227,23 @@ public abstract class RelicBase : MonoBehaviour
         Gizmos.DrawWireSphere(transform.position, 0.35f);
     }
 
-    // ── ビジュアル構築 ───────────────────────────────────────
-    private const string VIZ_PREFIX = "RelicViz_";
-
-    /// <summary>派生クラスで固有の外観を構築する。Awake から自動呼び出し。</summary>
     protected virtual void BuildVisual() { }
 
-    /// <summary>既存ビジュアル子を削除して BuildVisual を再実行する。</summary>
-    public void RebuildVisual()
-    {
-        ClearVisualChildren();
-        var mr = GetComponent<MeshRenderer>();
-        if (mr != null) mr.enabled = false;
-        BuildVisual();
-    }
+    public void RebuildVisual() => _visualizer.Rebuild(BuildVisual);
 
-    private void ClearVisualChildren()
-    {
-        for (int i = transform.childCount - 1; i >= 0; i--)
-        {
-            var c = transform.GetChild(i);
-            if (!c.name.StartsWith(VIZ_PREFIX)) continue;
-#if UNITY_EDITOR
-            if (!Application.isPlaying) DestroyImmediate(c.gameObject); else
-#endif
-            Destroy(c.gameObject);
-        }
-    }
-
-    /// <summary>LocalSpace にプリミティブ子オブジェクトを追加して返す。</summary>
     protected GameObject VizChild(
         PrimitiveType type, string label,
         Vector3 localPos, Vector3 localScale,
         Color color, float metallic = 0f, float smoothness = 0.5f)
-        => VizChildRot(type, label, localPos, Quaternion.identity, localScale, color, metallic, smoothness);
+        => _visualizer.CreatePrimitive(type, label, localPos, localScale, color, metallic, smoothness);
 
     protected GameObject VizChildRot(
         PrimitiveType type, string label,
         Vector3 localPos, Quaternion localRot, Vector3 localScale,
         Color color, float metallic = 0f, float smoothness = 0.5f)
-    {
-        var go = GameObject.CreatePrimitive(type);
-        go.name = VIZ_PREFIX + label;
-        go.transform.SetParent(transform);
-        go.transform.localPosition = localPos;
-        go.transform.localRotation = localRot;
-        go.transform.localScale    = localScale;
-
-        var col = go.GetComponent<Collider>();
-        if (col != null)
-        {
-#if UNITY_EDITOR
-            if (!Application.isPlaying) DestroyImmediate(col); else
-#endif
-            Destroy(col);
-        }
-
-        var renderer = go.GetComponent<MeshRenderer>();
-        if (renderer != null)
-        {
-            var sharedMaterial = GetSharedVizMaterial();
-            if (sharedMaterial != null)
-                renderer.sharedMaterial = sharedMaterial;
-
-            var block = new MaterialPropertyBlock();
-            renderer.GetPropertyBlock(block);
-            block.SetColor(BaseColorId, color);
-            block.SetColor(ColorId, color);
-            block.SetFloat(MetallicId, metallic);
-            block.SetFloat(SmoothnessId, smoothness);
-            renderer.SetPropertyBlock(block);
-        }
-
-        return go;
-    }
-
-    private static Material GetSharedVizMaterial()
-    {
-        if (s_vizSharedMaterial != null) return s_vizSharedMaterial;
-
-        var shader = Shader.Find("Universal Render Pipeline/Lit")
-                     ?? Shader.Find("Standard");
-        if (shader == null) return null;
-
-        s_vizSharedMaterial = new Material(shader)
-        {
-            name = "RelicVizSharedMaterial"
-        };
-        return s_vizSharedMaterial;
-    }
+        => _visualizer.CreatePrimitiveRot(type, label, localPos, localRot, localScale, color, metallic, smoothness);
 }
 
-/// <summary>遺物の状態区分。</summary>
 public enum RelicCondition
 {
     Perfect,
@@ -398,9 +252,6 @@ public enum RelicCondition
     Destroyed
 }
 
-/// <summary>
-/// RelicBase の衝突ダメージを計算段階で修飾する拡張ポイント。
-/// </summary>
 public interface IRelicDamageModifier
 {
     float ModifyDamage(float baseDamage, Collision collision, RelicBase relic);

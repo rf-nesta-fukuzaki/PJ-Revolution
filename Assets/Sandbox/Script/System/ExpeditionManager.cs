@@ -2,15 +2,17 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §2.1 — 遠征（ラン）全体のフロー管理。
 /// ベースキャンプ→登攀→帰還判断→リザルト の流れを制御する。
 /// </summary>
-public class ExpeditionManager : MonoBehaviour
+public class ExpeditionManager : MonoBehaviour, IExpeditionService
 {
-    public static ExpeditionManager Instance { get; private set; }
+    private static ExpeditionManager _instance;
+
+    [System.Obsolete("GameServices.Expedition を使用してください")]
+    public static ExpeditionManager Instance => _instance;
 
     [Header("参照")]
     [SerializeField] private ResultScreen _resultScreen;
@@ -27,25 +29,27 @@ public class ExpeditionManager : MonoBehaviour
     [SerializeField] private Transform[] _checkpoints;
 
     // ── 状態 ─────────────────────────────────────────────────
-    private ExpeditionPhase        _phase = ExpeditionPhase.Basecamp;
+    private readonly ExpeditionPhaseStateMachine _phaseMachine = new();
+    private readonly ExpeditionTimer _timer = new();
     private int                    _currentCheckpointIdx;
     private bool                   _expeditionEnded;
     private bool                   _expeditionStarted;
-    private float                  _expeditionElapsedTime;
     private readonly List<Transform> _dynamicCheckpoints = new();
 
-    public ExpeditionPhase Phase => _phase;
+    public ExpeditionPhase Phase => _phaseMachine.Current;
+    public ExpeditionTimer Timer => _timer;
 
     private void Update()
     {
-        if (_phase == ExpeditionPhase.Climbing)
-            _expeditionElapsedTime += Time.deltaTime;
+        if (_phaseMachine.Current == ExpeditionPhase.Climbing)
+            _timer.Tick(Time.deltaTime);
     }
 
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
+        if (_instance != null && _instance != this) { Destroy(gameObject); return; }
+        _instance = this;
+        GameServices.Register((IExpeditionService)this);
     }
 
     private void Start()
@@ -67,19 +71,18 @@ public class ExpeditionManager : MonoBehaviour
     {
         if (_expeditionStarted) return;
 
-        // 前提条件: ベースキャンプフェーズからのみ開始可能
-        Debug.Assert(_phase == ExpeditionPhase.Basecamp,
-            $"[Contract] StartExpedition: invalid phase transition {_phase}→Climbing");
+        Contract.Invariant(_phaseMachine.Current == ExpeditionPhase.Basecamp,
+            $"StartExpedition: invalid phase transition {_phaseMachine.Current}→Climbing");
 
-        _expeditionStarted     = true;
-        _expeditionElapsedTime = 0f;
+        _expeditionStarted = true;
+        _timer.Start();
 
         // GDD §5.2 — BivouacTent「1遠征1個」制限をここで解除。
         // 新しい遠征の開始＝前回までの設置記録をクリアする唯一の正当なタイミング。
         BivouacTentItem.ResetExpeditionFlag();
 
         TransitionPhase(ExpeditionPhase.Climbing);
-        ExpeditionEvents.RaiseExpeditionStarted();   // HUD への直接依存を排除
+        ExpeditionEvents.RaiseExpeditionStarted();
 
         // ネットワーク同期：ホスト以外のクライアントにもフェーズ変化を通知
         NetworkExpeditionSync.Instance?.StartExpeditionServerRpc();
@@ -125,19 +128,24 @@ public class ExpeditionManager : MonoBehaviour
     {
         if (_expeditionEnded) return;
 
-        // 前提条件: Climbing フェーズからのみ帰還可能
-        Debug.Assert(_phase == ExpeditionPhase.Climbing,
-            $"[Contract] ReturnToBase: invalid phase transition {_phase}→Returning");
+        // 帰還は登攀フェーズからのみ有効。遠征未開始（Basecamp）等で呼ばれた場合は
+        // 不正なフェーズ遷移エラーを発生させず、安全に無視する（防御的ガード）。
+        if (_phaseMachine.Current != ExpeditionPhase.Climbing)
+        {
+            Debug.LogWarning(
+                $"[Expedition] ReturnToBase は Climbing フェーズでのみ有効です（現在: {_phaseMachine.Current}）。無視します。");
+            return;
+        }
 
         _expeditionEnded = true;
+        _timer.Stop();
 
         TransitionPhase(ExpeditionPhase.Returning);
-        ExpeditionEvents.RaiseExpeditionEnded();     // HUD への直接依存を排除
+        ExpeditionEvents.RaiseExpeditionEnded();
 
-        // ネットワーク同期：全クライアントに帰還フェーズを通知
         NetworkExpeditionSync.Instance?.ReturnToBaseServerRpc();
 
-        float clearTime = _expeditionElapsedTime;
+        float clearTime = _timer.ElapsedSeconds;
 
         var scoreService = GameServices.Score;
         if (scoreService == null)
@@ -146,8 +154,9 @@ public class ExpeditionManager : MonoBehaviour
             return;
         }
 
-        // 前提条件: clearTime は 0 以上
-        Debug.Assert(clearTime >= 0f, $"[Contract] ExpeditionManager.ReturnToBase: clearTime が負の値 ({clearTime})");
+        if (!Contract.TryRequires(clearTime >= 0f,
+            $"ExpeditionManager.ReturnToBase: clearTime が負の値 ({clearTime})"))
+            clearTime = 0f;
 
         var score = scoreService.BuildResultData(clearTime, allSurvived);
         StartCoroutine(ShowResultAfterFade(score));
@@ -163,23 +172,11 @@ public class ExpeditionManager : MonoBehaviour
         _resultScreen?.Show(score);
     }
 
-    // ── フェーズ遷移（バリデーション付き）──────────────────────
-    private static readonly (ExpeditionPhase from, ExpeditionPhase to)[] VALID_TRANSITIONS =
-    {
-        (ExpeditionPhase.Basecamp,  ExpeditionPhase.Climbing),
-        (ExpeditionPhase.Climbing,  ExpeditionPhase.Returning),
-        (ExpeditionPhase.Returning, ExpeditionPhase.Result),
-    };
-
     private void TransitionPhase(ExpeditionPhase next)
     {
-        bool valid = false;
-        foreach (var (from, to) in VALID_TRANSITIONS)
-        {
-            if (from == _phase && to == next) { valid = true; break; }
-        }
-        Debug.Assert(valid, $"[Contract] ExpeditionManager: illegal phase transition {_phase}→{next}");
-        _phase = next;
+        if (!_phaseMachine.TryTransition(next))
+            return;
+
         Debug.Log($"[Expedition] フェーズ遷移: {next}");
     }
 
@@ -259,7 +256,7 @@ public class ExpeditionManager : MonoBehaviour
     /// </summary>
     private IEnumerator PlayWipeoutSequence()
     {
-        var audio = PPAudioManager.Instance;
+        var audio = GameServices.Audio;
         if (audio == null) yield break;
 
         audio.StopBGM();                     // 2 秒クロスフェードで BGM がフェードアウト

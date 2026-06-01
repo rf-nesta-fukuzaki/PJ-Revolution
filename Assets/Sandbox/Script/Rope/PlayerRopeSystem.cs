@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §3.2 — プレイヤー間ロープ物理システム。
@@ -79,19 +78,24 @@ public class PlayerRopeSystem : MonoBehaviour
     /// <summary>2人のプレイヤーを繋ぐ。</summary>
     public void Connect(Rigidbody playerA, Rigidbody playerB, float ropeLength = -1)
     {
+        if (!Contract.TryRequires(playerA != null, "PlayerRopeSystem.Connect: playerA が null です")) return;
+        if (!Contract.TryRequires(playerB != null, "PlayerRopeSystem.Connect: playerB が null です")) return;
+        if (!Contract.TryRequires(playerA != playerB, "PlayerRopeSystem.Connect: 同一 Rigidbody への接続は不可です")) return;
+
         _playerA   = playerA;
         _playerB   = playerB;
         _isConnected = true;
         _currentLength = ropeLength > 0f ? ropeLength : MaxRopeLength;
 
-        // ノード位置を再配置
+        Contract.Invariant(_currentLength > 0f, "Connect 後の _currentLength は正の値でなければならない");
+
         ReplaceNodes(playerA.position, playerB.position);
 
         _lineRenderer.enabled = true;
 
         // GDD §15.2 — rope_connect
         Vector3 midpoint = (playerA.position + playerB.position) * 0.5f;
-        PPAudioManager.Instance?.PlaySE(SoundId.RopeConnect, midpoint);
+        GameServices.Audio?.PlaySE(SoundId.RopeConnect, midpoint);
 
         Debug.Log("[PlayerRope] ロープ接続完了");
     }
@@ -106,7 +110,7 @@ public class PlayerRopeSystem : MonoBehaviour
         {
             Vector3 midpoint = (_playerA.position + _playerB.position) * 0.5f;
             var id = broken ? SoundId.RopeSnap : SoundId.RopeCut;
-            PPAudioManager.Instance?.PlaySE(id, midpoint);
+            GameServices.Audio?.PlaySE(id, midpoint);
         }
 
         _isConnected = false;
@@ -232,7 +236,7 @@ public class PlayerRopeSystem : MonoBehaviour
         if (nowWarn && !_wasUnderTensionWarning)
         {
             Vector3 midpoint = (_playerA.position + _playerB.position) * 0.5f;
-            PPAudioManager.Instance?.PlaySE(SoundId.RopeTension, midpoint);
+            GameServices.Audio?.PlaySE(SoundId.RopeTension, midpoint);
         }
         _wasUnderTensionWarning = nowWarn;
 

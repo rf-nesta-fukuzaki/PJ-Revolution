@@ -18,8 +18,18 @@ public class ExplorerCameraLook : MonoBehaviour
     [SerializeField] private Transform _visualRoot;
 
     [Header("感度")]
-    [SerializeField] private float _sensitivityX = 2f;
-    [SerializeField] private float _sensitivityY = 2f;
+    [Tooltip("水平方向の視点感度。実効感度 = InputStateReader.MouseLookScale × この値（度/ピクセル）。")]
+    [SerializeField] private float _sensitivityX = 5f;
+    [Tooltip("垂直方向の視点感度。")]
+    [SerializeField] private float _sensitivityY = 5f;
+
+    [Header("感度ライブ調整")]
+    [Tooltip("プレイ中に [ / ] キーで感度を増減する際のステップ量。")]
+    [SerializeField] private float _sensitivityStep = 0.5f;
+    [Tooltip("ライブ調整での感度の下限。")]
+    [SerializeField] private float _minSensitivity = 0.5f;
+    [Tooltip("ライブ調整での感度の上限。")]
+    [SerializeField] private float _maxSensitivity = 20f;
 
     [Header("ピッチ制限 (度)")]
     [SerializeField] private float _minPitch = -80f;
@@ -55,6 +65,12 @@ public class ExplorerCameraLook : MonoBehaviour
 
         if (_visualRoot == null)
             _visualRoot = transform.Find("ExplorerModel");
+
+        // モデルのルート名が "ExplorerModel" でない場合のフォールバック。
+        // Explorer ルート自体をビジュアルルートとして扱い、CameraRig 配下を除く
+        // 全ボディメッシュを一人称非表示の対象にする（ApplyFirstPersonLocalVisuals 参照）。
+        if (_visualRoot == null)
+            _visualRoot = transform;
     }
 
     private void Start()
@@ -86,6 +102,7 @@ public class ExplorerCameraLook : MonoBehaviour
             ApplyFirstPersonLocalVisuals();
 
         HandleCursorLock();
+        HandleSensitivityTuning();
 
         if (_cameraRig == null) return;
         if (Cursor.lockState != CursorLockMode.Locked) return;
@@ -112,6 +129,23 @@ public class ExplorerCameraLook : MonoBehaviour
         // ESC でアンロック
         if (InputStateReader.EscapePressedThisFrame())
             UnlockCursor();
+    }
+
+    /// <summary>
+    /// プレイ中に [ / ] キーで視点感度をライブ調整する。
+    /// 環境（トラックパッド／マウス）に合わせて手早く詰められるようにするための開発支援。
+    /// </summary>
+    private void HandleSensitivityTuning()
+    {
+        float step = 0f;
+        if (InputStateReader.LookSensitivityUpPressedThisFrame()) step += _sensitivityStep;
+        if (InputStateReader.LookSensitivityDownPressedThisFrame()) step -= _sensitivityStep;
+
+        if (Mathf.Approximately(step, 0f)) return;
+
+        _sensitivityX = Mathf.Clamp(_sensitivityX + step, _minSensitivity, _maxSensitivity);
+        _sensitivityY = Mathf.Clamp(_sensitivityY + step, _minSensitivity, _maxSensitivity);
+        Debug.Log($"[ExplorerCameraLook] 視点感度 = {_sensitivityX:0.##}");
     }
 
     private static void LockCursor()

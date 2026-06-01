@@ -7,12 +7,15 @@ using UnityEngine;
 /// GDD §14.9 — 遺物発見通知 UI。
 /// RelicDiscoveryTrigger から呼ばれ、「遺物を発見！— [name]」を 3 秒表示してフェードアウトする。
 /// シーン内のシングルトン。未配置でも RelicDiscoveryTrigger が失敗しないよう
-/// null チェック経由でアクセスされる（trigger 側で Instance?.NotifyDiscovered(...)）。
+/// null チェック経由でアクセスされる（trigger 側で GameServices.RelicDiscovery?.NotifyDiscovered(...)）。
 /// </summary>
 [DisallowMultipleComponent]
-public class RelicDiscoveryNotifier : MonoBehaviour
+public class RelicDiscoveryNotifier : MonoBehaviour, IRelicDiscoveryNotifier
 {
-    public static RelicDiscoveryNotifier Instance { get; private set; }
+    private static RelicDiscoveryNotifier _instance;
+
+    [System.Obsolete("GameServices.RelicDiscovery を使用してください")]
+    public static RelicDiscoveryNotifier Instance => _instance;
 
     // GDD §14.9: 表示 3 秒 + フェード 0.5 秒。
     private const float DISPLAY_SECONDS = 3f;
@@ -33,12 +36,13 @@ public class RelicDiscoveryNotifier : MonoBehaviour
 
     private void Awake()
     {
-        if (Instance != null && Instance != this)
+        if (_instance != null && _instance != this)
         {
             Destroy(gameObject);
             return;
         }
-        Instance = this;
+        _instance = this;
+        GameServices.Register((IRelicDiscoveryNotifier)this);
 
         if (_group != null) _group.alpha = 0f;
         if (_iconRoot != null) _iconRoot.SetActive(false);
@@ -46,7 +50,7 @@ public class RelicDiscoveryNotifier : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (Instance == this) Instance = null;
+        if (_instance == this) _instance = null;
     }
 
     /// <summary>

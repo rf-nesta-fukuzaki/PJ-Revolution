@@ -60,7 +60,7 @@ public class NetworkRelicSync : NetworkBehaviour
         _networkHp.OnValueChanged += OnNetworkHpChanged;
         _networkCondition.OnValueChanged += OnNetworkConditionChanged;
 
-        if (IsServer)
+        if (IsServer && _relic != null)
         {
             // ホストではローカルの衝突ダメージをネットワーク変数に書き込む
             _relic.OnDamaged += HandleDamageOnServer;
@@ -78,7 +78,7 @@ public class NetworkRelicSync : NetworkBehaviour
         _networkHp.OnValueChanged        -= OnNetworkHpChanged;
         _networkCondition.OnValueChanged -= OnNetworkConditionChanged;
 
-        if (IsServer)
+        if (IsServer && _relic != null)
             _relic.OnDamaged -= HandleDamageOnServer;
     }
 
@@ -98,7 +98,7 @@ public class NetworkRelicSync : NetworkBehaviour
 
         _heldByClientId.Value = clientId;
         // 物理を持ち手に追従させる（位置同期は NetworkTransform が行う）
-        Debug.Log($"[RelicSync] {_relic.RelicName} 持ち上げ: client={clientId}");
+        SandboxLog.Trace($"[RelicSync] {_relic.RelicName} 持ち上げ: client={clientId}");
     }
 
     /// <summary>クライアントがアイテムを置いた際にサーバーへ通知する。</summary>
@@ -111,7 +111,7 @@ public class NetworkRelicSync : NetworkBehaviour
         var rb = GetComponent<Rigidbody>();
         if (rb != null) rb.isKinematic = false;
 
-        Debug.Log($"[RelicSync] {_relic.RelicName} 置き直し");
+        SandboxLog.Trace($"[RelicSync] {_relic.RelicName} 置き直し");
     }
 
     /// <summary>ホスト側から直接ダメージを加える（落石トリガーなどから呼び出し）。</summary>
@@ -127,14 +127,14 @@ public class NetworkRelicSync : NetworkBehaviour
     {
         // クライアント側でのHP変化エフェクト（Coroutine等はここに追加）
         if (newHp < oldHp)
-            Debug.Log($"[RelicSync] {_relic.RelicName} HP: {oldHp:F0} → {newHp:F0}");
+            SandboxLog.Trace($"[RelicSync] {_relic.RelicName} HP: {oldHp:F0} → {newHp:F0}");
     }
 
     private void OnNetworkConditionChanged(RelicCondition oldCond, RelicCondition newCond)
     {
         if (newCond == RelicCondition.Destroyed)
         {
-            Debug.Log($"[RelicSync] {_relic.RelicName} 破壊！");
+            SandboxLog.Trace($"[RelicSync] {_relic.RelicName} 破壊！");
         }
     }
 

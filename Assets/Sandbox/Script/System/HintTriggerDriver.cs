@@ -71,7 +71,7 @@ public class HintTriggerDriver : MonoBehaviour
         if (Time.unscaledTime < _nextPollTime) return;
         _nextPollTime = Time.unscaledTime + POLL_INTERVAL;
 
-        var hintMgr = HintManager.Instance;
+        var hintMgr = GameServices.Hints;
         if (hintMgr == null) return;
 
         // Hint 2: ダッシュ紹介（5 秒歩行後）
@@ -114,7 +114,7 @@ public class HintTriggerDriver : MonoBehaviour
     // ── Hint 3 用 ─────────────────────────────────────────────
     private void HandleStaminaExhausted()
     {
-        HintManager.Instance?.TriggerHint(HintManager.HintId.StaminaDepleted);
+        GameServices.Hints?.TriggerHint(HintManager.HintId.StaminaDepleted);
     }
 
     // ── 近接判定ヘルパー ─────────────────────────────────────

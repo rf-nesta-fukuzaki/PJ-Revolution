@@ -1,51 +1,53 @@
 using System.Collections.Generic;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §3.1 — ポイント＆グラブ方式の登攀コントローラー。
-/// - 壁に近づくと掴めるポイントをハイライト
-/// - ボタンで掴む/離す
-/// - スタミナ管理
-/// ExplorerController と同じ GameObject にアタッチする。
+/// 状態遷移は <see cref="ClimbingStateMachine"/> に委譲する。
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 public class ClimbingController : MonoBehaviour
 {
-    // IceAxeItem.ItemNameKey を参照して重複宣言を排除（リネーム時の食い違いを防ぐ）。
+    [Header("設定 (ScriptableObject — 未設定時は Inspector デフォルト)")]
+    [SerializeField] private ClimbingConfigSO _config;
 
-    [Header("検出設定")]
+    [Header("検出設定 (Config 未設定時のフォールバック)")]
     [SerializeField] private float _detectionRadius  = 2.5f;
     [SerializeField] private LayerMask _grabLayer;
 
-    [Header("クライミング物理")]
-    [SerializeField] private float _pullSpeed        = 4f;     // グラブポイントへの引き寄せ速度
-    [SerializeField] private float _holdGravityScale = 0.2f;   // 掴んでいるときの重力スケール
-    [SerializeField] private float _releaseImpulse   = 3f;     // 離したときの勢い
+    [Header("クライミング物理 (Config 未設定時のフォールバック)")]
+    [SerializeField] private float _pullSpeed        = 4f;
+    [SerializeField] private float _holdGravityScale = 0.2f;
+    [SerializeField] private float _releaseImpulse   = 3f;
+    [SerializeField] private float _holdHeightOffset = 0.8f;
+    [SerializeField] private float _verticalInputScale = 0.5f;
 
     [Header("スタミナ")]
     [SerializeField] private StaminaSystem _stamina;
+
+    private readonly ClimbingStateMachine _stateMachine = new();
 
     private Rigidbody         _rb;
     private PlayerInventory   _inventory;
     private Animator          _animator;
     private GrabPoint         _nearestGrabPoint;
     private GrabPoint         _currentGrabPoint;
-    private bool              _isClimbing;
 
     private static readonly int IsClimbingHash = Animator.StringToHash("IsClimbing");
 
-    // ハイライト管理
     private readonly HashSet<GrabPoint> _highlighted = new();
-
-    // GC ゼロの Overlap バッファ — Update 毎に new[] しない
     private readonly Collider[]         _overlapBuffer = new Collider[32];
-    // スキャン結果を積み上げる再利用セット — new HashSet<> を毎フレーム生成しない
     private readonly HashSet<GrabPoint> _scanResultSet = new();
 
-    // ── プロパティ ────────────────────────────────────────────
-    public bool IsClimbing    => _isClimbing;
+    private float DetectionRadiusValue   => _config != null ? _config.DetectionRadius : _detectionRadius;
+    private float PullSpeedValue         => _config != null ? _config.PullSpeed : _pullSpeed;
+    private float HoldGravityScaleValue  => _config != null ? _config.HoldGravityScale : _holdGravityScale;
+    private float ReleaseImpulseValue    => _config != null ? _config.ReleaseImpulse : _releaseImpulse;
+    private float HoldHeightOffsetValue  => _config != null ? _config.HoldHeightOffset : _holdHeightOffset;
+    private float VerticalInputScaleValue => _config != null ? _config.VerticalInputScale : _verticalInputScale;
+
+    public bool IsClimbing => _stateMachine.IsClimbing;
     public GrabPoint HeldPoint => _currentGrabPoint;
 
     private void Awake()
@@ -55,6 +57,18 @@ public class ClimbingController : MonoBehaviour
         _animator  = GetComponentInChildren<Animator>();
         if (_stamina == null)
             _stamina = GetComponent<StaminaSystem>();
+
+        _stateMachine.OnStateChanged += HandleClimbingStateChanged;
+    }
+
+    private void OnDestroy()
+    {
+        _stateMachine.OnStateChanged -= HandleClimbingStateChanged;
+    }
+
+    private void HandleClimbingStateChanged(ClimbingState prev, ClimbingState next)
+    {
+        _animator?.SetBool(IsClimbingHash, next == ClimbingState.Climbing);
     }
 
     private void Update()
@@ -65,19 +79,15 @@ public class ClimbingController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (!_isClimbing) return;
-
+        if (!_stateMachine.IsClimbing) return;
         ApplyClimbingPhysics();
     }
 
-    // ── スキャン ─────────────────────────────────────────────
     private void ScanNearbyGrabPoints()
     {
-        // NonAlloc 版: _overlapBuffer に収まるだけ取得（GC ゼロ）
         int count = Physics.OverlapSphereNonAlloc(
-            transform.position, _detectionRadius, _overlapBuffer, _grabLayer);
+            transform.position, DetectionRadiusValue, _overlapBuffer, _grabLayer);
 
-        // 再利用セットをクリアして今フレームの結果を積む
         _scanResultSet.Clear();
         GrabPoint closest  = null;
         float     closestD = float.MaxValue;
@@ -96,7 +106,6 @@ public class ClimbingController : MonoBehaviour
             }
         }
 
-        // 外れたポイントのハイライトを解除
         foreach (var gp in _highlighted)
         {
             if (!_scanResultSet.Contains(gp))
@@ -105,7 +114,6 @@ public class ClimbingController : MonoBehaviour
 
         _highlighted.Clear();
 
-        // 新たなポイントをハイライト
         foreach (var gp in _scanResultSet)
         {
             gp.SetHighlight(true);
@@ -115,42 +123,29 @@ public class ClimbingController : MonoBehaviour
         _nearestGrabPoint = closest;
     }
 
-    // ── 入力 ─────────────────────────────────────────────────
     private void HandleGrabInput()
     {
-        if (InputStateReader.InteractPressedThisFrame())
-        {
-            if (_isClimbing)
-                ReleaseGrab();
-            else
-                TryGrab();
-        }
+        if (!InputStateReader.InteractPressedThisFrame()) return;
+
+        if (_stateMachine.IsClimbing)
+            ReleaseGrab();
+        else
+            TryGrab();
     }
 
-    // ── グラブ ────────────────────────────────────────────────
     private void TryGrab()
     {
         if (_nearestGrabPoint == null) return;
-
-        // GDD §5.2 — 氷壁グリップに必要なアイスアックスを検証し、1 回分の耐久を消費する。
-        // 破損（15 回到達）済みなら掴めない。
         if (_nearestGrabPoint.RequireIceAxe && !ConsumeIceAxeUse()) return;
-
         if (!_nearestGrabPoint.TryOccupy()) return;
 
         _currentGrabPoint = _nearestGrabPoint;
-        _isClimbing       = true;
+        if (!_stateMachine.TryGrab()) return;
 
-        // 慣性を消す
         _rb.linearVelocity  = Vector3.zero;
         _rb.angularVelocity = Vector3.zero;
 
-        // Animator: IsClimbing (GDD §16.2)
-        _animator?.SetBool(IsClimbingHash, true);
-
-        // GDD §15.2 — climb_grab
-        PPAudioManager.Instance?.PlaySE(SoundId.ClimbGrab, _currentGrabPoint.transform.position);
-
+        GameServices.Audio?.PlaySE(SoundId.ClimbGrab, _currentGrabPoint.transform.position);
         Debug.Log($"[Climbing] グラブ: {_currentGrabPoint.name}");
     }
 
@@ -162,35 +157,25 @@ public class ClimbingController : MonoBehaviour
 
         _currentGrabPoint.Release();
         _currentGrabPoint = null;
-        _isClimbing       = false;
+        _stateMachine.TryRelease();
 
-        // Animator: IsClimbing (GDD §16.2)
-        _animator?.SetBool(IsClimbingHash, false);
+        GameServices.Audio?.PlaySE(SoundId.ClimbRelease, grabPos);
 
-        // GDD §15.2 — climb_release
-        PPAudioManager.Instance?.PlaySE(SoundId.ClimbRelease, grabPos);
-
-        // 上方向への勢い付与（プレイヤーが次のポイントへ跳べるように）
-        _rb.AddForce(Vector3.up * _releaseImpulse + transform.forward * _releaseImpulse * 0.5f,
-                     ForceMode.Impulse);
+        _rb.AddForce(Vector3.up * ReleaseImpulseValue + transform.forward * ReleaseImpulseValue * 0.5f,
+            ForceMode.Impulse);
     }
 
-    // ── 登攀物理 ─────────────────────────────────────────────
     private void ApplyClimbingPhysics()
     {
         if (_currentGrabPoint == null)
         {
-            _isClimbing = false;
-            _animator?.SetBool(IsClimbingHash, false);
+            _stateMachine.TryRelease();
             return;
         }
 
-        // スタミナ消費
         if (_stamina != null)
         {
             _stamina.Consume(_currentGrabPoint.StaminaDrain * Time.fixedDeltaTime);
-
-            // スタミナ切れで落下
             if (_stamina.IsEmpty)
             {
                 ReleaseGrab();
@@ -198,36 +183,26 @@ public class ClimbingController : MonoBehaviour
             }
         }
 
-        // グラブポイントへの引き寄せ（グラブポイントの高さに合わせる）
-        Vector3 targetPos  = _currentGrabPoint.transform.position
-                             - transform.up * 0.8f;   // キャラクターの腕の高さ分オフセット
-        Vector3 toTarget   = targetPos - _rb.position;
+        Vector3 targetPos = _currentGrabPoint.transform.position - transform.up * HoldHeightOffsetValue;
+        Vector3 toTarget  = targetPos - _rb.position;
 
         if (toTarget.magnitude > 0.1f)
         {
-            _rb.linearVelocity = toTarget.normalized * _pullSpeed;
+            _rb.linearVelocity = toTarget.normalized * PullSpeedValue;
         }
         else
         {
-            // ポイントに到達したらその場で保持（低重力）
             Vector3 vel = _rb.linearVelocity;
-            vel.y = Mathf.Max(vel.y, -0.5f) * _holdGravityScale;
+            vel.y = Mathf.Max(vel.y, -0.5f) * HoldGravityScaleValue;
             _rb.linearVelocity = vel;
-
-            // 追加の反重力力
-            _rb.AddForce(-Physics.gravity * (1f - _holdGravityScale), ForceMode.Acceleration);
+            _rb.AddForce(-Physics.gravity * (1f - HoldGravityScaleValue), ForceMode.Acceleration);
         }
 
-        // 入力による上下移動
         float vertInput = InputStateReader.ReadVerticalAxisRaw();
         if (Mathf.Abs(vertInput) > 0.1f)
-        {
-            _rb.AddForce(Vector3.up * vertInput * _pullSpeed * 0.5f, ForceMode.Acceleration);
-        }
+            _rb.AddForce(Vector3.up * vertInput * PullSpeedValue * VerticalInputScaleValue, ForceMode.Acceleration);
     }
 
-    // ── ユーティリティ ────────────────────────────────────────
-    // GDD §5.2 — 氷壁グラブ時の耐久消費。成功時のみ掴める。
     private bool ConsumeIceAxeUse()
     {
         if (_inventory == null) return false;
@@ -238,6 +213,6 @@ public class ClimbingController : MonoBehaviour
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.cyan;
-        Gizmos.DrawWireSphere(transform.position, _detectionRadius);
+        Gizmos.DrawWireSphere(transform.position, DetectionRadiusValue);
     }
 }

@@ -65,7 +65,7 @@ namespace PeakPlunder.Audio
             };
 
             if (clip == null) return;
-            AudioManager.Instance?.PlayBGM(clip, _bgmVolume);
+            GameServices.Audio?.PlayBGM(clip, _bgmVolume);
         }
     }
 }

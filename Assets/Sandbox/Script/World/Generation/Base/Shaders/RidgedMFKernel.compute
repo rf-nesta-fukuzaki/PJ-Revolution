@@ -1,0 +1,162 @@
+#pragma kernel RidgedMF_Build
+#pragma kernel RidgedMF_FillNormalSlope
+
+#include "NoisePrimitives.hlsl"
+
+// ─── Inputs (cbuffer) ────────────────────────────────────────────
+cbuffer RidgedMFConstants
+{
+    float4 _WorldOrigin;          // xz = chunk origin
+    float4 _GenerationOriginXZ;   // xz = 1024m-snap origin (precision)
+    float4 _Misc;                 // x=cellSize, y=resolution, z=apron, w=lod
+
+    float4 _BaseParams;           // x=baseFreq, y=lacunarity, z=H, w=octaves
+    float4 _RidgeParams;          // x=ridgeOffset, y=gain, z=singleMountain(0/1)
+    float4 _MaskParams;           // x=maskFreq, y=thrLow, z=thrHigh, w=edgeNoiseAmp
+    float4 _WarpParams;           // x=warpFreq, y=warpAmp
+    float4 _ProfileParams;        // x=peakAltitude, y=seaLevel, z=reliefBase
+    float4 _MicroParams;          // x=microFreq, y=microAmp
+    float4 _MountainParams;       // xy=centerWorldXZ, z=radius, w=falloff
+}
+
+#define CELL_SIZE     (_Misc.x)
+#define RESOLUTION    ((uint)_Misc.y)
+#define APRON         ((uint)_Misc.z)
+
+#define BASE_FREQ     (_BaseParams.x)
+#define LACUNARITY    (_BaseParams.y)
+#define H_PARAM       (_BaseParams.z)
+#define OCTAVES       ((int)_BaseParams.w)
+
+#define RIDGE_OFFSET  (_RidgeParams.x)
+#define RIDGE_GAIN    (_RidgeParams.y)
+#define SINGLE_MOUNTAIN (_RidgeParams.z)
+
+#define MASK_FREQ     (_MaskParams.x)
+#define MASK_THR_LOW  (_MaskParams.y)
+#define MASK_THR_HIGH (_MaskParams.z)
+#define MOUNTAIN_EDGE (_MaskParams.w)
+
+#define WARP_FREQ     (_WarpParams.x)
+#define WARP_AMP      (_WarpParams.y)
+
+#define PEAK_ALT      (_ProfileParams.x)
+#define SEA_LEVEL     (_ProfileParams.y)
+#define RELIEF_BASE   (_ProfileParams.z)
+
+#define MICRO_FREQ    (_MicroParams.x)
+#define MICRO_AMP     (_MicroParams.y)
+
+#define MOUNTAIN_CENTER  (_MountainParams.xy)
+#define MOUNTAIN_RADIUS  (_MountainParams.z)
+#define MOUNTAIN_FALLOFF (_MountainParams.w)
+
+Texture2D<float>    _HeightProfileLUT;
+SamplerState sampler_linear_clamp_HeightProfileLUT;
+
+RWTexture2D<float>  _HeightTex;
+RWTexture2D<float4> _NormalSlopeTex;
+
+float ComputeWorldHeight(float2 worldXZ)
+{
+    float2 src = worldXZ - _GenerationOriginXZ.xy;
+
+    // Domain warp
+    float2 warp = CurlNoise2D(float3(src.x, 0.0, src.y) * WARP_FREQ) * WARP_AMP;
+    float3 wp3  = float3(src.x + warp.x, 0.0, src.y + warp.y) * BASE_FREQ;
+
+    // Ridged Multifractal
+    float rmf = RidgedMultifractal3D(wp3, OCTAVES, H_PARAM, LACUNARITY,
+                                     RIDGE_OFFSET, RIDGE_GAIN);
+    rmf = saturate(rmf * 0.6);
+
+    // Height profile LUT (rmf → shaped height curve)
+    float profile = _HeightProfileLUT.SampleLevel(
+        sampler_linear_clamp_HeightProfileLUT, float2(rmf, 0.5), 0).r;
+
+    // 単一 return・全経路で初期化する（metal の uninitialized 警告回避）。
+    float h01       = 0.0;
+    float microMask = 1.0;   // micro detail に乗せる重み
+
+    if (SINGLE_MOUNTAIN > 0.5)
+    {
+        // ── 単一の巨大な山 (オープンワールド) ──
+        // 固定ワールド中心からの放射状フォールオフがドーム状の山体を定義し、
+        // 尾根 (profile) はその上に RELIEF_BASE 比率で乗る。これにより
+        // 山全体が常に「一つの連続した塊」として読め、散在する複数の山にならない。
+        // 低周波 FBM で外周距離を揺らし、円錐臭さを消して自然な裾野を作る。
+        float3 ep3    = float3(worldXZ.x, 0.0, worldXZ.y) * MASK_FREQ;
+        float  edge   = FBM3D(ep3, 4, 2.0, 0.5) * MOUNTAIN_EDGE;      // [-edge,+edge] m
+        float  dist   = length(worldXZ - MOUNTAIN_CENTER) + edge;
+        float  radial = saturate(1.0 - dist / MOUNTAIN_RADIUS);
+        float  dome   = pow(radial, MOUNTAIN_FALLOFF);                // 0..1 山体
+
+        // 山体の起伏（尾根プロファイル）
+        float domeRelief = dome * (RELIEF_BASE + (1.0 - RELIEF_BASE) * profile);
+
+        // ── 周囲の連続した転がる地形 (フラットな円盤を排除) ──
+        // 低周波 FBM の緩やかな丘陵を世界全体に敷き、ドーム下では (1-dome) で
+        // 抑制してヒーロー山の裾野へ自然に溶け込ませる。これで地形が世界の縁まで
+        // 連続し、「山が平らな皿の上に乗っている」破綻が消える。worldXZ 直接参照で
+        // 全チャンク連続 (継ぎ目なし)。
+        float3 bp3       = float3(worldXZ.x, 0.0, worldXZ.y) * BASE_FREQ * 0.5;
+        float  hills     = FBM3D(bp3, 5, 2.0, 0.5) * 0.5 + 0.5;       // 0..1
+        float  plainsRel = hills * 0.12 * (1.0 - dome);               // 0..0.12 (≈66m)
+
+        h01       = domeRelief + plainsRel;
+        microMask = max(dome, 0.45);   // 平地にも微細ディテールを残す
+    }
+    else
+    {
+        // ── 従来モード: 低周波 FBM による複数山マスク ──
+        float3 mp3 = float3(src.x, 0.0, src.y) * MASK_FREQ;
+        float  fbm = FBM3D(mp3, 3, 2.0, 0.5);
+        float  mask = smoothstep(MASK_THR_LOW, MASK_THR_HIGH, fbm * 0.5 + 0.5);
+
+        h01 = mask * profile;
+    }
+
+    float micro = SimplexNoise3D(float3(src.x, 0.0, src.y) * MICRO_FREQ)
+                * MICRO_AMP * microMask;
+    return SEA_LEVEL + h01 * PEAK_ALT + micro;
+}
+
+[numthreads(8, 8, 1)]
+void RidgedMF_Build(uint3 id : SV_DispatchThreadID)
+{
+    uint M = RESOLUTION + 2u * APRON;
+    if (id.x >= M || id.y >= M) return;
+
+    float2 worldXZ = _WorldOrigin.xz
+                   + (float2(id.xy) - (float)APRON) * CELL_SIZE;
+
+    float h = ComputeWorldHeight(worldXZ);
+    _HeightTex[id.xy] = h;
+}
+
+[numthreads(8, 8, 1)]
+void RidgedMF_FillNormalSlope(uint3 id : SV_DispatchThreadID)
+{
+    uint M = RESOLUTION + 2u * APRON;
+    if (id.x >= M || id.y >= M) return;
+
+    int Mi = (int)M;
+    int2 c = int2(id.xy);
+    int  l = max(c.x - 1, 0);
+    int  r = min(c.x + 1, Mi - 1);
+    int  d = max(c.y - 1, 0);
+    int  u = min(c.y + 1, Mi - 1);
+
+    float hL = _HeightTex[int2(l, c.y)];
+    float hR = _HeightTex[int2(r, c.y)];
+    float hD = _HeightTex[int2(c.x, d)];
+    float hU = _HeightTex[int2(c.x, u)];
+
+    float dx = (hR - hL) / (2.0 * CELL_SIZE);
+    float dz = (hU - hD) / (2.0 * CELL_SIZE);
+
+    float3 n = normalize(float3(-dx, 1.0, -dz));
+    float slopeDeg = degrees(acos(saturate(n.y)));
+
+    _NormalSlopeTex[id.xy] = float4(n.xyz, slopeDeg);
+}

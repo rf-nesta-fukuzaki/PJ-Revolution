@@ -11,7 +11,7 @@ namespace PeakPlunder.EditorTools
 {
     public static class OfflineRemediationBatchRunner
     {
-        private const string OfflineScenePath = "Assets/Sandbox/Scene/OfflineTestScene.unity";
+        private const string OfflineScenePath = "Assets/Sandbox/Scenes/OfflineTestScene.unity";
         private const string PlayerPrefabPath = "Assets/Sandbox/Prefabs/PlayerPrefab.prefab";
 
         public static void RunOfflineRemediationChecks()

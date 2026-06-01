@@ -131,9 +131,10 @@ public class CharacterCosmeticApplier : MonoBehaviour
 
         if (skinId == CosmeticIds.SkinNinja)
         {
-            // 忍者スキン：金属光沢
-            SetMatFloat(mat, "_Metallic",   0.7f);
-            SetMatFloat(mat, "_Smoothness", 0.8f);
+            // 忍者スキン：黒い布のマット質感。光沢(_Metallic 0.7/_Smoothness 0.8)は
+            // PEAK のフラット非フォトリアル方針に反する（AAA 光沢は NG）ため、つや消しに統一する。
+            SetMatFloat(mat, "_Metallic",   0.0f);
+            SetMatFloat(mat, "_Smoothness", 0.2f);
         }
         else
         {

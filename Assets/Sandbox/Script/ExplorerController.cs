@@ -1,6 +1,5 @@
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// Sandbox シーン用 Explorer WASD 移動 + Sprint + Jump コントローラー。
@@ -18,6 +17,10 @@ public class ExplorerController : MonoBehaviour
     [Header("移動速度")]
     [SerializeField] private float _walkSpeed   = 5f;
     [SerializeField] private float _sprintSpeed = 10f;
+    private float _bonusSprintSpeed; // 恒久アップグレードによる加算
+
+    /// <summary>恒久アップグレードによるダッシュ速度加算を適用する（べき等）。</summary>
+    public void ApplySprintSpeedBonus(float bonus) => _bonusSprintSpeed = Mathf.Max(0f, bonus);
 
     [Header("ジャンプ")]
     [SerializeField] private float _jumpForce = 5.9f;
@@ -113,6 +116,14 @@ public class ExplorerController : MonoBehaviour
         _animator = GetComponentInChildren<Animator>();
         if (_stamina == null) _stamina = GetComponent<StaminaSystem>();
 
+        // PEAK 流スクランブル登攀を全プレイヤーに付与（非破壊・無ければ生成）
+        if (GetComponent<ScrambleClimbController>() == null)
+            gameObject.AddComponent<ScrambleClimbController>();
+
+        // 物音発信（音駆動敵への反応用）を付与（非破壊・無ければ生成）
+        if (GetComponent<PlayerNoiseEmitter>() == null)
+            gameObject.AddComponent<PlayerNoiseEmitter>();
+
         ResolveGroundMask();
     }
 
@@ -203,7 +214,17 @@ public class ExplorerController : MonoBehaviour
             // 着地フレーム
             float drop = Mathf.Max(0f, _peakAirY - _rb.position.y);
             var id    = drop >= HARD_LAND_DROP_METERS ? SoundId.LandHard : SoundId.LandSoft;
-            PPAudioManager.Instance?.PlaySE(id, _rb.position);
+            GameServices.Audio?.PlaySE(id, _rb.position);
+
+            // 硬い着地のみ砂煙（ソフト着地は毎ホップ連発になるためスキップ）。
+            if (id == SoundId.LandHard)
+            {
+                Sandbox.World.Environment.StylizedImpactFx.Spawn(
+                    _rb.position,
+                    new Color(0.62f, 0.54f, 0.42f),
+                    Mathf.Clamp(drop / 4f, 1.0f, 2.6f),
+                    22);
+            }
             _peakAirY = _rb.position.y;
         }
         else
@@ -254,7 +275,7 @@ public class ExplorerController : MonoBehaviour
             _footstepTimer  = FOOTSTEP_INTERVAL_WALK;
         }
 
-        PPAudioManager.Instance?.PlaySE(id, _rb.position);
+        GameServices.Audio?.PlaySE(id, _rb.position);
     }
 
     /// <summary>
@@ -265,7 +286,7 @@ public class ExplorerController : MonoBehaviour
     {
         bool falling = !_isGrounded && _rb.linearVelocity.y < SLIDE_FALL_VY_THRESHOLD;
         if (falling && !_wasSlideFalling)
-            PPAudioManager.Instance?.PlaySE(SoundId.SlideFall, _rb.position);
+            GameServices.Audio?.PlaySE(SoundId.SlideFall, _rb.position);
         _wasSlideFalling = falling;
     }
 
@@ -285,7 +306,7 @@ public class ExplorerController : MonoBehaviour
             _lastGroundedTime = -999f;
             _animator?.SetBool(IsGroundedHash, false);
             _animator?.SetTrigger(JumpTriggerHash);
-            PPAudioManager.Instance?.PlaySE(SoundId.Jump, _rb.position);
+            GameServices.Audio?.PlaySE(SoundId.Jump, _rb.position);
         }
 
         // 水平移動（速度ペナルティを合算 — GDD §3.3/3.4）
@@ -294,7 +315,7 @@ public class ExplorerController : MonoBehaviour
         if (_isGrounded)
         {
             // 接地時: 既存挙動（ペナルティ適用・直接 MovePosition）
-            float baseSpeed = _isSprinting ? _sprintSpeed : _walkSpeed;
+            float baseSpeed = _isSprinting ? _sprintSpeed + _bonusSprintSpeed : _walkSpeed;
             float totalPenalty = Mathf.Clamp01(_altitudePenalty + _carryPenalty);
             // 最低速度 1.0m/s を保証（GDD §3.3）
             float speed = Mathf.Max(1.0f, baseSpeed * (1f - totalPenalty));

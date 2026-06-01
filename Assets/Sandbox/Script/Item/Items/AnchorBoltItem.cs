@@ -1,6 +1,5 @@
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「アンカーボルト（×3）」
@@ -79,7 +78,7 @@ public class AnchorBoltItem : ItemBase
         GameServices.Ropes?.RegisterAnchorPoint(anchor.transform);
 
         // GDD §15.2 — anchor_bolt_set
-        PPAudioManager.Instance?.PlaySE(SoundId.AnchorBoltSet, position);
+        GameServices.Audio?.PlaySE(SoundId.AnchorBoltSet, position);
 
         _chargesLeft--;
         GameServices.Score?.RecordRopePlacement(playerId);

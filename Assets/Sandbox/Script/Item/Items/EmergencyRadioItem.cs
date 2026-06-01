@@ -1,7 +1,6 @@
 using System.Collections;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「緊急無線機」
@@ -46,7 +45,7 @@ public class EmergencyRadioItem : ItemBase
         ConsumeDurability(_maxDurability * 0.8f);  // 大量消耗
 
         // GDD §15.2 — radio_activate
-        PPAudioManager.Instance?.PlaySE(SoundId.RadioActivate, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.RadioActivate, transform.position);
 
         Debug.Log("[EmergencyRadio] 緊急ブロードキャスト開始！プロキシミティ制限解除");
 

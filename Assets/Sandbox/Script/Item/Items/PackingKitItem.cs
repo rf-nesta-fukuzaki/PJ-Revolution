@@ -1,6 +1,5 @@
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「梱包キット」
@@ -46,7 +45,7 @@ public class PackingKitItem : ItemBase
         ConsumeDurability(drain);
 
         // GDD §15.2 — packing_wrap（梱包シートを巻き付ける音）
-        PPAudioManager.Instance?.PlaySE(SoundId.PackingWrap, relic.transform.position);
+        GameServices.Audio?.PlaySE(SoundId.PackingWrap, relic.transform.position);
 
         Debug.Log($"[PackingKit] {relic.RelicName} を梱包。残り使用回数: {_usesLeft}");
         return true;

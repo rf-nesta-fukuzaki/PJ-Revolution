@@ -1,7 +1,6 @@
 using System.Collections;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「フレアガン」
@@ -55,7 +54,7 @@ public class FlareGunItem : ItemBase
         bool isSkyShot = IsPointingUpward(firePoint.forward);
 
         // GDD §15.2 — flare_fire
-        PPAudioManager.Instance?.PlaySE(SoundId.FlareFire, firePoint.position);
+        GameServices.Audio?.PlaySE(SoundId.FlareFire, firePoint.position);
 
         FireFlare(firePoint.position, firePoint.forward);
         _flaresLeft--;

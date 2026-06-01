@@ -1,6 +1,5 @@
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物⑤「浮遊する球体」
@@ -86,7 +85,7 @@ public class FloatingSphereRelic : RelicBase
         if (value)
         {
             // GDD §15.2 — 逃走開始時のハム音（エッジトリガー）
-            PPAudioManager.Instance?.PlaySE(SoundId.RelicSphereHum, transform.position);
+            GameServices.Audio?.PlaySE(SoundId.RelicSphereHum, transform.position);
             Debug.Log("[FloatingSphere] 逃走開始！");
         }
     }
@@ -115,7 +114,7 @@ public class FloatingSphereRelic : RelicBase
         // 解放時にふわっと上昇
         _rb.AddForce(Vector3.up * 3f + _currentDriftDir * 2f, ForceMode.Impulse);
         // GDD §15.2 — relic_sphere_hum（解放時の浮遊ハム音）
-        PPAudioManager.Instance?.PlaySE(SoundId.RelicSphereHum, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.RelicSphereHum, transform.position);
     }
 
     protected override Color GizmoColor => new Color(0.42f, 0.05f, 0.68f);

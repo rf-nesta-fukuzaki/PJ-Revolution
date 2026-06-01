@@ -1,7 +1,6 @@
 using System.Collections;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.5 — Ragdoll システム。
@@ -97,7 +96,14 @@ public class RagdollSystem : MonoBehaviour
         if (_controller != null) _controller.enabled = false;
 
         // GDD §15.2 — ragdoll_impact（高速衝突で Ragdoll 発動の瞬間に鳴らす）
-        PPAudioManager.Instance?.PlaySE(SoundId.RagdollImpact, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.RagdollImpact, transform.position);
+
+        // 漫画的な大砂煙（衝突速度に比例）。SE と同じ瞬間・同じ位置でペア。
+        Sandbox.World.Environment.StylizedImpactFx.Spawn(
+            transform.position,
+            new Color(0.60f, 0.52f, 0.40f),                 // dusty tan
+            Mathf.Clamp(impactVelocity / 12f, 1.0f, 3.5f),  // scale ∝ impact speed
+            30);
 
         yield return new WaitForSeconds(duration);
 

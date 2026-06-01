@@ -7,7 +7,7 @@ using UnityEngine;
 /// NetworkBehaviour に依存しないため、NGO なしで動作する。
 ///
 /// Explorer モデルの設定方法:
-///   Inspector の "Explorer Model Prefab" に Assets/Sandbox/Model/Explorer.fbx を
+///   Inspector の "Explorer Model Prefab" に Assets/Sandbox/Art/Models/Explorer.fbx を
 ///   ドラッグして設定する。未設定の場合はカプセル+球体のプリミティブで代替する。
 ///
 /// モデルのオフセット:
@@ -27,7 +27,7 @@ public class OfflineNPCSpawner : MonoBehaviour
     [SerializeField] private string[] _npcNames = { "Alex", "Jordan", "Riley" };
 
     [Header("Explorer モデル設定")]
-    [Tooltip("Assets/Sandbox/Model/Explorer.fbx をドラッグして設定してください")]
+    [Tooltip("Assets/Sandbox/Art/Models/Explorer.fbx をドラッグして設定してください")]
     [SerializeField] private GameObject _explorerModelPrefab;
 
     [Tooltip("モデルのローカルオフセット（カプセル底面に足元を合わせる）")]
@@ -65,7 +65,7 @@ public class OfflineNPCSpawner : MonoBehaviour
         if (_animatorController == null)
         {
             _animatorController = UnityEditor.AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
-                "Assets/Sandbox/Animation/Explorer/ExplorerAnimator.controller");
+                "Assets/Sandbox/Art/Animation/Explorer/ExplorerAnimator.controller");
             if (_animatorController != null)
                 Debug.Log("[OfflineNPCSpawner] ExplorerAnimator を自動ロードしました。");
         }

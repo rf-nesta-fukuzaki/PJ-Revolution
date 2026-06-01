@@ -10,7 +10,7 @@ using TMPro;
 /// 設定の「チュートリアルヒント表示」が OFF の場合は全件スキップ。
 ///
 /// 外部から呼ぶ方法:
-///   HintManager.Instance.TriggerHint(HintId.FirstClimbApproach);
+///   GameServices.Hints?.TriggerHint(HintManager.HintId.FirstClimbApproach);
 ///
 /// 自動トリガーは各システムが判断して呼び出す:
 ///   - ClimbingController → HintId.FirstClimbApproach
@@ -19,9 +19,12 @@ using TMPro;
 ///   - PlayerInteraction  → HintId.RelicApproach, HintId.RelicWithClimb
 ///   - 他
 /// </summary>
-public class HintManager : MonoBehaviour
+public class HintManager : MonoBehaviour, IHintService
 {
-    public static HintManager Instance { get; private set; }
+    private static HintManager _instance;
+
+    [System.Obsolete("GameServices.Hints を使用してください")]
+    public static HintManager Instance => _instance;
 
     // ── ヒント ID（GDD §21.2 の番号に対応）──────────────────
     public static class HintId
@@ -65,8 +68,9 @@ public class HintManager : MonoBehaviour
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
+        if (_instance != null && _instance != this) { Destroy(gameObject); return; }
+        _instance = this;
+        GameServices.Register((IHintService)this);
         // Unity fake-null を正しく検出するため ?. ではなく != null を使用
         if (_hintRoot != null) _hintRoot.SetActive(false);
     }

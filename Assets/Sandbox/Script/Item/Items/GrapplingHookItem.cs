@@ -1,7 +1,6 @@
 using System.Collections;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「グラップリングフック」
@@ -51,7 +50,7 @@ public class GrapplingHookItem : ItemBase
         if (_isBroken || _isGrappling) return false;
 
         // GDD §15.2 — grappling_fire（命中失敗を問わず発射時に鳴らす）
-        PPAudioManager.Instance?.PlaySE(SoundId.GrapplingFire, origin);
+        GameServices.Audio?.PlaySE(SoundId.GrapplingFire, origin);
 
         if (!Physics.Raycast(origin, direction.normalized, out RaycastHit hit, _maxRange, _hookableLayers))
         {
@@ -114,7 +113,7 @@ public class GrapplingHookItem : ItemBase
         {
             vis.transform.position = target;   // 到達後は標的に張り付いてロープの終端ビジュアルとして残す
             // GDD §15.2 — grappling_hit（着弾音はフック到達と同期）
-            PPAudioManager.Instance?.PlaySE(SoundId.GrapplingHit, target);
+            GameServices.Audio?.PlaySE(SoundId.GrapplingHit, target);
         }
     }
 

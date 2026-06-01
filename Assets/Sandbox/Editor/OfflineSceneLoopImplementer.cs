@@ -14,7 +14,7 @@ using UnityEngine.UI;
 /// </summary>
 public static class OfflineSceneLoopImplementer
 {
-    private const string ScenePath = "Assets/Sandbox/Scene/OfflineTestScene.unity";
+    private const string ScenePath = "Assets/Sandbox/Scenes/OfflineTestScene.unity";
     private const string PlayerPrefabPath = "Assets/Sandbox/Prefabs/PlayerPrefab.prefab";
     private const int MaxIterations = 8;
 
@@ -86,8 +86,8 @@ public static class OfflineSceneLoopImplementer
 
         var npcSpawner = EnsureChildComponent<OfflineNPCSpawner>(systemsRoot, "OfflineNPCManager");
         var npcSo = new SerializedObject(npcSpawner);
-        npcSo.FindProperty("_explorerModelPrefab")?.SetValueSafe(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Sandbox/Model/Explorer.fbx"));
-        npcSo.FindProperty("_animatorController")?.SetValueSafe(AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>("Assets/Sandbox/Animation/Explorer/ExplorerAnimator.controller"));
+        npcSo.FindProperty("_explorerModelPrefab")?.SetValueSafe(AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Sandbox/Art/Models/Explorer.fbx"));
+        npcSo.FindProperty("_animatorController")?.SetValueSafe(AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>("Assets/Sandbox/Art/Animation/Explorer/ExplorerAnimator.controller"));
         npcSo.ApplyModifiedPropertiesWithoutUndo();
 
         var audioMgr = EnsureChildComponent<AudioManager>(systemsRoot, "AudioManager");

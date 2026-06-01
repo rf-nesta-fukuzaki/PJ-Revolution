@@ -43,8 +43,10 @@ public class ExpeditionHUD : MonoBehaviour
     [SerializeField] private CanvasGroup     _hudCanvasGroup;
 
     // ── 内部状態 ─────────────────────────────────────────────
-    private float                            _elapsedTime;
-    private bool                             _timerRunning;
+    private readonly ExpeditionTimer _fallbackTimer = new();
+    private readonly ExpeditionHudReadModel _hudReadModel = new();
+    private ExpeditionTimer _subscribedTimer;
+    private string                       _displayTime = "00:00.00";
     private int                              _currentCheckpoint;
     private int                              _totalCheckpoints = 4;
     private float                            _warningTimer;
@@ -72,6 +74,33 @@ public class ExpeditionHUD : MonoBehaviour
         ExpeditionEvents.OnExpeditionStarted   -= StartTimer;
         ExpeditionEvents.OnExpeditionEnded     -= StopTimer;
         ExpeditionEvents.OnCheckpointReached   -= SetCheckpoint;
+        UnsubscribeTimer();
+    }
+
+    private ExpeditionTimer ResolveTimer()
+    {
+        return GameServices.Expedition != null ? GameServices.Expedition.Timer : _fallbackTimer;
+    }
+
+    private void SubscribeTimer(ExpeditionTimer timer)
+    {
+        if (_subscribedTimer == timer) return;
+        UnsubscribeTimer();
+        _subscribedTimer = timer;
+        _subscribedTimer.OnFormattedTimeChanged += HandleTimerFormatted;
+    }
+
+    private void UnsubscribeTimer()
+    {
+        if (_subscribedTimer == null) return;
+        _subscribedTimer.OnFormattedTimeChanged -= HandleTimerFormatted;
+        _subscribedTimer = null;
+    }
+
+    private void HandleTimerFormatted(string formatted)
+    {
+        _displayTime = formatted;
+        UpdateTimerUI();
     }
 
     private void Start()
@@ -92,10 +121,10 @@ public class ExpeditionHUD : MonoBehaviour
 
     private void Update()
     {
-        if (_timerRunning)
-            _elapsedTime += Time.deltaTime;
+        var timer = ResolveTimer();
+        if (ReferenceEquals(timer, _fallbackTimer) && timer.IsRunning)
+            timer.Tick(Time.deltaTime);
 
-        UpdateTimerUI();
         UpdateStaminaUI();
         UpdateRopeUI();
         UpdateWarning();
@@ -104,13 +133,16 @@ public class ExpeditionHUD : MonoBehaviour
     // ── タイマー ─────────────────────────────────────────────
     public void StartTimer()
     {
-        _timerRunning = true;
+        var timer = ResolveTimer();
+        SubscribeTimer(timer);
+        timer.Start();
         SetHudVisible(true);
+        UpdateTimerUI();
     }
 
     public void StopTimer()
     {
-        _timerRunning = false;
+        ResolveTimer().Stop();
         SetHudVisible(false);
         SetWarning("");
     }
@@ -118,12 +150,10 @@ public class ExpeditionHUD : MonoBehaviour
     private void UpdateTimerUI()
     {
         if (_timerLabel == null) return;
-        int   min   = (int)_elapsedTime / 60;
-        float sec   = _elapsedTime % 60f;
-        _timerLabel.text = $"{min:00}:{sec:00.00}";
+        _timerLabel.text = _displayTime;
     }
 
-    public float GetElapsedTime() => _elapsedTime;
+    public float GetElapsedTime() => ResolveTimer().ElapsedSeconds;
 
     // ── チェックポイント ──────────────────────────────────────
     // シグネチャは ExpeditionEvents.OnCheckpointReached: Action<int, int> に合わせる
@@ -135,6 +165,7 @@ public class ExpeditionHUD : MonoBehaviour
         if (_checkpointLabel != null)
             _checkpointLabel.text = $"チェックポイント {current}/{total}";
 
+        _hudReadModel.SetTransientMessage($"チェックポイント {current} 通過！", _warningDisplayTime);
         ShowWarning($"チェックポイント {current} 通過！");
     }
 

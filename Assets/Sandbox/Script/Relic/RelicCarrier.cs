@@ -36,6 +36,7 @@ public class RelicCarrier : MonoBehaviour
 
     public int  LastCarrierPlayerId => _lastCarrierPlayerId;
     public bool IsBeingCarried      => _currentHolder != null;
+    public Transform CurrentHolder  => _currentHolder;
 
     private void Awake()
     {

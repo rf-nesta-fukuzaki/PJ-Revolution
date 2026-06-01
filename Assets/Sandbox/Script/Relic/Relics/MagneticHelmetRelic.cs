@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物⑧「磁力の兜」
@@ -87,7 +86,7 @@ public class MagneticHelmetRelic : RelicBase
         // GDD §15.2 — relic_magnet_pull（引き寄せ開始のエッジトリガー）
         bool nowAttracting = _affectedItems.Count > 0;
         if (nowAttracting && !_wasAttracting)
-            PPAudioManager.Instance?.PlaySE(SoundId.RelicMagnetPull, transform.position);
+            GameServices.Audio?.PlaySE(SoundId.RelicMagnetPull, transform.position);
         _wasAttracting = nowAttracting;
     }
 

@@ -10,14 +10,17 @@ using UnityEngine;
 /// settings.json の保存は SettingsManager が PlayerPrefs で担当する（EA版）。
 ///
 /// 呼び出しパターン:
-///   SaveManager.Instance.HasSeenHint(3)         — HintManager から
-///   SaveManager.Instance.AddSeenHint(3)          — HintManager から
-///   SaveManager.Instance.UpdateFromResult(score) — ResultScreen から
-///   SaveManager.Instance.Profile                 — 現在のプロフィールを取得
+///   GameServices.Save?.HasSeenHint(3)         — HintManager から
+///   GameServices.Save?.AddSeenHint(3)          — HintManager から
+///   GameServices.Save?.UpdateFromResult(score) — ResultScreen から
+///   GameServices.Save?.Profile                 — 現在のプロフィールを取得
 /// </summary>
 public class SaveManager : MonoBehaviour
 {
-    public static SaveManager Instance { get; private set; }
+    private static SaveManager _instance;
+
+    [System.Obsolete("GameServices.Save を使用してください")]
+    public static SaveManager Instance => _instance;
 
     private const string SAVE_DIR      = "ccc";
     private const string PROFILE_FILE  = "profile.json";
@@ -32,8 +35,9 @@ public class SaveManager : MonoBehaviour
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
+        if (_instance != null && _instance != this) { Destroy(gameObject); return; }
+        _instance = this;
+        GameServices.Register(this);
         // DontDestroyOnLoad はルートGameObjectにしか機能しないため、親から切り離す
         transform.SetParent(null);
         DontDestroyOnLoad(gameObject);
@@ -113,7 +117,7 @@ public class SaveManager : MonoBehaviour
         Debug.Log($"[SaveManager] 遠征結果を保存。累積スコア: {Profile.stats.cumulativeTeamScore}");
 
         // GDD §12.6: 累積チームスコアに応じたメタ進行コスメ解放。
-        CosmeticManager.Instance?.ProcessCumulativeRewards(Profile.stats.cumulativeTeamScore);
+        GameServices.Cosmetics?.ProcessCumulativeRewards(Profile.stats.cumulativeTeamScore);
     }
 
     // ── ヒント管理（GDD §21.2）──────────────────────────────

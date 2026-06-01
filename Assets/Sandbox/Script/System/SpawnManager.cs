@@ -14,7 +14,10 @@ using UnityEngine;
 /// </summary>
 public class SpawnManager : MonoBehaviour
 {
-    public static SpawnManager Instance { get; private set; }
+    private static SpawnManager _instance;
+
+    [System.Obsolete("GameServices.Spawner を使用してください")]
+    public static SpawnManager Instance => _instance;
 
     [Header("遺物スポーン")]
     [SerializeField] private int _minRelics = 3;
@@ -36,8 +39,9 @@ public class SpawnManager : MonoBehaviour
 
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
+        if (_instance != null && _instance != this) { Destroy(gameObject); return; }
+        _instance = this;
+        GameServices.Register(this);
     }
 
     private void Start()

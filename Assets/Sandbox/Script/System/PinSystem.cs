@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using TMPro;
 
 /// <summary>
@@ -40,7 +41,7 @@ public class PinSystem : NetworkBehaviour
     private const float PIN_LIFETIME       = 60f;    // 秒
     private const float DELETE_HOLD_TIME   = 2f;     // 長押し削除
     private const float MAX_PLACE_DISTANCE = 100f;   // 最大設置距離（m）
-    private const KeyCode PIN_KEY          = KeyCode.F;
+    private const Key PIN_KEY              = Key.F;
 
     private static readonly int SURVIVOR_PIN_LIMIT = 3;
     private static readonly int GHOST_PIN_LIMIT    = 5;
@@ -96,11 +97,11 @@ public class PinSystem : NetworkBehaviour
     private void HandlePinInput()
     {
         // 新たなホールド開始でガードをリセット
-        if (Input.GetKeyDown(PIN_KEY))
+        if (InputStateReader.KeyPressedThisFrame(PIN_KEY))
             _deleteFiredThisHold = false;
 
         // F キー長押し → 最古のピンを削除（ホールド中に 1 回だけ）
-        if (Input.GetKey(PIN_KEY))
+        if (InputStateReader.KeyHeld(PIN_KEY))
         {
             _holdTimer += Time.deltaTime;
             if (!_deleteFiredThisHold && _holdTimer >= DELETE_HOLD_TIME)
@@ -111,7 +112,7 @@ public class PinSystem : NetworkBehaviour
             }
         }
 
-        if (Input.GetKeyUp(PIN_KEY))
+        if (InputStateReader.KeyReleasedThisFrame(PIN_KEY))
         {
             // 短押し: 即時設置（現在の選択種で設置）。
             // ただしこのホールドで削除が既に発火していれば、リセット直後の _holdTimer が
@@ -123,9 +124,9 @@ public class PinSystem : NetworkBehaviour
         }
 
         // 数字キー 1-3 でピン種別を切替
-        if (Input.GetKeyDown(KeyCode.Alpha1)) _selectedType = PinType.Danger;
-        if (Input.GetKeyDown(KeyCode.Alpha2)) _selectedType = PinType.Relic;
-        if (Input.GetKeyDown(KeyCode.Alpha3)) _selectedType = PinType.Route;
+        if (InputStateReader.KeyPressedThisFrame(Key.Digit1)) _selectedType = PinType.Danger;
+        if (InputStateReader.KeyPressedThisFrame(Key.Digit2)) _selectedType = PinType.Relic;
+        if (InputStateReader.KeyPressedThisFrame(Key.Digit3)) _selectedType = PinType.Route;
     }
 
     // ── ピン設置 ─────────────────────────────────────────────

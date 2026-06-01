@@ -135,6 +135,12 @@ public class MainMenuManager : MonoBehaviour
             return;
         }
 
+        if (LobbyManager.Instance == null)
+        {
+            SetStatus("ロビーが初期化されていません");
+            return;
+        }
+
         SetInteractable(false);
         SetStatus($"ルーム {code} に参加中...");
         string name = GetPlayerName();

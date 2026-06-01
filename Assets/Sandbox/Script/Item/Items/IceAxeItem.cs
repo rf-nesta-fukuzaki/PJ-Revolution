@@ -1,6 +1,5 @@
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「アイスアックス」
@@ -38,7 +37,7 @@ public class IceAxeItem : ItemBase
         ConsumeDurability(drain);
 
         // GDD §15.2 — ice_axe_strike
-        PPAudioManager.Instance?.PlaySE(SoundId.IceAxeStrike, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.IceAxeStrike, transform.position);
 
         Debug.Log($"[IceAxe] 使用 {_useCount}/{MAX_USES}");
         return true;

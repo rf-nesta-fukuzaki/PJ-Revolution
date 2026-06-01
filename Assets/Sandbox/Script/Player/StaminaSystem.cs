@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §3.1 — スタミナ管理システム。
@@ -14,26 +13,38 @@ public class StaminaSystem : MonoBehaviour
     private static readonly List<StaminaSystem> s_registeredPlayers = new();
 
     // ── Inspector ───────────────────────────────────────────
-    [Header("スタミナ設定")]
+    [Header("設定 (ScriptableObject — 未設定時は Inspector デフォルト)")]
+    [SerializeField] private StaminaConfigSO _config;
+
+    [Header("スタミナ設定 (Config 未設定時のフォールバック)")]
     [SerializeField] private float _maxStamina          = 100f;
-    [SerializeField] private float _regenRateBase        = 12f;   // /秒（静止時）
-    [SerializeField] private float _regenRateMoving      = 5f;    // /秒（移動時）
-    [SerializeField] private float _sprintDrain          = 15f;   // /秒
-    [SerializeField] private float _climbDrain           = 10f;   // /秒（GrabPoint に設定された値を使う）
+    [SerializeField] private float _regenRateBase        = 12f;
+    [SerializeField] private float _regenRateMoving      = 5f;
+    [SerializeField] private float _sprintDrain          = 15f;
+    [SerializeField] private float _climbDrain           = 10f;
 
     [Header("高山病")]
-    [SerializeField] private float _highAltitude         = 2000f; // m 以上で高山病
-    [SerializeField] private float _altitudeDrainBonus   = 5f;    // /秒 追加消費
-    [SerializeField] private bool  _hasOxygenTank        = false; // 酸素タンクの有無
+    [SerializeField] private float _highAltitude         = 2000f;
+    [SerializeField] private float _altitudeDrainBonus   = 5f;
+    [SerializeField] private bool  _hasOxygenTank        = false;
 
     [Header("セーフゾーン (GDD §10.5)")]
-    [Tooltip("ShelterZone 内でのスタミナ回復速度倍率（GDD §10.5: 2倍）")]
     [SerializeField] private float _shelterRegenMultiplier = 2f;
 
-    // ── 状態 ────────────────────────────────────────────────
+    private float _bonusMaxStamina; // 恒久アップグレードによる加算
+
+    private float MaxStaminaValue            => (_config != null ? _config.MaxStamina : _maxStamina) + _bonusMaxStamina;
+    private float RegenRateBaseValue       => _config != null ? _config.RegenRateBase : _regenRateBase;
+    private float RegenRateMovingValue     => _config != null ? _config.RegenRateMoving : _regenRateMoving;
+    private float SprintDrainValue         => _config != null ? _config.SprintDrain : _sprintDrain;
+    private float ClimbDrainValue          => _config != null ? _config.ClimbDrain : _climbDrain;
+    private float HighAltitudeValue        => _config != null ? _config.HighAltitude : _highAltitude;
+    private float AltitudeDrainBonusValue  => _config != null ? _config.AltitudeDrainBonus : _altitudeDrainBonus;
+    private float ShelterRegenMultiplierValue => _config != null ? _config.ShelterRegenMultiplier : _shelterRegenMultiplier;
+    private float ExhaustRecoverThresholdValue => _config != null ? _config.ExhaustRecoverThreshold : 25f;
+
     private float _currentStamina;
     private bool  _isExhausted;
-    private float _exhaustRecoverThreshold = 25f;   // この量まで回復したら疲労解除
     private Rigidbody       _cachedRigidbody;
     private ShelterOccupant _shelter;
 
@@ -41,9 +52,9 @@ public class StaminaSystem : MonoBehaviour
     private const float WARNING_THRESHOLD = 20f;
     private bool _wasBelowWarningThreshold;
 
-    public float MaxStamina        => _maxStamina;
+    public float MaxStamina        => MaxStaminaValue;
     public float CurrentStamina    => _currentStamina;
-    public float StaminaPercent    => _currentStamina / _maxStamina;
+    public float StaminaPercent    => MaxStaminaValue > 0f ? _currentStamina / MaxStaminaValue : 0f;
     public bool  IsEmpty           => _currentStamina <= 0f;
     public bool  IsExhausted       => _isExhausted;
     public bool  HasOxygenTank     { get => _hasOxygenTank; set => _hasOxygenTank = value; }
@@ -54,7 +65,8 @@ public class StaminaSystem : MonoBehaviour
 
     private void Awake()
     {
-        _currentStamina  = _maxStamina;
+        Contract.Invariant(MaxStaminaValue > 0f, "StaminaSystem: maxStamina は正の値でなければならない");
+        _currentStamina  = MaxStaminaValue;
         _cachedRigidbody = GetComponent<Rigidbody>();
         _shelter         = GetComponent<ShelterOccupant>();
     }
@@ -85,8 +97,8 @@ public class StaminaSystem : MonoBehaviour
         _currentStamina = Mathf.Max(0f, _currentStamina - amount);
     }
 
-    public void ConsumeSprint()   => Consume(_sprintDrain   * Time.deltaTime);
-    public void ConsumeClimbing() => Consume(_climbDrain    * Time.deltaTime);
+    public void ConsumeSprint()   => Consume(SprintDrainValue   * Time.deltaTime);
+    public void ConsumeClimbing() => Consume(ClimbDrainValue    * Time.deltaTime);
 
     // ── 回復 ─────────────────────────────────────────────────
     private void RegenerateStamina()
@@ -94,19 +106,28 @@ public class StaminaSystem : MonoBehaviour
         if (_isExhausted) return;
 
         bool  isMoving = GetIsMoving();
-        float rate     = isMoving ? _regenRateMoving : _regenRateBase;
+        float rate     = isMoving ? RegenRateMovingValue : RegenRateBaseValue;
 
-        // GDD §10.5: セーフゾーン内では回復速度 2 倍
         if (_shelter != null && _shelter.IsSheltered)
-            rate *= _shelterRegenMultiplier;
+            rate *= ShelterRegenMultiplierValue;
 
-        _currentStamina = Mathf.Min(_maxStamina, _currentStamina + rate * Time.deltaTime);
+        _currentStamina = Mathf.Min(MaxStaminaValue, _currentStamina + rate * Time.deltaTime);
     }
 
     /// <summary>食料アイテム使用時などに外部から回復させる。</summary>
     public void Recover(float amount)
     {
-        _currentStamina = Mathf.Min(_maxStamina, _currentStamina + amount);
+        _currentStamina = Mathf.Min(MaxStaminaValue, _currentStamina + amount);
+    }
+
+    /// <summary>恒久アップグレードによる最大スタミナ加算を適用する（べき等）。</summary>
+    public void ApplyMaxStaminaBonus(float bonus)
+    {
+        if (bonus < 0f) bonus = 0f;
+        float delta = bonus - _bonusMaxStamina;
+        _bonusMaxStamina = bonus;
+        if (delta > 0f) _currentStamina += delta;
+        _currentStamina = Mathf.Clamp(_currentStamina, 0f, MaxStaminaValue);
     }
 
     // ── 高山病 ────────────────────────────────────────────────
@@ -115,9 +136,9 @@ public class StaminaSystem : MonoBehaviour
         if (_hasOxygenTank) return;
 
         float altitude = transform.position.y;
-        if (altitude < _highAltitude) return;
+        if (altitude < HighAltitudeValue) return;
 
-        Consume(_altitudeDrainBonus * Time.deltaTime);
+        Consume(AltitudeDrainBonusValue * Time.deltaTime);
     }
 
     // ── 疲労状態管理 ─────────────────────────────────────────
@@ -130,11 +151,11 @@ public class StaminaSystem : MonoBehaviour
             _isExhausted = true;
             OnExhausted?.Invoke();
             // GDD §15.2 — stamina_empty SE（「ハァ…」息切れ音）
-            PPAudioManager.Instance?.PlaySE2D(SoundId.StaminaEmpty);
+            GameServices.Audio?.PlaySE2D(SoundId.StaminaEmpty);
             Debug.Log("[Stamina] スタミナ切れ！");
         }
 
-        if (_isExhausted && _currentStamina >= _exhaustRecoverThreshold)
+        if (_isExhausted && _currentStamina >= ExhaustRecoverThresholdValue)
         {
             _isExhausted = false;
             OnRecovered?.Invoke();
@@ -154,7 +175,7 @@ public class StaminaSystem : MonoBehaviour
     {
         bool nowBelow = _currentStamina < WARNING_THRESHOLD && _currentStamina > 0f;
         if (nowBelow && !_wasBelowWarningThreshold)
-            PPAudioManager.Instance?.PlaySE2D(SoundId.StaminaWarning);
+            GameServices.Audio?.PlaySE2D(SoundId.StaminaWarning);
         _wasBelowWarningThreshold = nowBelow;
     }
 

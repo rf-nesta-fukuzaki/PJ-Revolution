@@ -1,10 +1,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §2.2 / §9 / §14.6 — リザルト画面。
@@ -86,8 +86,8 @@ public class ResultScreen : MonoBehaviour
         // GDD §14.6: Space / A でスキップ。段階シーケンス実行中のみ有効。
         if (_sequenceRoutine == null) return;
 
-        if (Input.GetKeyDown(KeyCode.Space) ||
-            Input.GetKeyDown(KeyCode.JoystickButton0))
+        if (InputStateReader.KeyPressedThisFrame(Key.Space) ||
+            InputStateReader.GamepadSouthPressedThisFrame())
         {
             _skipRequested = true;
         }
@@ -144,7 +144,7 @@ public class ResultScreen : MonoBehaviour
         // Stage 4: 称号授与
         SetStageVisible(_stageTitles, true);
         // GDD §15.2 — result_title（称号ステージ開始のファンファーレ）
-        PPAudioManager.Instance?.PlaySE2D(SoundId.ResultTitle);
+        GameServices.Audio?.PlaySE2D(SoundId.ResultTitle);
         yield return WaitSkippable(_stageTitlesDuration);
 
         // Stage 5: コスメ解放（アンロックがあれば表示、なければスキップ）
@@ -186,7 +186,7 @@ public class ResultScreen : MonoBehaviour
         if (_teamScoreLabel == null) { yield return WaitSkippable(duration); yield break; }
 
         // GDD §15.2 — result_count（カウントアップ開始）
-        PPAudioManager.Instance?.PlaySE2D(SoundId.ResultCount);
+        GameServices.Audio?.PlaySE2D(SoundId.ResultCount);
 
         _skipRequested = false;
         float t = 0f;

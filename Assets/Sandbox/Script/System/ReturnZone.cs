@@ -113,9 +113,23 @@ public class ReturnZone : NetworkBehaviour
     {
         if (_countdownStarted || _resolved) return;
 
+        // 帰還カウントダウンは登攀（Climbing）フェーズ中のみ開始する。
+        // 遠征未開始（Basecamp）の状態で基地の帰還エリアに居ても発動させない。
+        if (!ExpeditionInProgress()) return;
+
         // ホスト権威でカウントダウン開始
         if (!IsServer) { TryStartCountdownServerRpc(); return; }
         StartCountdownOnServer();
+    }
+
+    /// <summary>
+    /// 帰還処理を実行してよいフェーズか判定する。
+    /// 遠征サービスが存在しないシーン（単体テスト等）では従来通り許可する。
+    /// </summary>
+    private static bool ExpeditionInProgress()
+    {
+        var expedition = GameServices.Expedition;
+        return expedition == null || expedition.Phase == ExpeditionPhase.Climbing;
     }
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
@@ -124,6 +138,7 @@ public class ReturnZone : NetworkBehaviour
     private void StartCountdownOnServer()
     {
         if (_countdownStarted || _resolved) return;
+        if (!ExpeditionInProgress()) return;
         _countdownStarted = true;
         _countdownRemaining.Value = COUNTDOWN_SECONDS;
         StartCoroutine(CountdownCoroutine());
@@ -165,6 +180,10 @@ public class ReturnZone : NetworkBehaviour
     private void ResolveReturn()
     {
         if (_resolved) return;
+
+        // 防御的ガード：登攀フェーズ外では帰還確定処理を行わない。
+        if (!ExpeditionInProgress()) return;
+
         _resolved = true;
 
         // エリア内の遺物を ScoreTracker に記録

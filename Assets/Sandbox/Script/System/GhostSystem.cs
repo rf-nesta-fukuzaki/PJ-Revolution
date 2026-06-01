@@ -2,7 +2,6 @@ using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §4.2 — 偵察幽霊システム（NetworkBehaviour 版）。
@@ -174,7 +173,7 @@ public class GhostSystem : NetworkBehaviour
 
         // GDD §15.2 — shrine_revive（復活完了音。本人への 2D フィードバック）
         if (IsOwner)
-            PPAudioManager.Instance?.PlaySE2D(SoundId.ShrineRevive);
+            GameServices.Audio?.PlaySE2D(SoundId.ShrineRevive);
 
         Debug.Log("[Ghost] 祠で復活！");
     }

@@ -1,6 +1,5 @@
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物⑦「ぬるぬる聖なる魚像」
@@ -100,7 +99,7 @@ public class SlipperyFishStatueRelic : RelicBase
         carrier.Drop(slipDir * _dropImpulse);
 
         // GDD §15.2 — relic_fish_slip（ツルッと滑って手から抜ける SE）
-        PPAudioManager.Instance?.PlaySE(SoundId.RelicFishSlip, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.RelicFishSlip, transform.position);
     }
 
     protected override Color GizmoColor => new Color(0.49f, 0.78f, 0.83f);

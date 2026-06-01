@@ -1,7 +1,6 @@
 using System.Collections;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §7.1 L5 — 崩れ足場ハザード。
@@ -56,7 +55,7 @@ public class CollapsiblePlatform : MonoBehaviour
         float elapsed = 0f;
 
         // GDD §15.2 — floor_crumble_warn（ぐらつき開始で予兆音）
-        PPAudioManager.Instance?.PlaySE(SoundId.FloorCrumbleWarn, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.FloorCrumbleWarn, transform.position);
 
         // ぐらつき演出
         while (elapsed < _collapseDelay)
@@ -88,7 +87,18 @@ public class CollapsiblePlatform : MonoBehaviour
         Debug.Log($"[CollapsiblePlatform] {name} が崩れた！");
 
         // GDD §15.2 — floor_crumble（実際の崩落）
-        PPAudioManager.Instance?.PlaySE(SoundId.FloorCrumble, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.FloorCrumble, transform.position);
+
+        // 崩落の砂煙 poof（足場サイズに比例）。renderer/collider を無効化する前に bounds を取得する。
+        Vector3 fxCenter = transform.position;
+        float fxScale = 1.2f;
+        if (_colliders != null && _colliders.Length > 0 && _colliders[0] != null)
+        {
+            var b = _colliders[0].bounds;
+            fxCenter = b.center;
+            fxScale = Mathf.Clamp(Mathf.Max(b.size.x, b.size.z) * 0.4f, 0.9f, 3f);
+        }
+        Sandbox.World.Environment.StylizedImpactFx.Spawn(fxCenter, new Color(0.55f, 0.50f, 0.42f), fxScale, 26);
 
         foreach (var r in _renderers) r.enabled  = false;
         foreach (var c in _colliders) c.enabled  = false;

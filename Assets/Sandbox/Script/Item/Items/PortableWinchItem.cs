@@ -1,7 +1,6 @@
 using System.Collections;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「ポータブルウインチ」
@@ -67,7 +66,7 @@ public class PortableWinchItem : ItemBase
         }
 
         // GDD §15.2 — winch_start（ウインチ設置でモーター起動音）
-        PPAudioManager.Instance?.PlaySE(SoundId.WinchStart, anchorWorldPos);
+        GameServices.Audio?.PlaySE(SoundId.WinchStart, anchorWorldPos);
 
         Debug.Log($"[Winch] アンカー設置: {anchorWorldPos}");
         return true;
@@ -159,7 +158,7 @@ public class PortableWinchItem : ItemBase
         ConsumeDurability(30f);
 
         // GDD §15.2 — winch_cable_snap（ケーブル切断の破断音）
-        PPAudioManager.Instance?.PlaySE(SoundId.WinchCableSnap, _anchorPoint);
+        GameServices.Audio?.PlaySE(SoundId.WinchCableSnap, _anchorPoint);
 
         Debug.Log("[Winch] ケーブル切断！！");
     }

@@ -108,7 +108,7 @@ public class ProximityVoiceChat : NetworkBehaviour
     public void ActivateEmergencyRadioServerRpc(float duration = 30f)
     {
         _emergencyRadioTimer.Value = duration;
-        Debug.Log($"[VoiceChat] 緊急無線機起動: {duration}秒");
+        SandboxLog.Trace($"[VoiceChat] 緊急無線機起動: {duration}秒");
     }
 
     // ── タイマー変化コールバック ──────────────────────────────────
@@ -120,13 +120,13 @@ public class ProximityVoiceChat : NetworkBehaviour
         if (isActive && !wasActive)
         {
             ConfigureAudioSource(_emergencyMaxDistance);
-            Debug.Log("[VoiceChat] 緊急無線機 ON → 全域ボイスチャット有効");
+            SandboxLog.Trace("[VoiceChat] 緊急無線機 ON → 全域ボイスチャット有効");
         }
         else if (!isActive && wasActive)
         {
             ConfigureAudioSource(_jammingRadius > 0 && _isJammed
                 ? 0f : _defaultMaxDistance);
-            Debug.Log("[VoiceChat] 緊急無線機 OFF → 通常範囲に戻る");
+            SandboxLog.Trace("[VoiceChat] 緊急無線機 OFF → 通常範囲に戻る");
         }
     }
 
@@ -197,14 +197,14 @@ public class ProximityVoiceChat : NetworkBehaviour
         {
             vol   = 1f;
             pitch = 1f;
-            if (_isJammed) Debug.Log("[VoiceChat] 妨害解除");
+            if (_isJammed) SandboxLog.Trace("[VoiceChat] 妨害解除");
         }
         else
         {
             // 妨害強度に比例してボリューム低下・ピッチ乱れ
             vol   = Mathf.Lerp(1f, Random.Range(0f, 0.15f), level);
             pitch = Mathf.Lerp(1f, Random.Range(0.5f, 1.6f), level);
-            Debug.Log($"[VoiceChat] 妨害中 強度:{level:F2}（歌う壺）");
+            SandboxLog.Trace($"[VoiceChat] 妨害中 強度:{level:F2}（歌う壺）");
         }
 
         // AudioSource フォールバック

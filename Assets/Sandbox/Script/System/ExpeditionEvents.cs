@@ -13,6 +13,9 @@ public static class ExpeditionEvents
     /// <summary>遠征が終了したとき（タイマー停止のトリガー）。</summary>
     public static event Action OnExpeditionEnded;
 
+    /// <summary>山頂到達時 (clearTimeSeconds)。</summary>
+    public static event Action<float> OnSummitReached;
+
     // ── チェックポイント ──────────────────────────────────────
     /// <summary>
     /// チェックポイントに到達したとき。
@@ -22,7 +25,8 @@ public static class ExpeditionEvents
     public static event Action<int, int> OnCheckpointReached;
 
     // ── 発火メソッド（ExpeditionManager から呼ぶ）────────────
-    public static void RaiseExpeditionStarted()              => OnExpeditionStarted?.Invoke();
-    public static void RaiseExpeditionEnded()                => OnExpeditionEnded?.Invoke();
-    public static void RaiseCheckpointReached(int cur, int total) => OnCheckpointReached?.Invoke(cur, total);
+    public static void RaiseExpeditionStarted()                   => OnExpeditionStarted?.Invoke();
+    public static void RaiseExpeditionEnded()                     => OnExpeditionEnded?.Invoke();
+    public static void RaiseSummitReached(float clearTimeSeconds) => OnSummitReached?.Invoke(clearTimeSeconds);
+    public static void RaiseCheckpointReached(int cur, int total)   => OnCheckpointReached?.Invoke(cur, total);
 }

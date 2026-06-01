@@ -8,7 +8,10 @@ using UnityEngine;
 /// </summary>
 public class CosmeticManager : MonoBehaviour
 {
-    public static CosmeticManager Instance { get; private set; }
+    private static CosmeticManager _instance;
+
+    [System.Obsolete("GameServices.Cosmetics を使用してください")]
+    public static CosmeticManager Instance => _instance;
 
     private const string KEY_PREFIX = "Cosmetic_";
 
@@ -57,8 +60,9 @@ public class CosmeticManager : MonoBehaviour
 
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
+        if (_instance != null && _instance != this) { Destroy(gameObject); return; }
+        _instance = this;
+        GameServices.Register(this);
         transform.SetParent(null);   // ルートに移動してから DDOL を呼ぶ
         DontDestroyOnLoad(gameObject);
 

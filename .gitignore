@@ -100,3 +100,6 @@ InitTestScene*.unity*
 
 # TextMesh Pro large SDF font assets
 Assets/TextMesh Pro/Fonts/*.asset
+
+# Unity Package Manager — registry/git packages (restored locally, not versioned)
+/Packages/com.unity.ai.assistant/

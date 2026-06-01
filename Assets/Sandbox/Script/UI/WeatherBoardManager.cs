@@ -54,7 +54,7 @@ public class WeatherBoardManager : MonoBehaviour
 
     private void Start()
     {
-        _weather = GameServices.Weather ?? WeatherSystem.Instance;
+        _weather = GameServices.Weather;
         if (_weather != null)
         {
             _weather.OnWeatherChanged += HandleWeatherChanged;

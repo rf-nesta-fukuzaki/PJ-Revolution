@@ -12,35 +12,80 @@ public class PlayerHealthSystem : MonoBehaviour
 {
     private static readonly List<PlayerHealthSystem> s_registeredPlayers = new();
 
-    [Header("HP")]
+    [Header("設定 (ScriptableObject — 未設定時は Inspector デフォルト)")]
+    [SerializeField] private PlayerHealthConfigSO _config;
+
+    [Header("HP (Config 未設定時のフォールバック)")]
     [SerializeField] private float _maxHp             = 100f;
-    [SerializeField] private float _fallDamageMinSpeed = 8f;    // これ以上の着地速度でダメージ
-    [SerializeField] private float _fallDamageScale    = 3f;    // ダメージ係数
-    [SerializeField] private float _deathY             = -30f;  // この高度で即死
+    [SerializeField] private float _fallDamageMinSpeed = 8f;
+    [SerializeField] private float _fallDamageScale    = 3f;
+    [SerializeField] private float _deathY             = -30f;
 
     private float     _currentHp;
     private bool      _isDead;
+    private bool      _isDowned;
     private Rigidbody _rb;
     private float     _prevVelocityY;
 
-    public float HpPercent => _maxHp > 0f ? _currentHp / _maxHp : 0f;
-    public bool  IsDead    => _isDead;
-    public float CurrentHp => _currentHp;
-    public float MaxHp     => _maxHp;
+    private float _bonusMaxHp;        // 恒久アップグレードによる加算
+    private float _damageResistance;  // 役割(Vanguard)による被ダメージ軽減 (0-1)
 
-    public event Action<float>              OnDamaged;   // (amount)
-    public event Action<PlayerHealthSystem> OnDied;      // (self)
+    private float MaxHpValue             => (_config != null ? _config.MaxHp : _maxHp) + _bonusMaxHp;
+    private float FallDamageMinSpeedValue => _config != null ? _config.FallDamageMinSpeed : _fallDamageMinSpeed;
+    private float FallDamageScaleValue    => _config != null ? _config.FallDamageScale : _fallDamageScale;
+    private float DeathYValue             => _config != null ? _config.DeathY : _deathY;
+
+    public float HpPercent => MaxHpValue > 0f ? _currentHp / MaxHpValue : 0f;
+    public bool  IsDead    => _isDead;
+    public bool  IsDowned  => _isDowned;
+    public float CurrentHp => _currentHp;
+    public float MaxHp     => MaxHpValue;
+
+    public event Action<float>              OnDamaged;
+    public event Action<PlayerHealthSystem> OnDied;
+    public event Action<PlayerHealthSystem> OnDowned;
 
     public static IReadOnlyList<PlayerHealthSystem> RegisteredPlayers => s_registeredPlayers;
 
     private void Awake()
     {
-        // 不変条件: MaxHp は正の値でなければならない
-        Debug.Assert(_maxHp > 0f,
-            $"[Contract] PlayerHealthSystem.Awake: _maxHp は 0 より大きくなければなりません (value={_maxHp})");
+        if (_config != null && !_config.TryValidate(out string reason))
+            Debug.LogError($"[Contract] PlayerHealthConfigSO が不正: {reason}");
+
+        Contract.Invariant(MaxHpValue > 0f,
+            $"PlayerHealthSystem.Awake: maxHp は 0 より大きくなければなりません (value={MaxHpValue})");
 
         _rb        = GetComponent<Rigidbody>();
-        _currentHp = _maxHp;
+        _currentHp = MaxHpValue;
+
+        // ダウン→蘇生システムを全プレイヤーに付与（非破壊・無ければ生成）
+        if (GetComponent<DownedSystem>() == null)
+            gameObject.AddComponent<DownedSystem>();
+
+        // 恒久アップグレード適用コンポーネントを付与（無ければ生成）
+        if (GetComponent<PlayerUpgradeApplier>() == null)
+            gameObject.AddComponent<PlayerUpgradeApplier>();
+
+        // 疲労失神システムを付与（StaminaSystem がある場合のみ・無ければ生成）
+        if (GetComponent<StaminaSystem>() != null && GetComponent<ExhaustionPassoutSystem>() == null)
+            gameObject.AddComponent<ExhaustionPassoutSystem>();
+
+        // 役割システムを付与（無ければ生成）
+        if (GetComponent<PlayerRoleSystem>() == null)
+            gameObject.AddComponent<PlayerRoleSystem>();
+    }
+
+    /// <summary>役割(Vanguard)による被ダメージ軽減率を設定する (0=なし, 0.4=40%軽減)。</summary>
+    public void SetDamageResistance(float resistance) => _damageResistance = Mathf.Clamp01(resistance);
+
+    /// <summary>恒久アップグレードによる最大HP加算を適用する（べき等）。</summary>
+    public void ApplyMaxHpBonus(float bonus)
+    {
+        if (bonus < 0f) bonus = 0f;
+        float delta = bonus - _bonusMaxHp;
+        _bonusMaxHp = bonus;
+        if (delta > 0f && !_isDead) _currentHp += delta;
+        _currentHp = Mathf.Clamp(_currentHp, 0f, MaxHpValue);
     }
 
     private void OnEnable()
@@ -58,8 +103,7 @@ public class PlayerHealthSystem : MonoBehaviour
     {
         if (_isDead) return;
 
-        // 画面外落下：即死
-        if (transform.position.y < _deathY)
+        if (transform.position.y < DeathYValue)
             Die();
     }
 
@@ -73,93 +117,101 @@ public class PlayerHealthSystem : MonoBehaviour
         if (_isDead) return;
 
         float impactSpeedY = Mathf.Abs(_prevVelocityY);
-        if (impactSpeedY < _fallDamageMinSpeed) return;
+        if (impactSpeedY < FallDamageMinSpeedValue) return;
 
-        float damage = (impactSpeedY - _fallDamageMinSpeed) * _fallDamageScale;
+        float damage = (impactSpeedY - FallDamageMinSpeedValue) * FallDamageScaleValue;
         TakeDamage(damage);
     }
 
-    // ── ダメージ ─────────────────────────────────────────────
-    /// <summary>
-    /// ダメージを与える。
-    /// 前提条件: amount は正の値。死亡中は無視される。
-    /// </summary>
+    /// <summary>ダメージを与える。前提条件: amount は 0 以上。</summary>
     public void TakeDamage(float amount)
     {
-        if (amount < 0f)
-        {
-            Debug.LogError(
-                $"[Contract] PlayerHealthSystem.TakeDamage: amount は 0 以上でなければなりません " +
-                $"(value={amount}, player={gameObject.name})");
+        if (!Contract.TryRequires(amount >= 0f,
+            $"PlayerHealthSystem.TakeDamage: amount は 0 以上でなければなりません (value={amount}, player={gameObject.name})"))
             return;
-        }
 
-        if (_isDead || amount <= 0f) return;
+        // ダウン中はこれ以上ダメージを受けない（出血タイマーのみが死を決める）
+        if (_isDead || _isDowned || amount <= 0f) return;
+
+        // 役割(Vanguard)による被ダメージ軽減
+        amount *= (1f - _damageResistance);
+        if (amount <= 0f) return;
 
         _currentHp = Mathf.Max(0f, _currentHp - amount);
         OnDamaged?.Invoke(amount);
 
-        // 事後条件: HP は 0 以上 MaxHp 以下
-        Debug.Assert(_currentHp >= 0f && _currentHp <= _maxHp,
-            $"[Contract] TakeDamage 後の HP が不正: {_currentHp}");
+        Contract.Ensures(_currentHp >= 0f && _currentHp <= MaxHpValue,
+            $"TakeDamage 後の HP が不正: {_currentHp}");
 
         if (_currentHp <= 0f)
             Die();
     }
 
-    /// <summary>
-    /// HP を回復する。
-    /// 前提条件: amount は正の値。死亡中は無視される。
-    /// </summary>
+    /// <summary>HP を回復する。前提条件: amount は 0 以上。</summary>
     public void Heal(float amount)
     {
-        if (amount < 0f)
+        if (!Contract.TryRequires(amount >= 0f,
+            $"PlayerHealthSystem.Heal: amount は 0 以上でなければなりません (value={amount}, player={gameObject.name})"))
+            return;
+
+        if (_isDead) return;
+
+        _currentHp = Mathf.Min(MaxHpValue, _currentHp + amount);
+
+        Contract.Ensures(_currentHp <= MaxHpValue,
+            $"Heal 後の HP が MaxHp を超えました: {_currentHp} > {MaxHpValue}");
+    }
+
+    private void Die()
+    {
+        if (_isDead || _isDowned) return;
+
+        // ダウンシステムがあれば、即死せずまず瀕死（ダウン）状態へ。味方が蘇生できる。
+        var downed = GetComponent<DownedSystem>();
+        if (downed != null)
         {
-            Debug.LogError(
-                $"[Contract] PlayerHealthSystem.Heal: amount は 0 以上でなければなりません " +
-                $"(value={amount}, player={gameObject.name})");
+            _isDowned = true;
+            Debug.Log($"[Health] {gameObject.name} がダウンしました（蘇生可能）");
+            OnDowned?.Invoke(this);
+            downed.EnterDowned();
             return;
         }
 
-        if (_isDead) return;
-
-        _currentHp = Mathf.Min(_maxHp, _currentHp + amount);
-
-        // 事後条件: HP は MaxHp を超えてはならない
-        Debug.Assert(_currentHp <= _maxHp,
-            $"[Contract] Heal 後の HP が MaxHp を超えました: {_currentHp} > {_maxHp}");
+        FinalizeDeath();
     }
 
-    // ── 死亡 ─────────────────────────────────────────────────
-    private void Die()
+    /// <summary>ダウンの出血タイマー切れ等で完全に死亡し、幽霊へ移行する。</summary>
+    public void FinalizeDeath()
     {
         if (_isDead) return;
-        _isDead = true;
+        _isDowned = false;
+        _isDead   = true;
 
         Debug.Log($"[Health] {gameObject.name} が死亡しました");
         OnDied?.Invoke(this);
 
-        // GhostSystem に遷移を委譲
         GetComponent<GhostSystem>()?.EnterGhostMode();
     }
 
-    /// <summary>
-    /// 死亡状態から復活して HP を回復する。祠復活 or ExpeditionManager のソロフォールバック
-    /// リスポーン（_respawnDelay 経由）から呼ばれる。
-    /// </summary>
+    /// <summary>味方によるダウンからの蘇生。HP を部分回復して行動可能に戻す。</summary>
+    public void ReviveFromDowned(float hpRestored)
+    {
+        if (!_isDowned) return;
+        _isDowned  = false;
+        _currentHp = Mathf.Clamp(hpRestored, 0.01f, MaxHpValue);
+        Debug.Log($"[Health] {gameObject.name} がダウンから蘇生 (HP={_currentHp:F0})");
+    }
+
+    /// <summary>死亡状態から復活して HP を回復する。</summary>
     public void Revive(float hpRestored)
     {
-        if (hpRestored < 0f)
-        {
-            Debug.LogError(
-                $"[Contract] PlayerHealthSystem.Revive: hpRestored は 0 以上でなければなりません " +
-                $"(value={hpRestored}, player={gameObject.name})");
+        if (!Contract.TryRequires(hpRestored >= 0f,
+            $"PlayerHealthSystem.Revive: hpRestored は 0 以上でなければなりません (value={hpRestored}, player={gameObject.name})"))
             return;
-        }
 
         _isDead    = false;
-        _currentHp = Mathf.Clamp(hpRestored, 0.01f, _maxHp);
+        _currentHp = Mathf.Clamp(hpRestored, 0.01f, MaxHpValue);
 
-        Debug.Log($"[Health] {gameObject.name} が復活 (HP={_currentHp:F0}/{_maxHp:F0})");
+        Debug.Log($"[Health] {gameObject.name} が復活 (HP={_currentHp:F0}/{MaxHpValue:F0})");
     }
 }

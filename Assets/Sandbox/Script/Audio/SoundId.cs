@@ -75,6 +75,13 @@ namespace PeakPlunder.Audio
         ShrineActivate,
         ShrineRevive,
 
+        // ── 敵モンスター SE (PEAK/R.E.P.O. パリティ) ──────────────
+        MonsterAlert,     // プレイヤー発見・追跡開始の咆哮
+        MonsterChase,     // 追跡中のうなり（ループ）
+        MonsterAttack,    // 攻撃ヒット
+        MonsterFootstep,  // 巨大な足音
+        MonsterStunned,   // フレア等でひるんだ時
+
         // ── UI SE (GDD §15.2) ────────────────────────────────────
         UiHover,
         UiClick,

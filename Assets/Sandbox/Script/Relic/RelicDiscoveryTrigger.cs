@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §14.9 — 遺物発見トリガー。
@@ -61,9 +60,13 @@ public class RelicDiscoveryTrigger : MonoBehaviour
         if (!_seenByPlayerInstanceIds.Add(playerId)) return;   // 既に通知済み
 
         // GDD §15.2 — relic_discover（初発見時のチャイム）
-        PPAudioManager.Instance?.PlaySE(SoundId.RelicDiscover, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.RelicDiscover, transform.position);
 
-        RelicDiscoveryNotifier.Instance?.NotifyDiscovered(playerId, _relic.RelicName);
+        // 初発見のキラッ（金スパークル）。SE と同位置。
+        Sandbox.World.Environment.StylizedImpactFx.CollectPop(
+            transform.position, new Color(1f, 0.84f, 0.30f), 1.1f, 24);
+
+        GameServices.RelicDiscovery?.NotifyDiscovered(playerId, _relic.RelicName);
     }
 
     /// <summary>

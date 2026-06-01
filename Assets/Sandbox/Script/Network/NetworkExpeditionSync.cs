@@ -53,8 +53,8 @@ public class NetworkExpeditionSync : NetworkBehaviour
     {
         Instance = this;
 
-        _phase.OnValueChanged      += (_, next) => OnPhaseChanged?.Invoke(next);
-        _teamScore.OnValueChanged  += (_, next) => OnTeamScoreChanged?.Invoke(next);
+        _phase.OnValueChanged      += HandlePhaseChanged;
+        _teamScore.OnValueChanged  += HandleTeamScoreChanged;
 
         if (IsServer)
         {
@@ -67,8 +67,14 @@ public class NetworkExpeditionSync : NetworkBehaviour
 
     public override void OnNetworkDespawn()
     {
+        // ラムダ購読は解除できずリーク・respawn 時の二重購読を招くため、名前付きハンドラで対にする。
+        _phase.OnValueChanged      -= HandlePhaseChanged;
+        _teamScore.OnValueChanged  -= HandleTeamScoreChanged;
         if (Instance == this) Instance = null;
     }
+
+    private void HandlePhaseChanged(ExpeditionPhase _, ExpeditionPhase next) => OnPhaseChanged?.Invoke(next);
+    private void HandleTeamScoreChanged(int _, int next) => OnTeamScoreChanged?.Invoke(next);
 
     // ── タイマー同期（サーバー → クライアント）──────────────────
     private void Update()

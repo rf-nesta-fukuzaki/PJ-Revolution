@@ -1,0 +1,331 @@
+#pragma kernel Height_PackToFixed
+#pragma kernel Droplet_Simulate
+#pragma kernel Thermal_Relax
+#pragma kernel Height_UnpackFromFixed
+#pragma kernel Height_BlendBoundaryToBase
+#pragma kernel RecomputeNormalSlope
+
+// ─── Fixed-point scale (16-bit fractional, 16-bit integer headroom for ±32km)
+#define FIXED_SCALE 65536.0
+#define FIXED_INV   (1.0 / 65536.0)
+
+// ─── CBUFFER
+cbuffer ErosionConstants
+{
+    float4 _Misc;            // x=cellSize, y=fullRes, z=apron, w=unused
+    float4 _DropletParams;   // x=inertia y=minSlope z=capacityFactor w=gravity
+    float4 _ErodeParams;     // x=erodeSpeed y=depositSpeed z=evapRate w=brushRadius
+    float4 _ErodeMisc;       // x=brushNormFactor
+    float4 _ThermalParams;   // x=talusBaseDeg y=talusJitterDeg z=relaxFactor
+    uint4  _BatchInfo;       // x=batchSeed y=batchIndex z=maxLifetime w=dropletCount
+}
+
+#define CELL_SIZE         (_Misc.x)
+#define FULL_RES          ((uint)_Misc.y)
+#define INERTIA           (_DropletParams.x)
+#define MIN_SLOPE         (_DropletParams.y)
+#define CAPACITY_FACTOR   (_DropletParams.z)
+#define GRAVITY           (_DropletParams.w)
+#define ERODE_SPEED       (_ErodeParams.x)
+#define DEPOSIT_SPEED     (_ErodeParams.y)
+#define EVAP_RATE         (_ErodeParams.z)
+#define BRUSH_RADIUS      ((int)_ErodeParams.w)
+#define BRUSH_NORM        (_ErodeMisc.x)
+#define HEIGHT_SCALE      (_ErodeMisc.y)   // 高さ正規化スケール (≒ peakAltitude)
+#define MAX_SPEED         (_ErodeMisc.z)   // 速度上限 (capacity 暴走防止)
+#define TALUS_BASE_DEG    (_ThermalParams.x)
+#define TALUS_JITTER_DEG  (_ThermalParams.y)
+#define RELAX_FACTOR      (_ThermalParams.z)
+
+RWTexture2D<float>      _HeightTex;
+Texture2D<float>        _BaseHeightTex;   // 侵食前のベース高さ(継ぎ目修復のブレンド基準)
+RWStructuredBuffer<int> _HeightFixed;
+RWTexture2D<float4>     _NormalSlopeTex;
+
+// ─── Index helpers
+uint Idx(uint x, uint y) { return y * FULL_RES + x; }
+
+uint WangHash(uint s)
+{
+    s = (s ^ 61u) ^ (s >> 16);
+    s *= 9u;
+    s ^= (s >> 4);
+    s *= 0x27d4eb2du;
+    s ^= (s >> 15);
+    return s;
+}
+
+float Rand01(uint s)
+{
+    return (float)(WangHash(s) & 0x00FFFFFFu) / (float)(0x01000000u);
+}
+
+// ─── Pack / Unpack
+[numthreads(8, 8, 1)]
+void Height_PackToFixed(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= FULL_RES || id.y >= FULL_RES) return;
+    float h = _HeightTex[id.xy];
+    // 高さ場全体を [0,1] 付近に正規化する (HEIGHT_SCALE ≒ peakAltitude)。
+    // これにより隣接セル差 dh が小さく保たれ (~0.01)、Beyer/Lague 系の実績パラメータ
+    // 領域に収まり、capacity/speed の正帰還発散を防ぐ。
+    _HeightFixed[Idx(id.x, id.y)] = (int)round((h / HEIGHT_SCALE) * FIXED_SCALE);
+}
+
+[numthreads(8, 8, 1)]
+void Height_UnpackFromFixed(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= FULL_RES || id.y >= FULL_RES) return;
+    int v = _HeightFixed[Idx(id.x, id.y)];
+    // 正規化を解いてメートルに戻す。
+    _HeightTex[id.xy] = (float)v * FIXED_INV * HEIGHT_SCALE;
+}
+
+// ─── Sampling helpers (read from HeightFixed via int→float)
+float ReadH(int x, int y)
+{
+    x = clamp(x, 0, (int)FULL_RES - 1);
+    y = clamp(y, 0, (int)FULL_RES - 1);
+    return (float)_HeightFixed[Idx((uint)x, (uint)y)] * FIXED_INV;
+}
+
+float SampleH(float2 p)
+{
+    int2 c = int2(floor(p));
+    float2 t = p - (float2)c;
+    float h00 = ReadH(c.x,     c.y);
+    float h10 = ReadH(c.x + 1, c.y);
+    float h01 = ReadH(c.x,     c.y + 1);
+    float h11 = ReadH(c.x + 1, c.y + 1);
+    return lerp(lerp(h00, h10, t.x), lerp(h01, h11, t.x), t.y);
+}
+
+float2 SampleGrad(float2 p)
+{
+    int2 c = int2(floor(p));
+    float2 t = p - (float2)c;
+    float h00 = ReadH(c.x,     c.y);
+    float h10 = ReadH(c.x + 1, c.y);
+    float h01 = ReadH(c.x,     c.y + 1);
+    float h11 = ReadH(c.x + 1, c.y + 1);
+    float dx = (h10 - h00) * (1.0 - t.y) + (h11 - h01) * t.y;
+    float dz = (h01 - h00) * (1.0 - t.x) + (h11 - h10) * t.x;
+    return float2(dx, dz);
+}
+
+// ─── Atomic deposit / erode
+void AddAtomic(int x, int y, float dh)
+{
+    if (x < 0 || y < 0 || x >= (int)FULL_RES || y >= (int)FULL_RES) return;
+    int delta = (int)round(dh * FIXED_SCALE);
+    if (delta == 0) return;
+    int orig;
+    InterlockedAdd(_HeightFixed[Idx((uint)x, (uint)y)], delta, orig);
+}
+
+void DepositBilinear(float2 pos, float dep)
+{
+    int2 c = int2(floor(pos));
+    float2 t = pos - (float2)c;
+    AddAtomic(c.x,     c.y,     dep * (1.0 - t.x) * (1.0 - t.y));
+    AddAtomic(c.x + 1, c.y,     dep * t.x         * (1.0 - t.y));
+    AddAtomic(c.x,     c.y + 1, dep * (1.0 - t.x) * t.y);
+    AddAtomic(c.x + 1, c.y + 1, dep * t.x         * t.y);
+}
+
+void ErodeBrush(int2 c, float amount)
+{
+    int R = BRUSH_RADIUS;
+    float fR = (float)R;
+    [loop] for (int by = -R; by <= R; by++)
+    {
+        [loop] for (int bx = -R; bx <= R; bx++)
+        {
+            float r = sqrt((float)(bx * bx + by * by));
+            if (r > fR) continue;
+            float w = (1.0 - r / fR) * BRUSH_NORM;
+            AddAtomic(c.x + bx, c.y + by, -amount * w);
+        }
+    }
+}
+
+// ─── Droplet simulation (Beyer-style, NaN/Inf safe)
+[numthreads(64, 1, 1)]
+void Droplet_Simulate(uint3 id : SV_DispatchThreadID)
+{
+    uint dropletId = id.x;
+    if (dropletId >= _BatchInfo.w) return;
+
+    uint seed = WangHash(_BatchInfo.x ^ (dropletId * 2654435761u) ^ (_BatchInfo.y * 1013904223u));
+
+    float pad = 2.0;
+    float2 pos = float2(Rand01(seed), Rand01(seed + 1u))
+               * ((float)FULL_RES - 2.0 * pad) + pad;
+
+    float2 dir      = float2(0.0, 0.0);
+    float  speed    = 1.0;
+    float  water    = 1.0;
+    float  sediment = 0.0;
+
+    uint maxLife = _BatchInfo.z;
+
+    [loop] for (uint step = 0; step < maxLife; step++)
+    {
+        float2 grad = SampleGrad(pos);
+        float  hOld = SampleH(pos);
+
+        // 慣性付き方向更新
+        dir = dir * INERTIA - grad * (1.0 - INERTIA);
+        float dlen = length(dir);
+        if (dlen < 1e-6) break;
+        dir /= dlen;
+
+        float2 posNew = pos + dir;
+        if (posNew.x < pad || posNew.x >= (float)FULL_RES - pad ||
+            posNew.y < pad || posNew.y >= (float)FULL_RES - pad) break;
+
+        float hNew = SampleH(posNew);
+        float dh   = hOld - hNew; // 下りで正
+
+        float capacity = max(dh, MIN_SLOPE) * speed * water * CAPACITY_FACTOR;
+
+        if (sediment > capacity || dh < 0.0)
+        {
+            float dep = (dh < 0.0)
+                ? min(sediment, -dh)                            // 谷を埋め戻し
+                : (sediment - capacity) * DEPOSIT_SPEED;        // 余剰を堆積
+            DepositBilinear(pos, dep);
+            sediment -= dep;
+        }
+        else
+        {
+            float erodeAmount = min((capacity - sediment) * ERODE_SPEED, dh);
+            int2 c = int2(floor(pos));
+            ErodeBrush(c, erodeAmount);
+            sediment += erodeAmount;
+        }
+
+        // 速度更新 — sqrt(arg<0) 防止 + 上限クランプで capacity 暴走を防ぐ
+        float arg = speed * speed + dh * GRAVITY;
+        speed = min(sqrt(max(arg, 1e-6)), MAX_SPEED);
+        water *= (1.0 - EVAP_RATE);
+        if (water < 1e-5) break;
+
+        pos = posNew;
+    }
+
+    // 質量保存: ループ終了(寿命切れ/末端到達/蒸発/勾配消失すべて break/正常終了)時に
+    // 運搬中の残留 sediment を最終位置へ堆積する。従来は捨てていたため地形が正味で
+    // 約10m 低下し、境界バンドを侵食前ベース高さに固定する継ぎ目修復が「隆起した格子」
+    // として見えていた。保存により平均標高≈ベースになり境界の盛り上がりが解消する
+    // (境界=ベース=隣接と一致 なので継ぎ目連続性 0 は不変)。pos はどの終了経路でも
+    // 有効な内部座標(posNew への更新はループ末尾なので break 時は更新前の pos)。
+    DepositBilinear(pos, sediment);
+}
+
+// ─── 8 近傍の x/y オフセットと距離
+static const int   _OffX[8]  = { -1,  0,  1, -1, 1, -1, 0, 1 };
+static const int   _OffY[8]  = { -1, -1, -1,  0, 0,  1, 1, 1 };
+static const float _OffD[8]  = { 1.41421356, 1.0, 1.41421356, 1.0, 1.0, 1.41421356, 1.0, 1.41421356 };
+
+[numthreads(8, 8, 1)]
+void Thermal_Relax(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= FULL_RES || id.y >= FULL_RES) return;
+    if (id.x == 0u || id.y == 0u ||
+        id.x == FULL_RES - 1u || id.y == FULL_RES - 1u) return;
+
+    float h0 = ReadH((int)id.x, (int)id.y);
+
+    uint  hashSeed = id.x * 73856093u ^ id.y * 19349663u ^ _BatchInfo.y;
+    float jitter   = (Rand01(hashSeed) * 2.0 - 1.0) * TALUS_JITTER_DEG;
+    float talusDeg = max(TALUS_BASE_DEG + jitter, 5.0);
+    float talusTan = tan(radians(talusDeg));
+
+    float excess[8];
+    float totalExcess = 0.0;
+
+    [unroll] for (int n = 0; n < 8; n++)
+    {
+        int nx = (int)id.x + _OffX[n];
+        int ny = (int)id.y + _OffY[n];
+        float hn = ReadH(nx, ny);
+        float diff = h0 - hn;
+        // h は HEIGHT_SCALE で正規化済み、水平は cell 単位。
+        // 実勾配 = (diff*HEIGHT_SCALE)/(dist*CELL_SIZE) を talusTan と比較するため、
+        // 正規化空間での許容差は talusTan * dist * (CELL_SIZE / HEIGHT_SCALE)。
+        float maxDiff = talusTan * _OffD[n] * (CELL_SIZE / HEIGHT_SCALE);
+        excess[n] = 0.0;
+        if (diff > maxDiff)
+        {
+            excess[n] = (diff - maxDiff) * RELAX_FACTOR * 0.125;
+            totalExcess += excess[n];
+        }
+    }
+
+    if (totalExcess > 0.0)
+    {
+        AddAtomic((int)id.x, (int)id.y, -totalExcess);
+        [unroll] for (int m = 0; m < 8; m++)
+        {
+            if (excess[m] > 0.0)
+            {
+                AddAtomic((int)id.x + _OffX[m], (int)id.y + _OffY[m], excess[m]);
+            }
+        }
+    }
+}
+
+// ─── 継ぎ目修復: チャンク境界バンドを「侵食前ベース高さ」へブレンド復帰
+// チャンク毎に独立実行される侵食は境界で隣接チャンクと高さがズレ(実測 最大~16m)、
+// 穴(skirt 突き抜け)や不自然な継ぎ目を生む。ベース高さは worldXZ の純粋関数なので
+// 隣接チャンクと完全一致する → 境界＋アプロン帯をベースに固定し、内側へ smoothstep
+// でブレンドすれば、高さも(この後 再計算する)法線も境界でシームレスになる。
+// Unpack の後・RecomputeNormalSlope の前に 1 度だけ呼ぶ前提。
+[numthreads(8, 8, 1)]
+void Height_BlendBoundaryToBase(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= FULL_RES || id.y >= FULL_RES) return;
+
+    int apron  = (int)_Misc.z;
+    int blendW = (int)_Misc.w;
+    int N      = (int)FULL_RES - 2 * apron;       // 内部解像度(頂点数)
+
+    int lx = (int)id.x - apron;                    // 内部ローカル座標(アプロンは負値)
+    int ly = (int)id.y - apron;
+    int dl = min(min(lx, (N - 1) - lx),
+                 min(ly, (N - 1) - ly));           // 最寄り境界までのテクセル距離
+
+    // dl<=apron(境界＋アプロン帯) => w=0(ベース固定) / dl>=apron+blendW => w=1(侵食結果)
+    float w = saturate(((float)dl - (float)apron) / max(1.0, (float)blendW));
+    w = w * w * (3.0 - 2.0 * w);                   // smoothstep
+
+    float baseH   = _BaseHeightTex[id.xy];
+    float erodedH = _HeightTex[id.xy];
+    _HeightTex[id.xy] = lerp(baseH, erodedH, w);
+}
+
+// ─── 法線/斜度再計算（HeightTex から、Unpack 後に呼ぶ前提）
+[numthreads(8, 8, 1)]
+void RecomputeNormalSlope(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= FULL_RES || id.y >= FULL_RES) return;
+    int Mi = (int)FULL_RES;
+    int2 c = int2(id.xy);
+    int  l = max(c.x - 1, 0);
+    int  r = min(c.x + 1, Mi - 1);
+    int  d = max(c.y - 1, 0);
+    int  u = min(c.y + 1, Mi - 1);
+
+    float hL = _HeightTex[int2(l, c.y)];
+    float hR = _HeightTex[int2(r, c.y)];
+    float hD = _HeightTex[int2(c.x, d)];
+    float hU = _HeightTex[int2(c.x, u)];
+
+    float dx = (hR - hL) / (2.0 * CELL_SIZE);
+    float dz = (hU - hD) / (2.0 * CELL_SIZE);
+
+    float3 n = normalize(float3(-dx, 1.0, -dz));
+    float slopeDeg = degrees(acos(saturate(n.y)));
+    _NormalSlopeTex[id.xy] = float4(n.xyz, slopeDeg);
+}

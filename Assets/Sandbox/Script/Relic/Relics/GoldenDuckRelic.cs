@@ -1,6 +1,5 @@
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物①「黄金のアヒル像」
@@ -19,8 +18,8 @@ public class GoldenDuckRelic : RelicBase
 
     protected override void Awake()
     {
-        // base.Awake() が _currentHp = _maxHp を実行するため、
-        // フィールドは必ず先に設定する（後置では _currentHp が古い値で初期化される）
+        // base.Awake() が RelicDurabilityModel を生成するため、
+        // フィールドは必ず先に設定する。
         _relicName        = "黄金のアヒル像";
         _baseValue        = 80;
         _maxHp            = 100f;
@@ -57,7 +56,7 @@ public class GoldenDuckRelic : RelicBase
     private void PlayRollSound()
     {
         // GDD §15.2 — relic_duck_roll（アヒル転がり音）
-        PPAudioManager.Instance?.PlaySE(SoundId.RelicDuckRoll, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.RelicDuckRoll, transform.position);
 
         if (_audioSource == null) return;
         // AudioClip 未アサイン時は無音で通過

@@ -2,9 +2,9 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using TMPro;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §14.8 — 帰還投票システム。
@@ -22,9 +22,9 @@ public class ReturnVoteSystem : NetworkBehaviour
     private const float   REPROPOSE_COOLDOWN = 60f;
     private const float   RESULT_DISPLAY_TIME = 3f;
     private const float   APPROVED_BANNER_TIME = 10f;
-    private const KeyCode KEY_PROPOSE  = KeyCode.F5;
-    private const KeyCode KEY_APPROVE  = KeyCode.F5;
-    private const KeyCode KEY_REJECT   = KeyCode.F6;
+    private const Key KEY_PROPOSE  = Key.F5;
+    private const Key KEY_APPROVE  = Key.F5;
+    private const Key KEY_REJECT   = Key.F6;
 
     [Header("投票 UI")]
     [SerializeField] private GameObject       _votePanel;
@@ -93,13 +93,13 @@ public class ReturnVoteSystem : NetworkBehaviour
         // F5: 非投票中なら提案、投票中なら承認。F6: 拒否のみ。
         if (!_voteActive.Value)
         {
-            if (Input.GetKeyDown(KEY_PROPOSE))
+            if (InputStateReader.KeyPressedThisFrame(KEY_PROPOSE))
                 RequestStartVoteServerRpc(NetworkManager.Singleton?.LocalClientId ?? 0UL);
         }
         else if (!_localVoted)
         {
-            if (Input.GetKeyDown(KEY_APPROVE)) CastVote(true);
-            if (Input.GetKeyDown(KEY_REJECT))  CastVote(false);
+            if (InputStateReader.KeyPressedThisFrame(KEY_APPROVE)) CastVote(true);
+            if (InputStateReader.KeyPressedThisFrame(KEY_REJECT))  CastVote(false);
         }
 
         // タイマーはサーバ権威。タイムアウト = 棄権として resolve。
@@ -148,7 +148,7 @@ public class ReturnVoteSystem : NetworkBehaviour
             _voteText.text = $"プレイヤー {proposer} が帰還を提案しています。\n承認: F5　拒否: F6";
 
         // GDD §15.2 — ui_vote_start
-        PPAudioManager.Instance?.PlaySE2D(SoundId.UiVoteStart);
+        GameServices.Audio?.PlaySE2D(SoundId.UiVoteStart);
 
         Debug.Log($"[ReturnVote] 帰還投票開始！F5=承認 / F6=拒否");
     }
@@ -241,7 +241,7 @@ public class ReturnVoteSystem : NetworkBehaviour
         }
 
         // GDD §15.2 — ui_vote_approve / ui_vote_deny
-        PPAudioManager.Instance?.PlaySE2D(approved ? SoundId.UiVoteApprove : SoundId.UiVoteDeny);
+        GameServices.Audio?.PlaySE2D(approved ? SoundId.UiVoteApprove : SoundId.UiVoteDeny);
 
         StartCoroutine(HidePanelAfterDelay(approved ? APPROVED_BANNER_TIME : RESULT_DISPLAY_TIME));
     }

@@ -10,7 +10,10 @@ public class RopeManager : MonoBehaviour
 {
     private static Material s_defaultRopeMaterial;
 
-    public static RopeManager Instance { get; private set; }
+    private static RopeManager _instance;
+
+    [System.Obsolete("GameServices.Ropes を使用してください")]
+    public static RopeManager Instance => _instance;
 
     [Header("ロープ Prefab")]
     [SerializeField] private PlayerRopeSystem _ropePrefab;
@@ -23,12 +26,13 @@ public class RopeManager : MonoBehaviour
 
     private void Awake()
     {
-        if (Instance != null && Instance != this)
+        if (_instance != null && _instance != this)
         {
             Destroy(gameObject);
             return;
         }
-        Instance = this;
+        _instance = this;
+        GameServices.Register(this);
     }
 
     // ── プレイヤー登録 ───────────────────────────────────────

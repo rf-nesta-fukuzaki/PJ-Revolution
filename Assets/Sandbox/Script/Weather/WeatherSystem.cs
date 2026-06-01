@@ -1,7 +1,6 @@
 using System;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 using Random = UnityEngine.Random;
 
 /// <summary>
@@ -11,7 +10,10 @@ using Random = UnityEngine.Random;
 /// </summary>
 public class WeatherSystem : MonoBehaviour, IWeatherService
 {
-    public static WeatherSystem Instance { get; private set; }
+    private static WeatherSystem _instance;
+
+    [System.Obsolete("GameServices.Weather を使用してください")]
+    public static WeatherSystem Instance => _instance;
 
     // ── Inspector ───────────────────────────────────────────
     [Header("天候サイクル")]
@@ -61,8 +63,9 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
+        if (_instance != null && _instance != this) { Destroy(gameObject); return; }
+        _instance = this;
+        GameServices.Register((IWeatherService)this);
     }
 
     private void Start()
@@ -120,11 +123,11 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
             WeatherType.Blizzard => SoundId.BlizzardAmbient,
             _                    => SoundId.WindAmbient,
         };
-        PPAudioManager.Instance?.PlaySE2D(ambientId);
+        GameServices.Audio?.PlaySE2D(ambientId);
 
         // GDD §15.1 — 吹雪中は BGM 音量を -40% にダック（その他は 100%）
         float bgmScale = next == WeatherType.Blizzard ? 0.6f : 1f;
-        PPAudioManager.Instance?.SetBGMVolumeScale(bgmScale);
+        GameServices.Audio?.SetBGMVolumeScale(bgmScale);
 
         OnWeatherChanged?.Invoke(next);
         Debug.Log($"[Weather] 天候変化: {next}  風速目標: {_targetWindSpeed:F1} m/s");
@@ -171,7 +174,7 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
         // GDD §15.2 — wind_gust（突風しきい値を立ち上がりエッジで越えたら一度だけ鳴らす）
         bool nowAbove = _currentWindSpeed >= GUST_THRESHOLD;
         if (nowAbove && !_wasAboveGustThreshold)
-            PPAudioManager.Instance?.PlaySE2D(SoundId.WindGust);
+            GameServices.Audio?.PlaySE2D(SoundId.WindGust);
         _wasAboveGustThreshold = nowAbove;
     }
 

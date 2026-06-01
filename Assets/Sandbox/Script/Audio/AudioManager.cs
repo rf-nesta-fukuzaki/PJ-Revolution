@@ -12,15 +12,18 @@ namespace PeakPlunder.Audio
     ///   * AudioMixer: Master / BGM / SE / Voice / Environment (§15.3)
     ///
     /// 使用方法:
-    ///   AudioManager.Instance.PlaySE(SoundId.FootstepWalk, transform.position);
-    ///   AudioManager.Instance.PlayBGM(zoneBgm);
+    ///   GameServices.Audio.PlaySE(SoundId.FootstepWalk, transform.position);
+    ///   GameServices.Audio.PlayBGM(zoneBgm);
     ///
     /// プレハブを起動シーンに配置するか、GameServices 経由で初期化する。
     /// DontDestroyOnLoad でシーン遷移中も保持される。
     /// </summary>
-    public class AudioManager : MonoBehaviour
+    public class AudioManager : MonoBehaviour, IAudioService
     {
-        public static AudioManager Instance { get; private set; }
+        private static AudioManager _instance;
+
+        [System.Obsolete("GameServices.Audio を使用してください")]
+        public static AudioManager Instance => _instance;
 
         [Header("Library (GDD §15.2)")]
         [SerializeField] private SoundLibrary _library;
@@ -67,15 +70,30 @@ namespace PeakPlunder.Audio
         /// <summary>GDD §15.1 — 現在の BGM ダック倍率（0〜1）。</summary>
         public float BgmVolumeScale => _bgmVolumeScale;
 
+        float IAudioService.BgmVolumeScale => BgmVolumeScale;
+        void IAudioService.PlaySE(SoundId id, Vector3 worldPosition, float volumeScale) => PlaySE(id, worldPosition, volumeScale);
+        void IAudioService.PlaySE2D(SoundId id, float volumeScale) => PlaySE2D(id, volumeScale);
+        void IAudioService.StopLoop(SoundId id) => StopLoop(id);
+        void IAudioService.PlayBGM(AudioClip clip, float volume) => PlayBGM(clip, volume);
+        void IAudioService.StopBGM() => StopBGM();
+        void IAudioService.SetBGMVolumeScale(float scale) => SetBGMVolumeScale(scale);
+
         private void Awake()
         {
-            if (Instance != null && Instance != this)
+            if (_instance != null && _instance != this)
             {
                 Destroy(gameObject);
                 return;
             }
-            Instance = this;
+            _instance = this;
+
+            // DontDestroyOnLoad はルート GameObject でのみ機能する。
+            // シーン上で子オブジェクトとして配置されていても警告を出さずに永続化できるよう、
+            // 先にルートへ切り離す。
+            if (transform.parent != null)
+                transform.SetParent(null, worldPositionStays: true);
             DontDestroyOnLoad(gameObject);
+            GameServices.Register((IAudioService)this);
 
             InitializeLookup();
             InitializeSePool();
@@ -84,7 +102,7 @@ namespace PeakPlunder.Audio
 
         private void OnDestroy()
         {
-            if (Instance == this) Instance = null;
+            if (_instance == this) _instance = null;
         }
 
         private void InitializeLookup()

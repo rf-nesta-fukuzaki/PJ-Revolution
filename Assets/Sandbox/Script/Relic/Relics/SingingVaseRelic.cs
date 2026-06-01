@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §6.2 — 遺物④「歌う壺」
@@ -93,7 +92,7 @@ public class SingingVaseRelic : RelicBase
             _audio.clip = _songClips[UnityEngine.Random.Range(0, _songClips.Length)];
             _audio.Play();
             // GDD §15.2 — relic_pot_sing（歌い始めのエッジトリガー SE）
-            PPAudioManager.Instance?.PlaySE(SoundId.RelicPotSing, transform.position);
+            GameServices.Audio?.PlaySE(SoundId.RelicPotSing, transform.position);
         }
         else if (_currentVolume <= 0.05f && _audio.isPlaying)
         {
@@ -106,7 +105,7 @@ public class SingingVaseRelic : RelicBase
 
         if (_isLoud && !wasLoud)
         {
-            Debug.Log("[SingingVase] 大音量！「うるさい黙れ壺！」");
+            SandboxLog.Trace("[SingingVase] 大音量！「うるさい黙れ壺！」");
             TriggerNearbyRockfalls();
         }
     }
@@ -150,7 +149,7 @@ public class SingingVaseRelic : RelicBase
     {
         base.OnBroken();
         _audio.Stop();
-        Debug.Log("[SingingVase] 壺が壊れた。静かになった。");
+        SandboxLog.Trace("[SingingVase] 壺が壊れた。静かになった。");
     }
 
     // ── プロシージャルオーディオ生成 ─────────────────────────
@@ -160,7 +159,7 @@ public class SingingVaseRelic : RelicBase
     /// </summary>
     private static AudioClip[] GenerateProceduralSongs()
     {
-        Debug.Log("[SingingVase] プロシージャルオーディオを生成中…");
+        SandboxLog.Trace("[SingingVase] プロシージャルオーディオを生成中…");
         return new[]
         {
             // 古代の低音ドローン（A2 + A3 倍音重ね）

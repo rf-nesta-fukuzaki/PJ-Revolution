@@ -8,6 +8,7 @@
 public enum PlayerState
 {
     Alive,      // 通常行動可能
+    Downed,     // ダウン（瀕死・味方が蘇生可能 / 制限時間で力尽きる）
     Ghost,      // 幽霊（死亡後の偵察モード）
     Ragdoll,    // 高速衝突によるラグドール中
     Emoting,    // エモート再生中（移動不可）

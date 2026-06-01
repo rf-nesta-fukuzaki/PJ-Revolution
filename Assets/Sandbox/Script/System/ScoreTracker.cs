@@ -11,7 +11,10 @@ using UnityEngine;
 /// </summary>
 public class ScoreTracker : MonoBehaviour, IScoreService
 {
-    public static ScoreTracker Instance { get; private set; }
+    private static ScoreTracker _instance;
+
+    [System.Obsolete("GameServices.Score を使用してください")]
+    public static ScoreTracker Instance => _instance;
 
     // ── データ駆動設定 ────────────────────────────────────────
     [Header("スコア設定（ScriptableObject）")]
@@ -50,8 +53,9 @@ public class ScoreTracker : MonoBehaviour, IScoreService
 
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
+        if (_instance != null && _instance != this) { Destroy(gameObject); return; }
+        _instance = this;
+        GameServices.Register((IScoreService)this);
     }
 
     // ── プレイヤー登録 ───────────────────────────────────────
@@ -61,11 +65,9 @@ public class ScoreTracker : MonoBehaviour, IScoreService
     /// </summary>
     public void RegisterPlayer(int id, string name)
     {
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            Debug.LogError($"[Contract] ScoreTracker.RegisterPlayer: name が null または空です (id={id})");
+        if (!Contract.TryRequires(!string.IsNullOrWhiteSpace(name),
+            $"ScoreTracker.RegisterPlayer: name が null または空です (id={id})"))
             return;
-        }
 
         if (_stats.ContainsKey(id)) return;
         _stats[id] = new PlayerStats { PlayerName = name };
@@ -80,11 +82,9 @@ public class ScoreTracker : MonoBehaviour, IScoreService
 
     public void RecordRelicCarried(int playerId, float distanceDelta)
     {
-        if (distanceDelta < 0f)
-        {
-            Debug.LogWarning($"[Contract] RecordRelicCarried: distanceDelta が負の値 ({distanceDelta})。無視します。");
+        if (!Contract.TryRequires(distanceDelta >= 0f,
+            $"RecordRelicCarried: distanceDelta が負の値 ({distanceDelta})。無視します。"))
             return;
-        }
 
         if (!TryGetStats(playerId, out var s)) return;
         s.RelicCarryDistance += distanceDelta;
@@ -98,11 +98,9 @@ public class ScoreTracker : MonoBehaviour, IScoreService
 
     public void RecordRelicDamage(int playerId, float damage)
     {
-        if (damage < 0f)
-        {
-            Debug.LogError($"[Contract] RecordRelicDamage: damage が負の値 ({damage})");
+        if (!Contract.TryRequires(damage >= 0f,
+            $"RecordRelicDamage: damage が負の値 ({damage})"))
             return;
-        }
 
         if (!TryGetStats(playerId, out var s)) return;
         s.RelicDamageDealt += damage;
@@ -141,11 +139,8 @@ public class ScoreTracker : MonoBehaviour, IScoreService
     // ── 遺物収集 ─────────────────────────────────────────────
     public void RegisterCollectedRelic(RelicBase relic)
     {
-        if (relic == null)
-        {
-            Debug.LogError("[Contract] RegisterCollectedRelic: relic が null です");
+        if (!Contract.TryRequires(relic != null, "RegisterCollectedRelic: relic が null です"))
             return;
-        }
 
         if (!_collectedRelics.Contains(relic))
             _collectedRelics.Add(relic);
@@ -166,11 +161,9 @@ public class ScoreTracker : MonoBehaviour, IScoreService
     /// </summary>
     public ScoreData BuildResultData(float clearTime, bool allSurvived)
     {
-        if (clearTime < 0f)
-        {
-            Debug.LogError($"[Contract] BuildResultData: clearTime が負の値 ({clearTime})");
+        if (!Contract.TryRequires(clearTime >= 0f,
+            $"BuildResultData: clearTime が負の値 ({clearTime})"))
             clearTime = 0f;
-        }
 
         var cfg  = Config;
         var data = new ScoreData

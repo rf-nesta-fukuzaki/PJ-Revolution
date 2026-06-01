@@ -1,6 +1,5 @@
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// 落石に付与する衝突ダメージコンポーネント。
@@ -19,7 +18,13 @@ public class RockDamageOnCollision : MonoBehaviour
         if (!_impactPlayed)
         {
             _impactPlayed = true;
-            PPAudioManager.Instance?.PlaySE(SoundId.RockfallImpact, transform.position);
+            GameServices.Audio?.PlaySE(SoundId.RockfallImpact, transform.position);
+
+            // ドタバタ感の砂煙バースト（衝突速度に比例）。リアルでなくポップに。
+            Vector3 impactPoint = col.contactCount > 0 ? col.GetContact(0).point : transform.position;
+            float burstScale = Mathf.Clamp(col.relativeVelocity.magnitude / 8f, 0.6f, 2.4f);
+            Sandbox.World.Environment.StylizedImpactFx.Spawn(
+                impactPoint, new Color(0.58f, 0.47f, 0.34f), burstScale, 18);
         }
 
         var health = col.gameObject.GetComponent<PlayerHealthSystem>();

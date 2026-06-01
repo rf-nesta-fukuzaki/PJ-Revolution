@@ -1,6 +1,7 @@
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 
@@ -23,8 +24,8 @@ using TMPro;
 public class EmoteSystem : NetworkBehaviour
 {
     // ── GDD 定数 ─────────────────────────────────────────────
-    private const float   EMOTE_DURATION = 2f;
-    private const KeyCode EMOTE_KEY      = KeyCode.T;
+    private const float EMOTE_DURATION = 2f;
+    private const Key   EMOTE_KEY      = Key.T;
 
     private static readonly string[] EMOTE_NAMES = {
         "手を振る", "指差し", "拍手", "お辞儀", "ガッツポーズ", "頭を抱える"
@@ -101,7 +102,7 @@ public class EmoteSystem : NetworkBehaviour
         }
 
         // T キーでホイール開閉（エモート再生中は不可）
-        if (Input.GetKeyDown(EMOTE_KEY))
+        if (InputStateReader.KeyPressedThisFrame(EMOTE_KEY))
         {
             _wheelOpen = !_wheelOpen;
             _wheelRoot?.SetActive(_wheelOpen);
@@ -111,11 +112,11 @@ public class EmoteSystem : NetworkBehaviour
 
         UpdateHoveredSlot();
 
-        if (Input.GetMouseButtonDown(0) && _hoveredSlot >= 0)
+        if (InputStateReader.MouseButtonPressedThisFrame(0) && _hoveredSlot >= 0)
             SelectEmote(_hoveredSlot);
 
         // Escape でホイールを閉じる。T（EMOTE_KEY）は line 104 のトグルで処理済みのためここでは見ない。
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (InputStateReader.KeyPressedThisFrame(Key.Escape))
         {
             _wheelOpen = false;
             _wheelRoot?.SetActive(false);
@@ -138,7 +139,7 @@ public class EmoteSystem : NetworkBehaviour
         if (_slots == null) return;
 
         Vector2 center = new(Screen.width * 0.5f, Screen.height * 0.5f);
-        Vector2 dir    = (Vector2)Input.mousePosition - center;
+        Vector2 dir    = InputStateReader.PointerPosition() - center;
 
         if (dir.magnitude < 30f)
         {

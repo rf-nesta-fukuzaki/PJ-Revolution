@@ -19,7 +19,7 @@ using Unity.Netcode.Transports.UTP;
 ///   Unity メニュー → ccc → Refresh Offline Test Scene (上書き再生成)
 ///
 /// 生成物:
-///   Assets/Sandbox/Scene/OfflineTestScene.unity
+///   Assets/Sandbox/Scenes/OfflineTestScene.unity
 ///
 /// 動作要件:
 ///   - Play するだけで NGO が Host モードで起動
@@ -28,7 +28,7 @@ using Unity.Netcode.Transports.UTP;
 /// </summary>
 public static class OfflineSceneCreator
 {
-    private const string SCENE_PATH  = "Assets/Sandbox/Scene/OfflineTestScene.unity";
+    private const string SCENE_PATH  = "Assets/Sandbox/Scenes/OfflineTestScene.unity";
     private const string SCENE_NAME  = "OfflineTestScene";
 
     // ── メニューアイテム ──────────────────────────────────────
@@ -1034,7 +1034,8 @@ public static class OfflineSceneCreator
     {
         var esGo = new GameObject("EventSystem");
         esGo.AddComponent<EventSystem>();
-        esGo.AddComponent<StandaloneInputModule>();
+        // 新 Input System のUI入力モジュール（旧 StandaloneInputModule は Input System 専用モードで動作しない）
+        esGo.AddComponent<UnityEngine.InputSystem.UI.InputSystemUIInputModule>();
     }
 
     // ── Camera ───────────────────────────────────────────────

@@ -34,6 +34,7 @@ public class PlayerStateMachine : NetworkBehaviour
     // ── プロパティ ───────────────────────────────────────────
     public PlayerState Current  => _state.Value;
     public bool IsAlive    => Current == PlayerState.Alive;
+    public bool IsDowned   => Current == PlayerState.Downed;
     public bool IsGhost    => Current == PlayerState.Ghost;
     public bool IsRagdoll  => Current == PlayerState.Ragdoll;
     public bool IsEmoting  => Current == PlayerState.Emoting;
@@ -66,9 +67,8 @@ public class PlayerStateMachine : NetworkBehaviour
 
         if (!IsValidTransition(Current, next))
         {
-            Debug.LogError(
-                $"[PlayerStateMachine] 無効な遷移: {Current} → {next}  " +
-                $"(object: {gameObject.name})");
+            Contract.TryRequires(false,
+                $"PlayerStateMachine: 無効な遷移 {Current} → {next} (object: {gameObject.name})");
             return;
         }
 
@@ -100,15 +100,21 @@ public class PlayerStateMachine : NetworkBehaviour
         {
             // Alive から各ステートへ
             (PlayerState.Alive,    PlayerState.Ghost)    => true,
+            (PlayerState.Alive,    PlayerState.Downed)   => true,
             (PlayerState.Alive,    PlayerState.Ragdoll)  => true,
             (PlayerState.Alive,    PlayerState.Emoting)  => true,
             (PlayerState.Alive,    PlayerState.Boarding) => true,
 
             // 各ステートから Alive へ（復帰）
             (PlayerState.Ghost,    PlayerState.Alive)    => true,   // 祠で復活
+            (PlayerState.Downed,   PlayerState.Alive)    => true,   // 味方が蘇生
             (PlayerState.Ragdoll,  PlayerState.Alive)    => true,   // 3秒後に復帰
             (PlayerState.Emoting,  PlayerState.Alive)    => true,   // エモート終了
             (PlayerState.Boarding, PlayerState.Alive)    => true,   // 降機
+
+            // ダウンから死亡 / ラグドール経由のダウン
+            (PlayerState.Downed,   PlayerState.Ghost)    => true,   // 力尽きて幽霊化
+            (PlayerState.Ragdoll,  PlayerState.Downed)   => true,   // 高速衝突死→ダウン
 
             // エッジケース（エモート中に死亡）
             (PlayerState.Emoting,  PlayerState.Ghost)    => true,

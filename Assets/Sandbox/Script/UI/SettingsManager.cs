@@ -13,13 +13,18 @@ using TMPro;
 /// 閉じるボタン押下またはシーン開始時に ApplyAll() で即時反映。
 ///
 /// アクセス方法：
-///   - SettingsManager.Instance.Open()   — パネルを開く
-///   - SettingsManager.Instance.Close()  — パネルを閉じる（自動保存）
-///   - SettingsManager.Settings          — 現在の SettingsData を取得
+///   - GameServices.Settings.Open()   — パネルを開く
+///   - GameServices.Settings.Close()  — パネルを閉じる（自動保存）
+///   - GameServices.Settings.Settings — 現在の SettingsData を取得
 /// </summary>
-public class SettingsManager : MonoBehaviour
+public class SettingsManager : MonoBehaviour, ISettingsService
 {
-    public static SettingsManager Instance { get; private set; }
+    private static SettingsManager _instance;
+
+    [System.Obsolete("GameServices.Settings を使用してください")]
+    public static SettingsManager Instance => _instance;
+
+    private readonly SettingsViewModel _viewModel = new();
 
     // ── Inspector ─────────────────────────────────────────────
     [Header("パネル")]
@@ -73,50 +78,31 @@ public class SettingsManager : MonoBehaviour
     // ── 公開状態 ─────────────────────────────────────────────
     public SettingsData Settings { get; private set; }
 
+    SettingsData ISettingsService.Settings => Settings;
+    float ISettingsService.MouseSensitivity => MouseSensitivity;
+    bool ISettingsService.InvertY => InvertY;
+    void ISettingsService.Open() => Open();
+    void ISettingsService.Close() => Close();
+    void ISettingsService.ApplyAll(SettingsData data) => ApplyAll(data);
+
     // ── マウス感度プロパティ（ExplorerCameraLook から参照）────
     public float MouseSensitivity => Settings.mouseSensitivity;
     public bool  InvertY          => Settings.invertY;
 
-    // ── PlayerPrefs キー ─────────────────────────────────────
-    private const string KEY_RESOLUTION     = "cfg_resolution";
-    private const string KEY_WINDOW_MODE    = "cfg_window";
-    private const string KEY_QUALITY        = "cfg_quality";
-    private const string KEY_FPS_CAP        = "cfg_fps";
-    private const string KEY_VSYNC          = "cfg_vsync";
-    private const string KEY_SHADOW         = "cfg_shadow";
-    private const string KEY_PARTICLE       = "cfg_particle";
-    private const string KEY_MASTER_VOL     = "cfg_vol_master";
-    private const string KEY_BGM_VOL        = "cfg_vol_bgm";
-    private const string KEY_SE_VOL         = "cfg_vol_se";
-    private const string KEY_VOICE_VOL      = "cfg_vol_voice";
-    private const string KEY_MIC_GAIN       = "cfg_mic_gain";
-    private const string KEY_MOUSE_SENS     = "cfg_mouse_sens";
-    private const string KEY_INVERT_Y       = "cfg_invert_y";
-    private const string KEY_GAMEPAD_PRESET = "cfg_gamepad";
-    private const string KEY_SUBTITLES      = "cfg_subtitles";
-    private const string KEY_UI_SCALE       = "cfg_ui_scale";
-    private const string KEY_COLOR_BLIND    = "cfg_color_blind";
-    private const string KEY_CAMERA_SHAKE   = "cfg_camera_shake";
-    private const string KEY_CROSSHAIR_HEX  = "cfg_crosshair";
-
-    // ── FPS 上限テーブル ──────────────────────────────────────
-    private static readonly int[] FPS_OPTIONS = { 30, 60, 120, 0 };   // 0 = 無制限
-    private SettingsGameplaySnapshot _loadedGameplaySnapshot = SettingsGameplaySnapshot.Default;
-    private bool _hasLoadedGameplaySnapshot;
-
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
-        Instance = this;
+        if (_instance != null && _instance != this) { Destroy(gameObject); return; }
+        _instance = this;
         DontDestroyOnLoad(gameObject);
+        GameServices.Register((ISettingsService)this);
     }
 
     private void Start()
     {
-        Settings = LoadSettings();
+        Settings = _viewModel.Load(Application.persistentDataPath);
         ApplyAll(Settings);
-        ApplyLoadedGameplaySnapshot();
+        _viewModel.ApplyGameplaySnapshotToProfile();
         BindUI();
         PopulateUI(Settings);
         ShowTab(0);
@@ -136,8 +122,6 @@ public class SettingsManager : MonoBehaviour
         Save(Settings);
         _settingsPanel?.SetActive(false);
     }
-
-    // ── タブ切替 ─────────────────────────────────────────────
     private void ShowTab(int index)
     {
         _panelGraphics?.SetActive(index     == 0);
@@ -246,89 +230,23 @@ public class SettingsManager : MonoBehaviour
     // ── 設定の適用 ───────────────────────────────────────────
     public void ApplyAll(SettingsData s)
     {
-        ApplyGraphics(s);
+        _viewModel.ApplyCoreSettings(s, GameServices.ColorBlind);
         ApplyAudio(s);
-        // 操作はリアルタイム参照（MouseSensitivity プロパティ経由）
-        ApplyAccessibility(s);
-    }
-
-    private void ApplyGraphics(SettingsData s)
-    {
-        // 解像度
-        var res = Screen.resolutions;
-        int idx = Mathf.Clamp(s.resolutionIndex, 0, res.Length - 1);
-        if (res.Length > 0)
-        {
-            FullScreenMode mode = s.windowMode switch
-            {
-                1 => FullScreenMode.Windowed,
-                2 => FullScreenMode.FullScreenWindow,   // ボーダーレス
-                _ => FullScreenMode.ExclusiveFullScreen,
-            };
-            Screen.SetResolution(res[idx].width, res[idx].height, mode);
-        }
-
-        // 画質
-        QualitySettings.SetQualityLevel(s.qualityLevel, true);
-
-        // FPS 上限
-        int fps = (s.fpsCap >= 0 && s.fpsCap < FPS_OPTIONS.Length) ? FPS_OPTIONS[s.fpsCap] : 60;
-        Application.targetFrameRate = fps == 0 ? -1 : fps;
-
-        // V-Sync
-        QualitySettings.vSyncCount = s.vSync ? 1 : 0;
-
-        // 影品質
-        ApplyShadowQuality(s.shadowQuality);
-    }
-
-    private static void ApplyShadowQuality(int level)
-    {
-        switch (level)
-        {
-            case 0: QualitySettings.shadows = ShadowQuality.Disable; break;
-            case 1: QualitySettings.shadows = ShadowQuality.HardOnly; QualitySettings.shadowDistance = 30f;  break;
-            case 2: QualitySettings.shadows = ShadowQuality.All;      QualitySettings.shadowDistance = 80f;  break;
-            case 3: QualitySettings.shadows = ShadowQuality.All;      QualitySettings.shadowDistance = 150f; break;
-        }
     }
 
     private void ApplyAudio(SettingsData s)
     {
         if (_audioMixer != null)
         {
-            // AudioMixer の exposed パラメーター名に合わせて調整
-            _audioMixer.SetFloat("MasterVolume", VolumeToDb(s.masterVolume));
-            _audioMixer.SetFloat("BgmVolume",    VolumeToDb(s.bgmVolume));
-            _audioMixer.SetFloat("SeVolume",     VolumeToDb(s.seVolume));
-            _audioMixer.SetFloat("VoiceVolume",  VolumeToDb(s.voiceVolume));
+            _audioMixer.SetFloat("MasterVolume", SettingsApplier.VolumeToDb(s.masterVolume));
+            _audioMixer.SetFloat("BgmVolume",    SettingsApplier.VolumeToDb(s.bgmVolume));
+            _audioMixer.SetFloat("SeVolume",     SettingsApplier.VolumeToDb(s.seVolume));
+            _audioMixer.SetFloat("VoiceVolume",  SettingsApplier.VolumeToDb(s.voiceVolume));
         }
         else
         {
-            // AudioMixer 未設定の場合は AudioListener で代替
             AudioListener.volume = s.masterVolume / 100f;
         }
-    }
-
-    private static float VolumeToDb(int vol0to100)
-    {
-        float t = Mathf.Clamp(vol0to100, 0, 100) / 100f;
-        return t < 0.001f ? -80f : 20f * Mathf.Log10(t);
-    }
-
-    private void ApplyAccessibility(SettingsData s)
-    {
-        // UI スケール：Canvas の scaleFactor を変更（対象 Canvas は検索）
-        float scale = s.uiScale / 100f;
-        foreach (var canvas in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
-        {
-            if (canvas.renderMode != RenderMode.WorldSpace)
-                canvas.scaleFactor = scale;
-        }
-
-        // GDD §14.7: 色覚サポート。パレットサービスへモードを伝搬し、購読済み UI を自動再着色。
-        if (ColorBlindPaletteService.Instance != null)
-            ColorBlindPaletteService.Instance.SetModeInt(s.colorBlindMode);
     }
 
     // ── マイクテスト（GDD §14.7）────────────────────────────
@@ -369,95 +287,7 @@ public class SettingsManager : MonoBehaviour
     }
 
     // ── 保存 / 読み込み ──────────────────────────────────────
-    public void Save(SettingsData s)
-    {
-        SaveToPlayerPrefs(s);
-
-        string playerDisplayName = SaveManager.Instance != null
-            ? SaveManager.Instance.PlayerDisplayName
-            : string.Empty;
-        bool tutorialHintsEnabled = SaveManager.Instance == null
-            || SaveManager.Instance.IsTutorialHintsEnabled();
-        SettingsJsonStore.Save(Application.persistentDataPath, s, playerDisplayName, tutorialHintsEnabled);
-    }
-
-    private SettingsData LoadSettings()
-    {
-        if (SettingsJsonStore.TryLoad(Application.persistentDataPath, out var loaded, out var gameplay))
-        {
-            _loadedGameplaySnapshot = gameplay;
-            _hasLoadedGameplaySnapshot = true;
-            SaveToPlayerPrefs(loaded);
-            return loaded;
-        }
-
-        _loadedGameplaySnapshot = SettingsGameplaySnapshot.Default;
-        _hasLoadedGameplaySnapshot = false;
-        return LoadFromPlayerPrefs();
-    }
-
-    private static void SaveToPlayerPrefs(SettingsData s)
-    {
-        PlayerPrefs.SetInt(KEY_RESOLUTION,     s.resolutionIndex);
-        PlayerPrefs.SetInt(KEY_WINDOW_MODE,    s.windowMode);
-        PlayerPrefs.SetInt(KEY_QUALITY,        s.qualityLevel);
-        PlayerPrefs.SetInt(KEY_FPS_CAP,        s.fpsCap);
-        PlayerPrefs.SetInt(KEY_VSYNC,          s.vSync ? 1 : 0);
-        PlayerPrefs.SetInt(KEY_SHADOW,         s.shadowQuality);
-        PlayerPrefs.SetInt(KEY_PARTICLE,       s.particleQuality);
-        PlayerPrefs.SetInt(KEY_MASTER_VOL,     s.masterVolume);
-        PlayerPrefs.SetInt(KEY_BGM_VOL,        s.bgmVolume);
-        PlayerPrefs.SetInt(KEY_SE_VOL,         s.seVolume);
-        PlayerPrefs.SetInt(KEY_VOICE_VOL,      s.voiceVolume);
-        PlayerPrefs.SetInt(KEY_MIC_GAIN,       s.micGain);
-        PlayerPrefs.SetFloat(KEY_MOUSE_SENS,   s.mouseSensitivity);
-        PlayerPrefs.SetInt(KEY_INVERT_Y,       s.invertY ? 1 : 0);
-        PlayerPrefs.SetInt(KEY_GAMEPAD_PRESET, s.gamepadPreset);
-        PlayerPrefs.SetInt(KEY_SUBTITLES,      s.subtitles ? 1 : 0);
-        PlayerPrefs.SetInt(KEY_UI_SCALE,       s.uiScale);
-        PlayerPrefs.SetInt(KEY_COLOR_BLIND,    s.colorBlindMode);
-        PlayerPrefs.SetInt(KEY_CAMERA_SHAKE,   s.reduceCameraShake ? 1 : 0);
-        PlayerPrefs.SetString(KEY_CROSSHAIR_HEX, s.crosshairColorHex);
-        PlayerPrefs.Save();
-    }
-
-    private static SettingsData LoadFromPlayerPrefs()
-    {
-        return new SettingsData(
-            resolutionIndex:   PlayerPrefs.GetInt(KEY_RESOLUTION,     Screen.resolutions.Length - 1),
-            windowMode:        PlayerPrefs.GetInt(KEY_WINDOW_MODE,    0),
-            qualityLevel:      PlayerPrefs.GetInt(KEY_QUALITY,        2),
-            fpsCap:            PlayerPrefs.GetInt(KEY_FPS_CAP,        1),  // 60 fps
-            vSync:             PlayerPrefs.GetInt(KEY_VSYNC,          1) == 1,
-            shadowQuality:     PlayerPrefs.GetInt(KEY_SHADOW,         2),
-            particleQuality:   PlayerPrefs.GetInt(KEY_PARTICLE,       1),
-            masterVolume:      PlayerPrefs.GetInt(KEY_MASTER_VOL,     80),
-            bgmVolume:         PlayerPrefs.GetInt(KEY_BGM_VOL,        70),
-            seVolume:          PlayerPrefs.GetInt(KEY_SE_VOL,         80),
-            voiceVolume:       PlayerPrefs.GetInt(KEY_VOICE_VOL,      100),
-            micGain:           PlayerPrefs.GetInt(KEY_MIC_GAIN,       100),
-            mouseSensitivity:  PlayerPrefs.GetFloat(KEY_MOUSE_SENS,   3.0f),
-            invertY:           PlayerPrefs.GetInt(KEY_INVERT_Y,       0) == 1,
-            gamepadPreset:     PlayerPrefs.GetInt(KEY_GAMEPAD_PRESET, 0),
-            subtitles:         PlayerPrefs.GetInt(KEY_SUBTITLES,      0) == 1,
-            uiScale:           PlayerPrefs.GetInt(KEY_UI_SCALE,       100),
-            colorBlindMode:    PlayerPrefs.GetInt(KEY_COLOR_BLIND,    0),
-            reduceCameraShake: PlayerPrefs.GetInt(KEY_CAMERA_SHAKE,   0) == 1,
-            crosshairColorHex: PlayerPrefs.GetString(KEY_CROSSHAIR_HEX, "#FFFFFF")
-        );
-    }
-
-    private void ApplyLoadedGameplaySnapshot()
-    {
-        if (!_hasLoadedGameplaySnapshot) return;
-        if (SaveManager.Instance == null) return;
-
-        string loadedName = _loadedGameplaySnapshot.PlayerDisplayName;
-        if (!string.IsNullOrWhiteSpace(loadedName))
-            SaveManager.Instance.PlayerDisplayName = loadedName;
-
-        SaveManager.Instance.SetTutorialHintsEnabled(_loadedGameplaySnapshot.TutorialHintsEnabled);
-    }
+    public void Save(SettingsData s) => _viewModel.Save(Application.persistentDataPath, s);
 }
 
 // ── 設定データ（struct）──────────────────

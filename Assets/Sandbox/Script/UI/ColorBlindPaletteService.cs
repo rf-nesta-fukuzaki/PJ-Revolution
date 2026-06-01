@@ -3,16 +3,19 @@ using UnityEngine;
 
 /// <summary>
 /// GDD §14.7 — 色覚サポートのランタイム仲介。
-/// 各 UI 要素が `ColorBlindPaletteService.Instance.GetColor(ColorSlot.PinDanger)` で色を引き、
+/// 各 UI 要素が `GameServices.ColorBlind.GetColor(ColorSlot.PinDanger)` で色を引き、
 /// OnPaletteChanged を購読して設定変更時に自動更新する。
 ///
 /// SettingsManager がユーザー変更を拾って `SetMode(...)` を呼ぶ。
 /// ScriptableObject が未アサインの場合は GDD §14.7 表の Hex 値を使ったハードコードパレットで動作する。
 /// </summary>
 [DisallowMultipleComponent]
-public class ColorBlindPaletteService : MonoBehaviour
+public class ColorBlindPaletteService : MonoBehaviour, IColorBlindPaletteService
 {
-    public static ColorBlindPaletteService Instance { get; private set; }
+    private static ColorBlindPaletteService _instance;
+
+    [System.Obsolete("GameServices.ColorBlind を使用してください")]
+    public static ColorBlindPaletteService Instance => _instance;
 
     // ── GDD §14.7: 通常色（Off モード）──────────────────────────
     public static readonly Color DefaultPinDanger     = Hex(0xFF4444);
@@ -34,17 +37,18 @@ public class ColorBlindPaletteService : MonoBehaviour
 
     private void Awake()
     {
-        if (Instance != null && Instance != this)
+        if (_instance != null && _instance != this)
         {
             Destroy(gameObject);
             return;
         }
-        Instance = this;
+        _instance = this;
+        GameServices.Register((IColorBlindPaletteService)this);
     }
 
     private void OnDestroy()
     {
-        if (Instance == this) Instance = null;
+        if (_instance == this) _instance = null;
     }
 
     /// <summary>

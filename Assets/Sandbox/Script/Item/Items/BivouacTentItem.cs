@@ -1,6 +1,5 @@
 using UnityEngine;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §5.2 — アイテム「ビバークテント」
@@ -88,7 +87,7 @@ public class BivouacTentItem : ItemBase
         _hasBeenPlacedThisExpedition = true;
 
         // GDD §15.2 — tent_setup
-        PPAudioManager.Instance?.PlaySE(SoundId.TentSetup, position);
+        GameServices.Audio?.PlaySE(SoundId.TentSetup, position);
 
         ConsumeDurability(20f);  // 設置で消耗
         Debug.Log($"[BivouacTent] テント設置完了。チェックポイントとして登録");

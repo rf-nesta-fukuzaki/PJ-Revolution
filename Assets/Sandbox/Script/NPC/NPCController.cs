@@ -108,6 +108,18 @@ public class NPCController : MonoBehaviour
         ThinkAndSetGoal(force: true);
     }
 
+    /// <summary>
+    /// 地形整合後に徘徊/リスポーン基点(_homePos)を現在の接地位置へ再設定する。
+    /// CombinedTerrainConformer から呼ぶ。Awake/Start 時点ではフラット前提の旧座標(地形下)に
+    /// なっているため、これを呼ばないと死亡リスポーンで地形の下に湧いてしまう。
+    /// </summary>
+    public void ReanchorHome(Vector3 worldPos)
+    {
+        _homePos = worldPos;
+        _stuckLastPos = worldPos;
+        _stuckSeconds = 0f;
+    }
+
     private void Update()
     {
         if (_isDead)

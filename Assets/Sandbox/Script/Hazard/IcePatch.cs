@@ -1,7 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §7.1 L5 — 氷面ハザード。
@@ -21,7 +20,13 @@ public class IcePatch : MonoBehaviour
         // GDD §15.2 — ice_crack（氷面に乗った瞬間のピキッ音）
         // プレイヤーのみに反応してスパム防止
         if (other != null && other.CompareTag("Player"))
-            PPAudioManager.Instance?.PlaySE(SoundId.IceCrack, other.transform.position);
+        {
+            GameServices.Audio?.PlaySE(SoundId.IceCrack, other.transform.position);
+
+            // ポップな氷の破片バースト（足元の氷面で青白く弾ける）。
+            var fxPos = new Vector3(other.transform.position.x, transform.position.y + 0.1f, other.transform.position.z);
+            Sandbox.World.Environment.StylizedImpactFx.Spawn(fxPos, new Color(0.72f, 0.90f, 1.00f), 0.8f, 12);
+        }
     }
 
     private void OnTriggerExit(Collider other)

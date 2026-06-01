@@ -1,0 +1,94 @@
+#pragma kernel Scatter
+
+// PlacementInstance — C# 側 (PlacementInstance.cs) とレイアウト一致
+struct PlacementInstance
+{
+    float3 position;
+    float  scale;
+    float  rotationY;
+    uint   prototype;
+};
+
+cbuffer PlacementConstants
+{
+    float4 _PMisc;        // x=fullRes y=apron z=cellSize w=candDim
+    float4 _WorldOriginXZ;// xy = chunk origin xz
+    float4 _TreeParams;   // x=density y=maxSlopeDeg z=scaleMin w=scaleMax
+    float4 _RockParams;   // x=density y=scaleMin z=scaleMax
+    uint4  _PSeed;        // x=seed
+}
+
+#define FULL_RES   ((int)_PMisc.x)
+#define APRON      ((int)_PMisc.y)
+#define CELL_SIZE  (_PMisc.z)
+#define CAND_DIM   ((uint)_PMisc.w)
+#define RESOLUTION (FULL_RES - 2 * APRON)
+
+RWTexture2D<float>  _HeightTex;
+RWTexture2D<float4> _NormalSlopeTex;
+RWTexture2D<float>  _BiomeMaskTex;
+AppendStructuredBuffer<PlacementInstance> _TreeInstances; // prototype 0
+AppendStructuredBuffer<PlacementInstance> _RockInstances; // prototype 1
+
+uint WangHash(uint s)
+{
+    s = (s ^ 61u) ^ (s >> 16);
+    s *= 9u; s ^= (s >> 4); s *= 0x27d4eb2du; s ^= (s >> 15);
+    return s;
+}
+float Rand01(uint s) { return (float)(WangHash(s) & 0x00FFFFFFu) / (float)(0x01000000u); }
+
+[numthreads(8, 8, 1)]
+void Scatter(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= CAND_DIM || id.y >= CAND_DIM) return;
+
+    uint seed = WangHash(_PSeed.x ^ (id.x * 73856093u) ^ (id.y * 19349663u));
+
+    float step = (float)RESOLUTION / (float)CAND_DIM;
+    float jx = Rand01(seed + 1u);
+    float jy = Rand01(seed + 2u);
+    float fx = APRON + ((float)id.x + jx) * step;
+    float fy = APRON + ((float)id.y + jy) * step;
+
+    int tx = clamp((int)floor(fx), APRON, FULL_RES - 1 - APRON);
+    int ty = clamp((int)floor(fy), APRON, FULL_RES - 1 - APRON);
+
+    int   biome  = (int)round(_BiomeMaskTex[int2(tx, ty)]);
+    float height = _HeightTex[int2(tx, ty)];
+    float slope  = _NormalSlopeTex[int2(tx, ty)].w;
+
+    int   proto = -1;
+    float scale = 1.0;
+    float r     = Rand01(seed + 3u);
+
+    if (biome == 2 || biome == 3) // Grass / Forest → Tree
+    {
+        if (slope < _TreeParams.y && r < _TreeParams.x)
+        {
+            proto = 0;
+            scale = lerp(_TreeParams.z, _TreeParams.w, Rand01(seed + 4u));
+        }
+    }
+    else if (biome == 4) // Rock → Rock
+    {
+        if (r < _RockParams.x)
+        {
+            proto = 1;
+            scale = lerp(_RockParams.y, _RockParams.z, Rand01(seed + 4u));
+        }
+    }
+
+    if (proto < 0) return;
+
+    PlacementInstance inst;
+    inst.position  = float3(_WorldOriginXZ.x + (fx - APRON) * CELL_SIZE,
+                            height,
+                            _WorldOriginXZ.y + (fy - APRON) * CELL_SIZE);
+    inst.scale     = scale;
+    inst.rotationY = Rand01(seed + 5u) * 6.2831853;
+    inst.prototype = (uint)proto;
+
+    if (proto == 0) _TreeInstances.Append(inst);
+    else            _RockInstances.Append(inst);
+}

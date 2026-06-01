@@ -3,10 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 using PeakPlunder.Audio;
-using PPAudioManager = PeakPlunder.Audio.AudioManager;
 
 /// <summary>
 /// GDD §2.2 — ベースキャンプ準備フェーズのショップ UI。
@@ -39,7 +39,7 @@ public class BasecampShop : MonoBehaviour
 
     [Header("表示制御")]
     [SerializeField] private bool _openOnStart = false;
-    [SerializeField] private KeyCode _togglePanelKey = KeyCode.B;
+    [SerializeField] private Key _togglePanelKey = Key.B;
 
     [Header("予算表示")]
     [SerializeField] private TextMeshProUGUI _budgetLabel;
@@ -134,7 +134,7 @@ public class BasecampShop : MonoBehaviour
         if (_shopPanel == null || _session == null) return;
         if (_session.CurrentState != BasecampShopFlowState.Open) return;
 
-        if (Input.GetKeyDown(_togglePanelKey))
+        if (InputStateReader.KeyPressedThisFrame(_togglePanelKey))
             SetShopPanelVisible(!_shopPanel.activeSelf);
     }
 
@@ -155,7 +155,7 @@ public class BasecampShop : MonoBehaviour
     {
         if (!_session.TryBuildPurchaseRequest(itemId, GetCurrentBudget(), out var item, out var reason))
         {
-            PPAudioManager.Instance?.PlaySE2D(SoundId.UiPurchaseFail);
+            GameServices.Audio?.PlaySE2D(SoundId.UiPurchaseFail);
             ShowError(reason);
             Debug.LogWarning($"[Shop] 購入拒否: {itemId} ({reason})");
             return false;
@@ -177,12 +177,12 @@ public class BasecampShop : MonoBehaviour
         if (!_session.ConfirmPurchase(item.Id, out var confirmError))
         {
             _localTeamBudget = Mathf.Min(TEAM_BUDGET_MAX, _localTeamBudget + item.Cost);
-            PPAudioManager.Instance?.PlaySE2D(SoundId.UiPurchaseFail);
+            GameServices.Audio?.PlaySE2D(SoundId.UiPurchaseFail);
             ShowError(confirmError);
             return false;
         }
 
-        PPAudioManager.Instance?.PlaySE2D(SoundId.UiPurchase);
+        GameServices.Audio?.PlaySE2D(SoundId.UiPurchase);
 
         RefreshBudgetLabel();
         RefreshAllRows();
@@ -200,7 +200,7 @@ public class BasecampShop : MonoBehaviour
                 return;
             }
 
-            PPAudioManager.Instance?.PlaySE2D(SoundId.UiPurchase);
+            GameServices.Audio?.PlaySE2D(SoundId.UiPurchase);
 
             RefreshBudgetLabel();
             RefreshAllRows();
@@ -208,7 +208,7 @@ public class BasecampShop : MonoBehaviour
         }
         else
         {
-            PPAudioManager.Instance?.PlaySE2D(SoundId.UiPurchaseFail);
+            GameServices.Audio?.PlaySE2D(SoundId.UiPurchaseFail);
             ShowError(string.IsNullOrEmpty(reason) ? "購入に失敗しました" : reason);
             Debug.Log($"[Shop] 購入拒否: {itemId} - {reason}");
         }
