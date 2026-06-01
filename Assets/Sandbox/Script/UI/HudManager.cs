@@ -27,6 +27,14 @@ public class HudManager : MonoBehaviour
     [SerializeField] private GameObject summitPanel;
     [SerializeField] private TextMeshProUGUI summitTimeText;
     [SerializeField] private TextMeshProUGUI messageText;
+    [SerializeField] private Image forceGaugeFill;
+    [SerializeField] private Image forceGaugeBackground;
+
+    [Header("力ゲージ（左端から伸縮）")]
+    [SerializeField] private float forceGaugeInnerPadding = 2f;
+    [SerializeField] private Color forceGaugeTrackColor = new Color(0.14f, 0.16f, 0.2f, 0.82f);
+    [SerializeField] private Color forceGaugeFillColorLow = new Color(0.95f, 0.84f, 0.38f, 1f);
+    [SerializeField] private Color forceGaugeFillColorHigh = new Color(1f, 0.48f, 0.18f, 1f);
 
     [Header("Crosshair Colors")]
     [SerializeField] private Color normalColor = Color.white;
@@ -35,6 +43,7 @@ public class HudManager : MonoBehaviour
 
     private readonly ExpeditionHudReadModel _readModel = new();
     private Transform _playerTransform;
+    private WireRopeActionController _wireRope;
     private Canvas _canvas;
 
     private string _formattedTime = "00:00.00";
@@ -42,6 +51,8 @@ public class HudManager : MonoBehaviour
     private int _totalCheckpoints;
     private float _lastPublishedAltitude = float.MinValue;
     private bool _forcePublish;
+    private bool _forceGaugeGrowLayoutApplied;
+    private static Sprite s_uiWhiteSprite;
 
     private const float AltitudePublishStepMeters = 1f;
 
@@ -65,6 +76,8 @@ public class HudManager : MonoBehaviour
 
         EnsureCanvas();
         CreateUIIfMissing();
+        _forceGaugeGrowLayoutApplied = false;
+        EnsureForceGaugeGrowLayout();
 
         if (summitPanel != null) summitPanel.SetActive(false);
 
@@ -119,13 +132,21 @@ public class HudManager : MonoBehaviour
         if (_playerTransform == null)
         {
             var player = GameObject.FindGameObjectWithTag("Player");
-            if (player != null) _playerTransform = player.transform;
+            if (player != null)
+            {
+                _playerTransform = player.transform;
+                _wireRope = player.GetComponent<WireRopeActionController>();
+            }
         }
+
+        if (_playerTransform != null && _wireRope == null)
+            _wireRope = _playerTransform.GetComponent<WireRopeActionController>();
 
         if (_playerTransform != null)
             PublishCurrentSnapshot();
 
         UpdateCrosshair();
+        UpdateForceGauge();
     }
 
     private void HandleTimerChanged(string formattedTime)
@@ -198,8 +219,91 @@ public class HudManager : MonoBehaviour
 
     private void UpdateCrosshair()
     {
-        // L Rope/Grapple 退役後はリング非表示（Step 3.2 以降で P 側ロープと再統合予定）。
-        if (crosshairRing != null) crosshairRing.gameObject.SetActive(false);
+        if (crosshairRing == null) return;
+
+        bool attached = _wireRope != null && _wireRope.Phase == WireRopeActionController.WireRopePhase.Attached;
+        crosshairRing.gameObject.SetActive(attached);
+        if (attached)
+            crosshairRing.color = attachedColor;
+    }
+
+    private void UpdateForceGauge()
+    {
+        if (forceGaugeFill == null || forceGaugeBackground == null) return;
+
+        EnsureForceGaugeGrowLayout();
+
+        bool visible = _wireRope != null && _wireRope.IsForceGaugeVisible;
+        forceGaugeFill.gameObject.SetActive(visible);
+        forceGaugeBackground.gameObject.SetActive(visible);
+        if (!visible) return;
+
+        float gauge = Mathf.Clamp01(_wireRope.ForceGauge / 100f);
+        ApplyForceGaugeFillWidth(gauge);
+        forceGaugeFill.color = Color.Lerp(forceGaugeFillColorLow, forceGaugeFillColorHigh, gauge);
+    }
+
+    private static Sprite GetUiWhiteSprite()
+    {
+        if (s_uiWhiteSprite != null)
+            return s_uiWhiteSprite;
+
+        var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+        tex.SetPixel(0, 0, Color.white);
+        tex.Apply();
+        s_uiWhiteSprite = Sprite.Create(tex, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 100f);
+        return s_uiWhiteSprite;
+    }
+
+    private void AssignGaugeImageSprite(Image image)
+    {
+        if (image == null)
+            return;
+
+        if (image.sprite == null)
+            image.sprite = GetUiWhiteSprite();
+
+        image.type = Image.Type.Simple;
+        image.preserveAspect = false;
+        image.raycastTarget = false;
+    }
+
+    /// <summary>
+    /// 左端固定のアンカー幅変更で、力に応じて右へ伸び／左へ縮む。
+    /// </summary>
+    private void ApplyForceGaugeFillWidth(float gauge)
+    {
+        EnsureForceGaugeGrowLayout();
+
+        float pad = forceGaugeInnerPadding;
+        RectTransform fill = forceGaugeFill.rectTransform;
+        fill.anchorMin = new Vector2(0f, 0f);
+        fill.anchorMax = new Vector2(gauge, 1f);
+        fill.pivot = new Vector2(0f, 0.5f);
+        fill.offsetMin = new Vector2(pad, pad);
+        fill.offsetMax = new Vector2(-pad, -pad);
+        fill.anchoredPosition = Vector2.zero;
+        fill.localScale = Vector3.one;
+    }
+
+    private void EnsureForceGaugeGrowLayout()
+    {
+        if (forceGaugeFill == null || forceGaugeBackground == null)
+            return;
+
+        if (forceGaugeFill.transform.parent != forceGaugeBackground.transform)
+            forceGaugeFill.transform.SetParent(forceGaugeBackground.transform, false);
+
+        AssignGaugeImageSprite(forceGaugeBackground);
+        AssignGaugeImageSprite(forceGaugeFill);
+
+        forceGaugeBackground.color = forceGaugeTrackColor;
+        forceGaugeFill.color = forceGaugeFillColorLow;
+
+        if (forceGaugeFill.transform.GetSiblingIndex() < forceGaugeBackground.transform.GetSiblingIndex())
+            forceGaugeFill.transform.SetAsLastSibling();
+
+        _forceGaugeGrowLayoutApplied = true;
     }
 
     // ─── 公開 API ───
@@ -269,6 +373,8 @@ public class HudManager : MonoBehaviour
 
         if (crosshairDot == null) crosshairDot = CreateCrosshairDot(parent);
         if (crosshairRing == null) crosshairRing = CreateCrosshairRing(parent);
+        if (forceGaugeBackground == null || forceGaugeFill == null)
+            CreateForceGauge(parent);
 
         if (summitPanel == null) CreateSummitPanel(parent);
     }
@@ -318,6 +424,31 @@ public class HudManager : MonoBehaviour
         img.color = new Color(grappableColor.r, grappableColor.g, grappableColor.b, 0.6f);
         go.SetActive(false);
         return img;
+    }
+
+    private void CreateForceGauge(Transform parent)
+    {
+        var bgGo = new GameObject("ForceGauge_Background");
+        bgGo.transform.SetParent(parent, false);
+        var bgRt = bgGo.AddComponent<RectTransform>();
+        bgRt.anchorMin = bgRt.anchorMax = new Vector2(0.5f, 0f);
+        bgRt.pivot = new Vector2(0.5f, 0f);
+        bgRt.sizeDelta = new Vector2(220f, 18f);
+        bgRt.anchoredPosition = new Vector2(0f, 36f);
+        forceGaugeBackground = bgGo.AddComponent<Image>();
+        forceGaugeBackground.color = forceGaugeTrackColor;
+        bgGo.SetActive(false);
+
+        var fillGo = new GameObject("ForceGauge_Fill");
+        fillGo.transform.SetParent(bgGo.transform, false);
+        fillGo.AddComponent<RectTransform>();
+        forceGaugeFill = fillGo.AddComponent<Image>();
+        forceGaugeFill.color = forceGaugeFillColorLow;
+        AssignGaugeImageSprite(forceGaugeBackground);
+        AssignGaugeImageSprite(forceGaugeFill);
+        ApplyForceGaugeFillWidth(0f);
+
+        _forceGaugeGrowLayoutApplied = true;
     }
 
     private void CreateSummitPanel(Transform parent)

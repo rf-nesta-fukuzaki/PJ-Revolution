@@ -626,6 +626,7 @@ public static class OfflineSceneLoopImplementer
             EnsurePrefabComponent<PinSystem>(root);
             EnsurePrefabComponent<EmoteSystem>(root);
             EnsurePrefabComponent<RagdollSystem>(root);
+            EnsurePrefabComponent<WireRopeActionController>(root);
             EnsureEmoteWheelSetup(root);
 
             PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);

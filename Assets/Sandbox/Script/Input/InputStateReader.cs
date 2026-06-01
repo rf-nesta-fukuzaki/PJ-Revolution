@@ -14,46 +14,94 @@ public static class InputStateReader
     private const float GamepadLookScale = 2f;
     private const float GamepadLookDeadzone = 0.08f;
 
-    public static Vector2 ReadMoveVectorRaw()
+    private static Gamepad GetGamepadForSlot(int slot)
+    {
+        if (!LocalCoopSettings.IsActive)
+            return slot == 0 ? Gamepad.current : null;
+
+        if (slot <= 0) return null;
+
+        var rosterMember = LocalCoopRoster.Instance?.GetSlot(slot);
+        if (rosterMember != null && rosterMember.AssignedGamepad != null)
+            return rosterMember.AssignedGamepad;
+
+        int index = slot - 1;
+        return index < Gamepad.all.Count ? Gamepad.all[index] : null;
+    }
+
+    private static bool UsesKeyboardForSlot(int slot)
+    {
+        if (!LocalCoopSettings.IsActive) return true;
+        if (slot > 0) return false;
+
+        var host = LocalCoopRoster.Instance?.GetSlot(0);
+        return host == null || host.AssignedGamepad == null;
+    }
+
+    private static bool UsesMouseForSlot(int slot)
+    {
+        if (!LocalCoopSettings.IsActive) return true;
+        if (slot > 0) return false;
+
+        var host = LocalCoopRoster.Instance?.GetSlot(0);
+        return host == null || host.AssignedGamepad == null;
+    }
+
+    public static Vector2 ReadMoveVectorRaw(int slot)
     {
         float horizontal = 0f;
         float vertical = 0f;
 
-        var keyboard = Keyboard.current;
-        if (keyboard != null)
+        if (UsesKeyboardForSlot(slot))
         {
-            if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) horizontal -= 1f;
-            if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) horizontal += 1f;
-            if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) vertical -= 1f;
-            if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) vertical += 1f;
+            var keyboard = Keyboard.current;
+            if (keyboard != null)
+            {
+                if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) horizontal -= 1f;
+                if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) horizontal += 1f;
+                if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) vertical -= 1f;
+                if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) vertical += 1f;
+            }
         }
 
-        var gamepad = Gamepad.current;
+        var gamepad = GetGamepadForSlot(slot);
         if (gamepad != null)
         {
             Vector2 stick = gamepad.leftStick.ReadValue();
-            if (Mathf.Abs(stick.x) > Mathf.Abs(horizontal)) horizontal = stick.x;
-            if (Mathf.Abs(stick.y) > Mathf.Abs(vertical)) vertical = stick.y;
+            if (!LocalCoopSettings.IsActive)
+            {
+                if (Mathf.Abs(stick.x) > Mathf.Abs(horizontal)) horizontal = stick.x;
+                if (Mathf.Abs(stick.y) > Mathf.Abs(vertical)) vertical = stick.y;
+            }
+            else
+            {
+                horizontal = stick.x;
+                vertical = stick.y;
+            }
         }
 
         return new Vector2(horizontal, vertical);
     }
 
-    public static Vector2 ReadLookDelta()
+    public static Vector2 ReadMoveVectorRaw() => ReadMoveVectorRaw(0);
+
+    public static Vector2 ReadLookDelta(int slot)
     {
         Vector2 mouseDelta = Vector2.zero;
-        var mouse = Mouse.current;
-        if (mouse != null)
-            mouseDelta = mouse.delta.ReadValue() * MouseLookScale;
+        if (UsesMouseForSlot(slot))
+        {
+            var mouse = Mouse.current;
+            if (mouse != null)
+                mouseDelta = mouse.delta.ReadValue() * MouseLookScale;
+        }
 
         Vector2 stickDelta = Vector2.zero;
-        var gamepad = Gamepad.current;
+        var gamepad = GetGamepadForSlot(slot);
         if (gamepad != null)
         {
             Vector2 stick = gamepad.rightStick.ReadValue();
             if (stick.sqrMagnitude >= GamepadLookDeadzone * GamepadLookDeadzone)
             {
-                // スティックは「位置」入力なので deltaTime を掛けてフレームレート依存を抑える。
                 float frameCompensation = Time.unscaledDeltaTime * 60f;
                 stickDelta = stick * (GamepadLookScale * frameCompensation);
             }
@@ -61,6 +109,8 @@ public static class InputStateReader
 
         return mouseDelta + stickDelta;
     }
+
+    public static Vector2 ReadLookDelta() => ReadLookDelta(0);
 
     /// <summary>視点感度を上げる（] キー）。プレイ中のライブ調整用。</summary>
     public static bool LookSensitivityUpPressedThisFrame()
@@ -76,25 +126,35 @@ public static class InputStateReader
         return keyboard != null && keyboard.leftBracketKey.wasPressedThisFrame;
     }
 
-    public static bool IsSprintPressed()
+    public static bool IsSprintPressed(int slot)
     {
-        var keyboard = Keyboard.current;
-        if (keyboard != null && (keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed))
-            return true;
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && (keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed))
+                return true;
+        }
 
-        var gamepad = Gamepad.current;
+        var gamepad = GetGamepadForSlot(slot);
         return gamepad != null && gamepad.leftStickButton.isPressed;
     }
 
-    public static bool JumpPressedThisFrame()
-    {
-        var keyboard = Keyboard.current;
-        if (keyboard != null && keyboard.spaceKey.wasPressedThisFrame)
-            return true;
+    public static bool IsSprintPressed() => IsSprintPressed(0);
 
-        var gamepad = Gamepad.current;
+    public static bool JumpPressedThisFrame(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.spaceKey.wasPressedThisFrame)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
         return gamepad != null && gamepad.buttonSouth.wasPressedThisFrame;
     }
+
+    public static bool JumpPressedThisFrame() => JumpPressedThisFrame(0);
 
     public static bool JumpReleasedThisFrame()
     {
@@ -166,45 +226,101 @@ public static class InputStateReader
         return gamepad != null && gamepad.startButton.wasPressedThisFrame;
     }
 
-    public static bool ReleaseRopePressedThisFrame()
+    /// <summary>ワイヤーロープ操作: R キー / ゲームパッド北ボタンを押している間。</summary>
+    public static bool IsWireRopeHeld(int slot)
     {
-        var keyboard = Keyboard.current;
-        if (keyboard != null && keyboard.rKey.wasPressedThisFrame)
-            return true;
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.rKey.isPressed)
+                return true;
+        }
 
-        var gamepad = Gamepad.current;
+        var gamepad = GetGamepadForSlot(slot);
+        return gamepad != null && gamepad.buttonNorth.isPressed;
+    }
+
+    public static bool IsWireRopeHeld() => IsWireRopeHeld(0);
+
+    /// <summary>ワイヤーロープ操作: R キー / ゲームパッド北ボタンを離したフレーム。</summary>
+    public static bool WireRopeReleasedThisFrame(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.rKey.wasReleasedThisFrame)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
+        return gamepad != null && gamepad.buttonNorth.wasReleasedThisFrame;
+    }
+
+    public static bool WireRopeReleasedThisFrame() => WireRopeReleasedThisFrame(0);
+
+    /// <summary>ワイヤーロープ操作: R キー / ゲームパッド北ボタンを押したフレーム（回収開始など）。</summary>
+    public static bool WireRopePressedThisFrame(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.rKey.wasPressedThisFrame)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
         return gamepad != null && gamepad.buttonNorth.wasPressedThisFrame;
     }
 
-    public static bool InteractPressedThisFrame()
-    {
-        var keyboard = Keyboard.current;
-        if (keyboard != null && keyboard.eKey.wasPressedThisFrame)
-            return true;
+    public static bool WireRopePressedThisFrame() => WireRopePressedThisFrame(0);
 
-        var gamepad = Gamepad.current;
+    [System.Obsolete("Use WireRopePressedThisFrame() instead.")]
+    public static bool ReleaseRopePressedThisFrame() => WireRopePressedThisFrame();
+
+    public static bool InteractPressedThisFrame(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.eKey.wasPressedThisFrame)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
         return gamepad != null && gamepad.buttonWest.wasPressedThisFrame;
     }
 
-    public static bool UsePressedThisFrame()
-    {
-        var keyboard = Keyboard.current;
-        if (keyboard != null && keyboard.fKey.wasPressedThisFrame)
-            return true;
+    public static bool InteractPressedThisFrame() => InteractPressedThisFrame(0);
 
-        var gamepad = Gamepad.current;
+    public static bool UsePressedThisFrame(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.fKey.wasPressedThisFrame)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
         return gamepad != null && gamepad.leftShoulder.wasPressedThisFrame;
     }
 
-    public static bool DropPressedThisFrame()
-    {
-        var keyboard = Keyboard.current;
-        if (keyboard != null && keyboard.gKey.wasPressedThisFrame)
-            return true;
+    public static bool UsePressedThisFrame() => UsePressedThisFrame(0);
 
-        var gamepad = Gamepad.current;
+    public static bool DropPressedThisFrame(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.gKey.wasPressedThisFrame)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
         return gamepad != null && gamepad.buttonEast.wasPressedThisFrame;
     }
+
+    public static bool DropPressedThisFrame() => DropPressedThisFrame(0);
 
     public static bool ReelPressed()
     {

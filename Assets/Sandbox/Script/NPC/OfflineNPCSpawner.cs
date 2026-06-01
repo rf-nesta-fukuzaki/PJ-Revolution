@@ -51,6 +51,9 @@ public class OfflineNPCSpawner : MonoBehaviour
     // ── ライフサイクル ────────────────────────────────────────
     private void Start()
     {
+        if (LocalCoopSettings.IsActive)
+            return;
+
         TryAutoLoadAssets();
 
         int count = Mathf.Clamp(_npcCount, 1, 3);

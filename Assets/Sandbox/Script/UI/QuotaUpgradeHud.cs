@@ -93,7 +93,7 @@ public class QuotaUpgradeHud : MonoBehaviour
         bool met     = _cachedExtracted >= required && required > 0;
 
         _quotaTitle.text = $"ノルマ Lv{level}";
-        _quotaValue.text = met ? $"抽出 {_cachedExtracted} / {required} pt  ✔達成"
+        _quotaValue.text = met ? $"抽出 {_cachedExtracted} / {required} pt  [達成]"
                                : $"抽出 {_cachedExtracted} / {required} pt";
         _quotaValue.color = met ? Good : TextMain;
 

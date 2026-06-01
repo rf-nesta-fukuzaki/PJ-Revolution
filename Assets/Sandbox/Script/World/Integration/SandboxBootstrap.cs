@@ -32,6 +32,7 @@ namespace Sandbox.World.Integration
         private SandboxRoutePath _routePath;
         private SandboxExplorerPositioner _explorerPositioner;
         private bool _routeGenerated;
+        private bool _worldReadyLogged;
 
         public TerrainGenerator TerrainGenerator => terrainGenerator;
         public ChunkColliderBaker ColliderBaker => _colliderBaker;
@@ -85,6 +86,16 @@ namespace Sandbox.World.Integration
         {
             if (terrainGenerator == null || terrainGenerator.Manager == null) return;
             _colliderBaker.UpdateAll(terrainGenerator.Manager);
+
+            // 初期ロード完了の計測ログ（全アクティブチャンクが生成＋ベイク完了した最初の瞬間）。
+            if (!_worldReadyLogged
+                && terrainGenerator.Manager.BuildingCount == 0
+                && _colliderBaker.BakedCount > 0
+                && _colliderBaker.BakedCount == terrainGenerator.Manager.Active.Count)
+            {
+                _worldReadyLogged = true;
+                Debug.Log($"[SandboxBootstrap] 初期地形ロード完了: {_colliderBaker.BakedCount} チャンク bake 済 / 経過 {Time.realtimeSinceStartup:F2}s (frame {Time.frameCount})");
+            }
 
             // 全コライダーがベイク完了かつ summit 観測済みになったらルートを 1 度だけ生成
             if (generateRoute && !_routeGenerated && _colliderBaker.IsAllBaked(1) && _colliderBaker.GlobalMaxY != float.MinValue)

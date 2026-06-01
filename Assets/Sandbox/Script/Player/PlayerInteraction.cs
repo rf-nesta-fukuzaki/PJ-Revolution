@@ -27,6 +27,7 @@ public class PlayerInteraction : MonoBehaviour
     private RelicCarrier       _carriedRelic;
     private StretcherItem      _attachedStretcher;
     private BalanceIndicator   _balanceIndicator;
+    private int                _inputSlot;
 
     // ── スコアサービス（Singleton 直結を排除） ────────────────
     private IScoreService ScoreService => GameServices.Score;
@@ -44,6 +45,7 @@ public class PlayerInteraction : MonoBehaviour
         _balanceIndicator = GetComponentInChildren<BalanceIndicator>();
         if (_cameraTransform == null)
             _cameraTransform = GetComponentInChildren<Camera>()?.transform ?? transform;
+        _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
     }
 
     private void OnEnable()  => _health.OnDied += OnPlayerDied;
@@ -51,11 +53,13 @@ public class PlayerInteraction : MonoBehaviour
 
     private void Update()
     {
-        if (_health.IsDead) return;
+        // 入力スロットは毎フレーム再解決（Awake 時点は未構成で -1 になり得る）。
+        _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
+        if (_inputSlot < 0 || _health.IsDead) return;
 
-        if (InputStateReader.InteractPressedThisFrame()) HandleInteract();
-        if (InputStateReader.UsePressedThisFrame())      HandleUse();
-        if (InputStateReader.DropPressedThisFrame())     HandleDrop();
+        if (InputStateReader.InteractPressedThisFrame(_inputSlot)) HandleInteract();
+        if (InputStateReader.UsePressedThisFrame(_inputSlot))      HandleUse();
+        if (InputStateReader.DropPressedThisFrame(_inputSlot))     HandleDrop();
     }
 
     // ── E: インタラクト ──────────────────────────────────────

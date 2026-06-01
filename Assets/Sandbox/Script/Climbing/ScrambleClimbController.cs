@@ -35,6 +35,7 @@ public class ScrambleClimbController : MonoBehaviour
     private StaminaSystem _stamina;
     private ExplorerController _controller;
     private ClimbingController _grabClimb;
+    private int _inputSlot;
 
     private bool _isClimbing;
     private Vector3 _wallNormal;
@@ -47,11 +48,15 @@ public class ScrambleClimbController : MonoBehaviour
         _stamina    = GetComponent<StaminaSystem>();
         _controller = GetComponent<ExplorerController>();
         _grabClimb  = GetComponent<ClimbingController>();
+        _inputSlot    = LocalCoopPartyMember.ResolveInputSlot(this);
         ResolveClimbMask();
     }
 
     private void Update()
     {
+        // 入力スロットは毎フレーム再解決（Awake 時点は未構成で -1 になり得る）。
+        _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
+        if (_inputSlot < 0) return;
         if (_isClimbing) UpdateClimbing();
         else TryStartClimbing();
     }
@@ -69,7 +74,7 @@ public class ScrambleClimbController : MonoBehaviour
         if (_grabClimb != null && _grabClimb.IsClimbing) return;
         if (_stamina != null && _stamina.IsExhausted) return;
 
-        Vector2 move = InputStateReader.ReadMoveVectorRaw();
+        Vector2 move = InputStateReader.ReadMoveVectorRaw(_inputSlot);
         if (move.y <= 0.1f) return; // 前進入力で壁を押し込む
 
         if (!DetectWall(out Vector3 normal)) return;
@@ -95,7 +100,7 @@ public class ScrambleClimbController : MonoBehaviour
         }
 
         // 壁から飛び降りる
-        if (InputStateReader.JumpPressedThisFrame())
+        if (InputStateReader.JumpPressedThisFrame(_inputSlot))
         {
             Vector3 off = _wallNormal * _jumpOffBoost + Vector3.up * _jumpOffBoost * 0.6f;
             StopClimbing(off);
@@ -105,7 +110,7 @@ public class ScrambleClimbController : MonoBehaviour
         // 壁を見失った（頂上 or 端）→ 乗り越え or 終了
         if (!DetectWall(out Vector3 normal))
         {
-            Vector2 m = InputStateReader.ReadMoveVectorRaw();
+            Vector2 m = InputStateReader.ReadMoveVectorRaw(_inputSlot);
             if (m.y > 0.1f && HasLedgeAbove())
             {
                 Vector3 mantle = -_wallNormal * _mantleForwardBoost + Vector3.up * _mantleUpBoost;
@@ -123,7 +128,7 @@ public class ScrambleClimbController : MonoBehaviour
 
     private void ApplyClimbMotion()
     {
-        Vector2 move = InputStateReader.ReadMoveVectorRaw();
+        Vector2 move = InputStateReader.ReadMoveVectorRaw(_inputSlot);
 
         // 壁平面に沿った上下・左右ベクトルを構成
         Vector3 wallRight = Vector3.Cross(Vector3.up, _wallNormal).normalized;

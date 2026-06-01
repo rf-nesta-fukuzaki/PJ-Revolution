@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: ErosionParams
   m_EditorClassIdentifier: Assembly-CSharp::Sandbox.World.Config.ErosionParams
   dropletsPerChunk: 50000
+  dropletsPerBatch: 16000
   maxLifetime: 30
   inertia: 0.05
   minSlope: 0.01

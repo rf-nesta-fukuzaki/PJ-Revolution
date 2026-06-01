@@ -1,0 +1,2024 @@
+using System.Collections;
+using UnityEngine;
+using PeakPlunder.Audio;
+using Sandbox.World.Integration;
+
+/// <summary>
+/// R キーによるカウボーイ式ワイヤーロープアクション。
+/// 溜め: キャラ頭上（水平面から約80°）でラッソをクルクル回す。
+/// 回収: 張力で引き寄せたあとロープ離脱でオーバーシュート。終了時にめり込み解消。
+/// </summary>
+[RequireComponent(typeof(Rigidbody))]
+public class WireRopeActionController : MonoBehaviour
+{
+    public enum WireRopePhase
+    {
+        Ready,
+        Charging,
+        Throwing,
+        Attached,
+        Retrieving,
+    }
+
+    private const int SpinSegments = 32;
+    private const int RopeLineSegments = 12;
+    private const string VisualChildName = "WireRopeVisual";
+    private const float GroundNormalThreshold = 0.65f;
+    private const float GroundClearance = 0.12f;
+    private const float GroundPenetrationCorrectThreshold = 0.2f;
+
+    [Header("投擲")]
+    [SerializeField] private float _minThrowRange = 4f;
+    [SerializeField] private float _maxThrowRange = 28f;
+    [SerializeField] private float _throwSpeed = 42f;
+    [SerializeField] private LayerMask _hookableLayers;
+
+    [Header("溜め — 頭上ラッソ（キャラ基準）")]
+    [SerializeField] private float _gaugeOscillationSpeed = 55f;
+    [SerializeField] private float _spinVisualSpeed = 620f;
+    [Tooltip("水平面からの仰角[°]。80°でほぼ真上、やや前。")]
+    [SerializeField, Range(60f, 89f)] private float _lassoElevationDeg = 80f;
+    [Tooltip("胸元からラッソ中心までの距離[m]。")]
+    [SerializeField] private float _lassoCenterDistance = 1.15f;
+    [Tooltip("キャラ足元から胸の高さ[m]。")]
+    [SerializeField] private float _lassoChestHeight = 1.05f;
+    [SerializeField] private float _lassoRadius = 0.95f;
+    [Tooltip("手元から輪への接続を太く見せる。")]
+    [SerializeField] private float _lassoHandWidthMul = 1.35f;
+
+    [Header("ロープ表示")]
+    [SerializeField] private float _ropeStartWidth = 0.09f;
+    [SerializeField] private float _ropeEndWidth = 0.05f;
+    [SerializeField] private float _ropeSag = 0.35f;
+    [SerializeField] private Color _ropeColor = new Color(0.92f, 0.78f, 0.42f, 1f);
+
+    [Header("回収 — 張力（物理）")]
+    [SerializeField] private float _pullTensionAccel = 46f;
+    [Tooltip("引き方向の最低速度。近づいてもここまで落ちない。")]
+    [SerializeField] private float _pullMinSpeed = 14f;
+    [SerializeField] private float _pullMaxSpeed = 38f;
+    [Tooltip("開始時のガキンとした初速（掃除機コンセントを引く反動）。")]
+    [SerializeField] private float _pullSnapImpulse = 17f;
+    [Tooltip("ロープ張力で許容する最大仰角[°]（真上への吹き上がり防止）。")]
+    [SerializeField, Range(5f, 45f)] private float _maxPullElevationDeg = 18f;
+    [Tooltip("アンカーが高い壁フック時に許す最大仰角[°]。")]
+    [SerializeField, Range(10f, 55f)] private float _maxPullElevationDegWallUp = 36f;
+    [Tooltip("張力による上向き速度の上限[m/s]。")]
+    [SerializeField] private float _maxUpwardSpeedFromTension = 12f;
+
+    [Header("バカげ物理 — ロープ弾性（控えめ）")]
+    [Tooltip("ロープが伸びた分だけ張力が増える係数。")]
+    [SerializeField] private float _ropeElasticGain = 0.75f;
+    [SerializeField, Range(1f, 2.5f)] private float _ropeElasticPower = 1.35f;
+    [Tooltip("速度がロープと大きくずれたときだけアンカーへ寄せる。")]
+    [SerializeField] private float _swingCentripetalGain = 0.2f;
+    [Tooltip("溜めゲージによる張力の振れ幅。")]
+    [SerializeField, Range(0f, 0.35f)] private float _chargePowerSpread = 0.22f;
+    [Tooltip("地面をロープ方向へ滑らせる補助（横方向の謎加速はしない）。")]
+    [SerializeField] private float _groundSlideAssistAccel = 22f;
+    [Tooltip("地面接触時にロープ方向へ維持する最低スライド速度[m/s]。")]
+    [SerializeField] private float _groundSlideMinSpeed = 9f;
+    [Tooltip("地面へのめり込み速度を減衰する係数（抵抗感）。")]
+    [SerializeField, Range(0.5f, 1f)] private float _groundImpactBleed = 0.88f;
+    [Tooltip("スライドの横ずれを抑える抵抗。")]
+    [SerializeField] private float _groundSlideLateralResist = 14f;
+    [Tooltip("地面からこれ以上離れていたらスライド補正しない[m]。")]
+    [SerializeField] private float _groundSlideMaxAirGap = 0.55f;
+    [Tooltip("近づくほど張力が増す係数（スナップ感）。")]
+    [SerializeField] private float _pullSnapTensionBoost = 0.68f;
+    [SerializeField] private float _pullPerpendicularDamp = 0.32f;
+    [Tooltip("回収中の WASD 追加加速度（Explorer と併用）。")]
+    [SerializeField] private float _retrieveSteerAccel = 32f;
+    [Tooltip("ロープ離脱後に保つ速度の倍率（オーバーシュート）。")]
+    [SerializeField, Range(0.8f, 1.3f)] private float _overshootMomentumScale = 1.2f;
+
+    [Header("先端到達 — ロープ回収と慣性吹っ飛び")]
+    [Tooltip("アンカー（ロープ先端）までの到達判定距離[m]。")]
+    [SerializeField] private float _anchorArrivalDistance = 1.65f;
+    [Tooltip("張力速度に掛ける慣性倍率。")]
+    [SerializeField] private float _releaseInertiaScale = 1.15f;
+    [Tooltip("離脱時の最低吹っ飛び速度[m/s]。")]
+    [SerializeField] private float _releaseInertiaMinSpeed = 9f;
+    [Tooltip("離脱時の最高吹っ飛び速度[m/s]。")]
+    [SerializeField] private float _releaseInertiaMaxSpeed = 40f;
+    [SerializeField, Range(0f, 1f)] private float _releasePerpendicularRetain = 0.2f;
+    [Tooltip("離脱後、この距離[m]滑ったら回収終了（入力があれば即終了）。")]
+    [SerializeField] private float _maxOvershootDistance = 6.5f;
+    [Tooltip("離脱後、この速度未満で入力なしのとき回収終了。")]
+    [SerializeField] private float _overshootEndSpeed = 1.4f;
+    [SerializeField] private float _retrieveStopDistance = 1.4f;
+    [SerializeField] private float _maxRetrieveSeconds = 10f;
+    [SerializeField] private float _standOffFromSurface = 0.75f;
+    [SerializeField] private float _groundSnapUp = 2.5f;
+    [Tooltip("めり込み解消の反復回数。")]
+    [SerializeField] private int _depenetrateIterations = 20;
+    [Tooltip("ゲージが高いほど初動の反動が強い。")]
+    [SerializeField] private float _gaugeLaunchBoost = 8f;
+
+    [Header("遷移の滑らかさ")]
+    [SerializeField] private float _retrieveTensionRampSeconds = 0.22f;
+    [Tooltip("停止点手前で張力を弱め始める距離[m]。")]
+    [SerializeField] private float _releaseSoftDistance = 2.1f;
+    [SerializeField, Range(0f, 1f)] private float _retrieveStartVelocityBlend = 0.58f;
+    [SerializeField] private float _releaseVelocityBlend = 0.58f;
+    [SerializeField] private float _pullAxisTurnSpeed = 7.5f;
+    [SerializeField] private float _visualBlendSpeed = 14f;
+    [SerializeField] private float _maxSpeedChangePerSecond = 70f;
+    [Tooltip("先端付近で速度が落ちたとき、到達扱いで離脱するまでの時間[s]。")]
+    [SerializeField] private float _pullStallReleaseSeconds = 0.45f;
+    [Tooltip("オーバーシュートが止まったときの強制終了[s]。")]
+    [SerializeField] private float _overshootMaxSeconds = 3.8f;
+    [Tooltip("張力減衰の下限（0にすると停止点手前で完全停止しやすい）。")]
+    [SerializeField, Range(0.2f, 1f)] private float _tensionFalloffFloor = 0.52f;
+    [Header("衝突 — アンカー方向スリングショット")]
+    [Tooltip("障害物に当たったとき、アンカー（ロープ先端）へ向かう初速[m/s]。")]
+    [SerializeField] private float _impactSlingshotSpeed = 34f;
+    [Tooltip("衝突後の速度倍率（1超えでバカげ反発）。")]
+    [SerializeField, Range(1f, 1.35f)] private float _impactRestitution = 1.1f;
+    [Tooltip("床へ強くめり込んだときだけ付与する小さな跳ね上げ。")]
+    [SerializeField] private float _impactSlingshotFloorPopUp = 3.5f;
+    [Tooltip("衝突直前の速度をどれだけ加算するか。")]
+    [SerializeField, Range(0f, 1f)] private float _impactSlingshotCarryFactor = 0.4f;
+    [SerializeField] private float _impactSlingshotMaxSpeed = 52f;
+    [SerializeField] private float _impactSlingshotBoostSeconds = 1.2f;
+    [SerializeField] private float _impactSlingshotCooldown = 0.14f;
+    [Tooltip("接触面へのめり込み速度がこの値以上ならスリングショット発動。")]
+    [SerializeField] private float _impactSlingshotMinIntoSpeed = 2f;
+    [Tooltip("強い衝突とみなすめり込み速度。")]
+    [SerializeField] private float _impactSlingshotHardImpactSpeed = 5f;
+    [Tooltip("壁・岩など（法線の Y がこれ未満）への接触で発動。")]
+    [SerializeField, Range(0.2f, 0.8f)] private float _obstacleNormalMaxY = 0.55f;
+    [Tooltip("床へのめり込み速度がこれ以上ならアンカー方向へ弾く。")]
+    [SerializeField] private float _floorSlingshotMinIntoSpeed = 1.2f;
+    [Tooltip("床を速く滑っているときもスリングショットする水平速度（高め＝誤発動しにくい）。")]
+    [SerializeField] private float _floorSlingshotMinHorizSpeed = 9f;
+    [Tooltip("めり込みがこれ未満なら位置スナップせず速度だけ整える。")]
+    [SerializeField] private float _softGroundPenetrationDepth = 0.35f;
+
+    [Header("フィール / 演出")]
+    [SerializeField] private float _throwEasePower = 1.85f;
+    [SerializeField] private float _tensionSoundInterval = 0.38f;
+    [SerializeField] private float _traumaRetrieveStart = 0.14f;
+    [SerializeField] private float _traumaRopeHit = 0.22f;
+    [SerializeField] private float _traumaRopeRelease = 0.2f;
+    [SerializeField] private float _traumaImpactSlingshot = 0.32f;
+
+    [Header("参照")]
+    [SerializeField] private Transform _aimTransform;
+    [SerializeField] private Transform _handOrigin;
+
+    private Rigidbody _rb;
+    private ExplorerController _explorer;
+    private int _inputSlot;
+    private LineRenderer _lineRenderer;
+    private Transform _visualRoot;
+    private GameObject _hookVisual;
+
+    private bool _savedUseGravity;
+    private bool _savedIsKinematic;
+    private bool _savedMotorState;
+    private WireRopePhase _phase = WireRopePhase.Ready;
+    private float _forceGauge;
+    private float _spinAngle;
+    private float _lastChargeGauge;
+    private Vector3 _anchorPoint;
+    private Vector3 _anchorNormal = Vector3.up;
+    private bool _anchorIsGround;
+    private float _chargedThrowRange;
+    private float _retrieveTimer;
+    private bool _ropeReleased;
+    private Vector3 _retrieveStopPoint;
+    private Vector3 _retrievePullAxis;
+    private float _retrieveTensionBlend;
+    private float _pullStallTimer;
+    private float _overshootTimer;
+    private float _impactBoostTimer;
+    private float _lastImpactSlingshotTime = -999f;
+    private float _visualSagBlend;
+    private float _visualWidthStart;
+    private float _attachedRopeSwayPhase;
+    private float _tensionSoundTimer;
+    private float _hookVisualScale = 0.22f;
+    private float _retrieveChargeFactor = 1f;
+    private float _peakTensionSpeed;
+    private Vector3 _overshootOrigin;
+    private Vector3 _inertiaSlideDirection = Vector3.forward;
+    private Vector3 _retrieveRunDirectionXZ = Vector3.forward;
+    private bool _retrieveSlideFrictionActive;
+    private float _savedCapsuleDynamicFriction;
+    private float _savedCapsuleStaticFriction;
+    private Coroutine _throwRoutine;
+    private SandboxCameraShake _cameraShake;
+    private CapsuleCollider _bodyCapsule;
+    private int _collisionMask;
+
+    public WireRopePhase Phase => _phase;
+    public float ForceGauge => _forceGauge;
+    public bool IsForceGaugeVisible => _phase == WireRopePhase.Charging;
+    public bool IsRopeVisible =>
+        _phase is WireRopePhase.Throwing or WireRopePhase.Attached
+        || (_phase == WireRopePhase.Retrieving && !_ropeReleased);
+    /// <summary>張力フェーズ中のみ Explorer の接地 MovePosition を抑止（オーバーシュート・停止時は操作可能）。</summary>
+    public bool SuppressExplorerLocomotion =>
+        _phase == WireRopePhase.Retrieving
+        && !_ropeReleased
+        && _retrieveTensionBlend >= 0.12f
+        && _pullStallTimer < _pullStallReleaseSeconds * 0.85f;
+
+    private void Awake()
+    {
+        _rb = GetComponent<Rigidbody>();
+        _explorer = GetComponent<ExplorerController>();
+        _bodyCapsule = GetComponent<CapsuleCollider>();
+        _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
+
+        ResolveAimReferences();
+        if (_handOrigin == null)
+            _handOrigin = _aimTransform;
+
+        EnsureVisualHierarchy();
+        ResolveHookMask();
+        ResolveCollisionMask();
+    }
+
+    private bool CanDriveRigidbody => _rb != null && !_rb.isKinematic;
+
+    private Vector3 BodyLinearVelocity => CanDriveRigidbody ? _rb.linearVelocity : Vector3.zero;
+
+    private void SaveAndEnableRigidbodyMotor()
+    {
+        if (_rb == null || _savedMotorState)
+            return;
+
+        _savedUseGravity = _rb.useGravity;
+        _savedIsKinematic = _rb.isKinematic;
+        _savedMotorState = true;
+
+        if (_rb.isKinematic)
+            _rb.isKinematic = false;
+
+        if (!_rb.useGravity)
+            _rb.useGravity = true;
+    }
+
+    private void RestoreRigidbodyMotorState()
+    {
+        if (_rb == null || !_savedMotorState)
+            return;
+
+        _rb.useGravity = _savedUseGravity;
+        _rb.isKinematic = _savedIsKinematic;
+        _savedMotorState = false;
+    }
+
+    private void SetBodyLinearVelocity(Vector3 velocity)
+    {
+        if (!CanDriveRigidbody)
+            return;
+        _rb.linearVelocity = velocity;
+    }
+
+    private void AddBodyLinearVelocity(Vector3 delta)
+    {
+        if (!CanDriveRigidbody)
+            return;
+        _rb.linearVelocity += delta;
+    }
+
+    private void SetBodyAngularVelocity(Vector3 velocity)
+    {
+        if (!CanDriveRigidbody)
+            return;
+        _rb.angularVelocity = velocity;
+    }
+
+    private void AddBodyForce(Vector3 force, ForceMode mode)
+    {
+        if (!CanDriveRigidbody)
+            return;
+        _rb.AddForce(force, mode);
+    }
+
+    private float RetrieveTensionEased =>
+        1f - (1f - _retrieveTensionBlend) * (1f - _retrieveTensionBlend);
+
+    private void EnsureCameraShake()
+    {
+        if (_cameraShake != null)
+            return;
+
+        var cam = AimTransform.GetComponentInChildren<Camera>();
+        if (cam == null)
+            return;
+
+        _cameraShake = cam.GetComponent<SandboxCameraShake>();
+        if (_cameraShake == null)
+            _cameraShake = cam.gameObject.AddComponent<SandboxCameraShake>();
+    }
+
+    private void AddCameraTrauma(float amount)
+    {
+        if (amount <= 0f)
+            return;
+
+        EnsureCameraShake();
+        _cameraShake?.AddTrauma(amount);
+    }
+
+    private static float EaseOut(float t, float power) =>
+        1f - Mathf.Pow(1f - Mathf.Clamp01(t), power);
+
+    private void ResolveCollisionMask()
+    {
+        _collisionMask = Physics.AllLayers;
+        int playerLayer = LayerMask.NameToLayer("Player");
+        if (playerLayer >= 0)
+            _collisionMask &= ~(1 << playerLayer);
+    }
+
+    private void ResolveAimReferences()
+    {
+        if (_aimTransform != null) return;
+        var childCam = GetComponentInChildren<Camera>();
+        _aimTransform = childCam != null ? childCam.transform : transform;
+    }
+
+    private Transform AimTransform => _aimTransform != null ? _aimTransform : transform;
+
+    private Vector3 GetFlatForward()
+    {
+        Vector3 f = transform.forward;
+        f.y = 0f;
+        if (f.sqrMagnitude < 0.01f) f = Vector3.forward;
+        return f.normalized;
+    }
+
+    private void Update()
+    {
+        // 入力スロットは毎フレーム再解決（Awake 時点は未構成で -1 になり得る）。
+        _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
+        if (_inputSlot < 0) return;
+
+        switch (_phase)
+        {
+            case WireRopePhase.Ready:
+                if (InputStateReader.IsWireRopeHeld(_inputSlot))
+                    BeginCharging();
+                break;
+
+            case WireRopePhase.Charging:
+                _forceGauge = Mathf.PingPong(Time.time * _gaugeOscillationSpeed, 100f);
+                _spinAngle += _spinVisualSpeed * Time.deltaTime;
+                if (InputStateReader.WireRopeReleasedThisFrame(_inputSlot))
+                {
+                    _lastChargeGauge = _forceGauge;
+                    ReleaseThrow();
+                }
+                break;
+
+            case WireRopePhase.Attached:
+                if (InputStateReader.WireRopePressedThisFrame(_inputSlot))
+                    BeginRetrieve();
+                break;
+
+            case WireRopePhase.Retrieving:
+                if (_ropeReleased && HasMoveInput())
+                    FinishRetrieveWithMomentum();
+                break;
+        }
+    }
+
+    private void LateUpdate()
+    {
+        switch (_phase)
+        {
+            case WireRopePhase.Charging:
+                UpdateCowboyLassoVisual();
+                break;
+            case WireRopePhase.Attached:
+            case WireRopePhase.Retrieving:
+                UpdateRetrieveRopeVisual();
+                break;
+        }
+    }
+
+    private void UpdateRetrieveRopeVisual()
+    {
+        float tensionTight = _phase == WireRopePhase.Retrieving
+            ? (_ropeReleased ? 0.35f : 0.4f + RetrieveTensionEased * 0.55f)
+            : 0.15f;
+
+        if (_phase == WireRopePhase.Attached)
+        {
+            _attachedRopeSwayPhase += Time.deltaTime * 2.4f;
+            tensionTight = 0.22f + Mathf.Sin(_attachedRopeSwayPhase) * 0.06f;
+        }
+
+        float targetSag = _ropeSag * (1f - tensionTight * 0.88f);
+        if (_ropeReleased)
+            targetSag *= 0.42f;
+
+        float speed = BodyLinearVelocity.magnitude;
+        float stretch = _phase == WireRopePhase.Retrieving ? GetRopeStretch01() : 0f;
+        float widthMul = 1f + Mathf.Clamp01(speed / 26f) * 0.22f + stretch * 0.14f;
+        if (_phase == WireRopePhase.Retrieving && !_ropeReleased)
+            widthMul += RetrieveTensionEased * 0.12f;
+
+        _visualSagBlend = Mathf.Lerp(_visualSagBlend, targetSag, Time.deltaTime * _visualBlendSpeed);
+        _visualWidthStart = Mathf.Lerp(_visualWidthStart, _ropeStartWidth * widthMul, Time.deltaTime * _visualBlendSpeed);
+
+        UpdateRopeBetween(GetHandOrigin(), _anchorPoint, _visualSagBlend, _visualWidthStart);
+        SyncHookVisual(_anchorPoint);
+    }
+
+    private void FixedUpdate()
+    {
+        if (_phase == WireRopePhase.Retrieving)
+            UpdateRetrievePhysics();
+    }
+
+    // ── 頭上カウボーイラッソ（水平輪＋手元テザー） ───────────
+    private void BeginCharging()
+    {
+        _phase = WireRopePhase.Charging;
+        _spinAngle = 0f;
+        _visualSagBlend = 0f;
+        _visualWidthStart = _ropeStartWidth * _lassoHandWidthMul;
+        SetLineVisible(true);
+        UpdateCowboyLassoVisual();
+    }
+
+    private void GetCowboyLassoFrame(out Vector3 center, out Vector3 axisRight, out Vector3 axisForward)
+    {
+        Vector3 forward = GetFlatForward();
+        float elev = _lassoElevationDeg * Mathf.Deg2Rad;
+        Vector3 pivot = transform.position + Vector3.up * _lassoChestHeight;
+        Vector3 radial = Vector3.up * Mathf.Sin(elev) + forward * Mathf.Cos(elev);
+        center = pivot + radial.normalized * _lassoCenterDistance;
+
+        axisRight = transform.right;
+        axisForward = forward;
+    }
+
+    private void UpdateCowboyLassoVisual()
+    {
+        GetCowboyLassoFrame(out Vector3 center, out Vector3 axisRight, out Vector3 axisForward);
+        Vector3 hand = GetHandOrigin();
+
+        Vector3 toHand = hand - center;
+        toHand.y = 0f;
+        if (toHand.sqrMagnitude < 0.01f)
+            toHand = -axisForward;
+        toHand.Normalize();
+
+        float attachAngle = Mathf.Atan2(Vector3.Dot(axisRight, toHand), Vector3.Dot(axisForward, toHand)) * Mathf.Rad2Deg;
+
+        int circleCount = SpinSegments + 1;
+        int totalCount = 1 + circleCount;
+        _lineRenderer.positionCount = totalCount;
+
+        _lineRenderer.SetPosition(0, hand);
+
+        for (int i = 0; i < circleCount; i++)
+        {
+            float angle = (attachAngle + _spinAngle + (360f / SpinSegments) * i) * Mathf.Deg2Rad;
+            Vector3 onCircle = center + (axisRight * Mathf.Cos(angle) + axisForward * Mathf.Sin(angle)) * _lassoRadius;
+            _lineRenderer.SetPosition(1 + i, onCircle);
+        }
+
+        float charge = _forceGauge * 0.01f;
+        float pulse = 1f + Mathf.Sin(Time.time * 14f) * 0.04f;
+        float widthMul = _lassoHandWidthMul * (1f + charge * 0.28f) * pulse;
+        _lineRenderer.startWidth = _ropeStartWidth * widthMul;
+        _lineRenderer.endWidth = _ropeEndWidth * (0.9f + charge * 0.15f);
+    }
+
+    // ── 投擲 ─────────────────────────────────────────────────
+    private void ReleaseThrow()
+    {
+        _chargedThrowRange = Mathf.Lerp(_minThrowRange, _maxThrowRange, _lastChargeGauge / 100f);
+        Vector3 origin = GetHandOrigin();
+        Vector3 direction = GetAimDirection();
+
+        GameServices.Audio?.PlaySE(SoundId.GrapplingFire, origin);
+
+        if (_throwRoutine != null)
+            StopCoroutine(_throwRoutine);
+        _throwRoutine = StartCoroutine(ThrowRoutine(origin, direction));
+    }
+
+    private IEnumerator ThrowRoutine(Vector3 origin, Vector3 direction)
+    {
+        _phase = WireRopePhase.Throwing;
+        SetLineVisible(true);
+        _lineRenderer.startWidth = _ropeStartWidth;
+        _lineRenderer.endWidth = _ropeEndWidth;
+
+        bool hit = TryResolveThrowTarget(origin, direction, out RaycastHit hitInfo);
+        Vector3 targetPoint = hit ? hitInfo.point : origin + direction * _chargedThrowRange;
+        if (hit)
+        {
+            _anchorNormal = hitInfo.normal.sqrMagnitude > 0.01f ? hitInfo.normal.normalized : Vector3.up;
+            _anchorIsGround = _anchorNormal.y >= GroundNormalThreshold;
+        }
+
+        SpawnHookVisual(origin);
+        float distance = Vector3.Distance(origin, targetPoint);
+        float duration = Mathf.Max(0.08f, distance / _throwSpeed);
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = EaseOut(elapsed / duration, _throwEasePower);
+            Vector3 hookPos = Vector3.Lerp(origin, targetPoint, t);
+            float sag = Mathf.Sin(t * Mathf.PI) * _ropeSag * (1f - t * 0.25f);
+            UpdateRopeBetween(origin, hookPos, sag);
+            SyncHookVisual(hookPos);
+            yield return null;
+        }
+
+        if (hit)
+        {
+            _anchorPoint = targetPoint;
+            _phase = WireRopePhase.Attached;
+            _visualSagBlend = _ropeSag * 0.5f;
+            UpdateRetrieveRopeVisual();
+            GameServices.Audio?.PlaySE(SoundId.GrapplingHit, _anchorPoint);
+            AddCameraTrauma(_traumaRopeHit);
+            PulseHookVisual(1.45f);
+        }
+        else
+        {
+            GameServices.Audio?.PlaySE(SoundId.ItemImpact, targetPoint);
+            yield return new WaitForSeconds(0.12f);
+            ResetToReady();
+        }
+
+        _throwRoutine = null;
+    }
+
+    private bool TryResolveThrowTarget(Vector3 origin, Vector3 direction, out RaycastHit hitInfo)
+    {
+        var hits = Physics.RaycastAll(origin, direction, _chargedThrowRange, _hookableLayers, QueryTriggerInteraction.Ignore);
+        float bestDist = float.MaxValue;
+        hitInfo = default;
+        bool found = false;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var h = hits[i];
+            if (h.collider == null) continue;
+            if (h.collider.transform.IsChildOf(transform)) continue;
+            if (h.distance < bestDist)
+            {
+                bestDist = h.distance;
+                hitInfo = h;
+                found = true;
+            }
+        }
+
+        return found;
+    }
+
+    // ── 回収（AddForce 慣性・重力残し） ─────────────────────
+    private void BeginRetrieve()
+    {
+        _phase = WireRopePhase.Retrieving;
+        _retrieveTimer = 0f;
+        _ropeReleased = false;
+        _retrieveTensionBlend = 0f;
+        _pullStallTimer = 0f;
+        _overshootTimer = 0f;
+
+        SaveAndEnableRigidbodyMotor();
+
+        _retrieveChargeFactor = 1f + _chargePowerSpread * (_lastChargeGauge / 100f - 0.5f) * 2f;
+
+        Vector3 runDir = Flatten(_anchorPoint - _rb.position);
+        _retrieveRunDirectionXZ = runDir.sqrMagnitude > 0.01f ? runDir.normalized : GetFlatForward();
+
+        _peakTensionSpeed = 0f;
+        _overshootOrigin = _rb.position;
+        _retrieveStopPoint = ComputeRetrieveStopPoint();
+        _retrievePullAxis = GetPhysicsPullDirection();
+        _inertiaSlideDirection = _retrievePullAxis;
+        ApplyRetrieveStartVelocity();
+
+        SetLineVisible(true);
+        _tensionSoundTimer = 0f;
+        if (IsGroundAnchor())
+            SetRetrieveSlideFriction(true);
+
+        GameServices.Audio?.PlaySE(SoundId.WinchStart, transform.position);
+        AddCameraTrauma(_traumaRetrieveStart);
+    }
+
+    private void SetRetrieveSlideFriction(bool enabled)
+    {
+        if (_bodyCapsule == null)
+            return;
+
+        PhysicsMaterial mat = _bodyCapsule.material;
+        if (mat == null)
+            return;
+
+        if (enabled)
+        {
+            if (_retrieveSlideFrictionActive)
+                return;
+
+            _savedCapsuleDynamicFriction = mat.dynamicFriction;
+            _savedCapsuleStaticFriction = mat.staticFriction;
+            mat.dynamicFriction = 0.06f;
+            mat.staticFriction = 0.1f;
+            _retrieveSlideFrictionActive = true;
+            return;
+        }
+
+        if (!_retrieveSlideFrictionActive)
+            return;
+
+        mat.dynamicFriction = _savedCapsuleDynamicFriction;
+        mat.staticFriction = _savedCapsuleStaticFriction;
+        _retrieveSlideFrictionActive = false;
+    }
+
+    private void ApplyRetrieveStartVelocity()
+    {
+        float snap = (_pullSnapImpulse + _gaugeLaunchBoost * (_lastChargeGauge / 100f)) * _retrieveChargeFactor;
+        Vector3 pullDir = GetPhysicsPullDirection();
+        _retrievePullAxis = pullDir;
+        _inertiaSlideDirection = GetReleaseSlideDirection();
+
+        Vector3 current = BodyLinearVelocity;
+        float along = Vector3.Dot(current, pullDir);
+        Vector3 perpendicular = current - pullDir * along;
+
+        float blend = _retrieveStartVelocityBlend;
+        float newAlong = Mathf.Max(along, 0f) + snap * blend;
+        SetBodyLinearVelocity(pullDir * newAlong + perpendicular * (1f - blend * 0.35f));
+        ClampExcessUpwardVelocity();
+    }
+
+    private bool IsGroundAnchor() => _anchorIsGround;
+
+    /// <summary>
+    /// 地面フック: 空中の停止点にせず、アンカー付近の地表上に停止点を置く（めり込み防止）。
+    /// 壁フック: 法線方向にオフセット。
+    /// </summary>
+    private Vector3 ComputeRetrieveStopPoint()
+    {
+        if (!IsGroundAnchor())
+            return _anchorPoint + _anchorNormal * _retrieveStopDistance;
+
+        float horizDist = Mathf.Min(
+            Vector3.Distance(new Vector3(_rb.position.x, 0f, _rb.position.z),
+                             new Vector3(_anchorPoint.x, 0f, _anchorPoint.z)),
+            _retrieveStopDistance);
+        horizDist = Mathf.Max(0.35f, horizDist);
+
+        Vector3 xz = _anchorPoint + _retrieveRunDirectionXZ * horizDist;
+        return ProjectBodyCenterOntoGround(xz, extraLift: 0f);
+    }
+
+    /// <summary>プレイヤー→アンカーのロープ方向。地面は水平、壁は法線に沿った面内のみ。</summary>
+    private Vector3 GetPhysicsPullDirection()
+    {
+        Vector3 toAnchor = _anchorPoint - _rb.position;
+        if (toAnchor.sqrMagnitude < 0.0001f)
+            return GetFlatForward();
+
+        if (IsGroundAnchor())
+        {
+            Vector3 flat = Flatten(toAnchor);
+            return flat.sqrMagnitude < 0.0001f ? GetFlatForward() : flat.normalized;
+        }
+
+        Vector3 alongSurface = toAnchor;
+        if (_anchorNormal.sqrMagnitude > 0.01f)
+            alongSurface = Vector3.ProjectOnPlane(toAnchor, _anchorNormal);
+
+        if (alongSurface.sqrMagnitude < 0.0001f)
+            alongSurface = Vector3.ProjectOnPlane(-_anchorNormal, Vector3.up);
+
+        if (alongSurface.sqrMagnitude < 0.0001f)
+            return GetFlatForward();
+
+        return ClampPullElevation(alongSurface.normalized);
+    }
+
+    private Vector3 ClampPullElevation(Vector3 dir)
+    {
+        if (dir.sqrMagnitude < 0.0001f)
+            return GetFlatForward();
+
+        dir.Normalize();
+        Vector3 flat = Flatten(dir);
+        if (flat.sqrMagnitude < 0.0001f)
+            return dir;
+
+        flat.Normalize();
+        float maxDeg = _maxPullElevationDeg;
+        if (!IsGroundAnchor())
+        {
+            float anchorAbove = _anchorPoint.y - _rb.position.y;
+            maxDeg = Mathf.Lerp(_maxPullElevationDeg, _maxPullElevationDegWallUp,
+                Mathf.Clamp01(Mathf.InverseLerp(1.5f, 14f, anchorAbove)));
+        }
+
+        float maxUp = Mathf.Tan(maxDeg * Mathf.Deg2Rad);
+        float up = Mathf.Clamp(dir.y, -maxUp * 0.25f, maxUp);
+        return new Vector3(flat.x, up, flat.z).normalized;
+    }
+
+    /// <summary>ロープがどれだけ「伸びている」か 0〜1（弾性張力用）。</summary>
+    private float GetRopeStretch01()
+    {
+        float refLen = Mathf.Max(_chargedThrowRange, _minThrowRange);
+        if (IsGroundAnchor())
+        {
+            float horiz = Vector3.Distance(
+                new Vector3(_rb.position.x, 0f, _rb.position.z),
+                new Vector3(_anchorPoint.x, 0f, _anchorPoint.z));
+            return Mathf.Clamp01(horiz / refLen);
+        }
+
+        return Mathf.Clamp01(Vector3.Distance(_rb.position, _anchorPoint) / refLen);
+    }
+
+    private float ComputeCableTensionMultiplier(float distToStop, float tensionScale)
+    {
+        float stretchDist = Mathf.InverseLerp(3f, _retrieveStopDistance + 10f, distToStop);
+        float stretch = Mathf.Max(GetRopeStretch01(), stretchDist);
+        float elastic = 1f + Mathf.Pow(stretch, _ropeElasticPower) * _ropeElasticGain;
+        float snap = 1f + Mathf.InverseLerp(10f, _retrieveStopDistance, distToStop) * _pullSnapTensionBoost;
+        return elastic * snap * tensionScale * _retrieveChargeFactor;
+    }
+
+    private void ApplyRetrieveMotor(Vector3 pullDir, Vector3 vel, float distToStop, float tensionScale)
+    {
+        float tensionMul = ComputeCableTensionMultiplier(distToStop, tensionScale);
+        AddBodyForce(pullDir * (_pullTensionAccel * tensionMul), ForceMode.Acceleration);
+
+        if (IsGroundAnchor())
+        {
+            ApplyGroundSlideAlongPull(pullDir, vel, tensionScale);
+            return;
+        }
+
+        ApplyAirSwingCorrection(pullDir, vel, tensionScale);
+    }
+
+    private void ApplyAirSwingCorrection(Vector3 pullDir, Vector3 vel, float tensionScale)
+    {
+        float speed = vel.magnitude;
+        if (speed < 4f || pullDir.sqrMagnitude < 0.01f)
+            return;
+
+        float align = Vector3.Dot(vel.normalized, pullDir);
+        if (align > 0.88f)
+            return;
+
+        Vector3 toAnchor = _anchorPoint - _rb.position;
+        if (toAnchor.sqrMagnitude < 0.04f)
+            return;
+
+        Vector3 radial = ClampPullElevation(toAnchor.normalized);
+        AddBodyForce(radial * (speed * _swingCentripetalGain * tensionScale), ForceMode.Acceleration);
+    }
+
+    private void ClampExcessUpwardVelocity()
+    {
+        if (!CanDriveRigidbody)
+            return;
+
+        Vector3 vel = _rb.linearVelocity;
+        if (vel.y <= _maxUpwardSpeedFromTension)
+            return;
+
+        vel.y = Mathf.MoveTowards(vel.y, _maxUpwardSpeedFromTension, _maxSpeedChangePerSecond * Time.fixedDeltaTime);
+        SetBodyLinearVelocity(vel);
+    }
+
+    private float GetDistanceToAnchor()
+    {
+        if (IsGroundAnchor())
+        {
+            return Vector3.Distance(
+                new Vector3(_rb.position.x, 0f, _rb.position.z),
+                new Vector3(_anchorPoint.x, 0f, _anchorPoint.z));
+        }
+
+        return Vector3.Distance(_rb.position, _anchorPoint);
+    }
+
+    private float GetAnchorArrivalThreshold()
+    {
+        float extra = IsGroundAnchor() ? GetBodyHalfHeight() * 0.2f : 0f;
+        return _anchorArrivalDistance + extra;
+    }
+
+    private bool HasReachedRopeTip() => GetDistanceToAnchor() <= GetAnchorArrivalThreshold();
+
+    private bool IsNearRopeTip() => GetDistanceToAnchor() <= GetAnchorArrivalThreshold() + _releaseSoftDistance;
+
+    private static Vector3 Flatten(Vector3 v) => new Vector3(v.x, 0f, v.z);
+
+    private float ComputeTensionFalloff(float _)
+    {
+        float dist = GetDistanceToAnchor();
+        float start = GetAnchorArrivalThreshold() + _releaseSoftDistance;
+        if (dist >= start)
+            return 1f;
+
+        return Mathf.Lerp(_tensionFalloffFloor, 1f, Mathf.InverseLerp(GetAnchorArrivalThreshold(), start, dist));
+    }
+
+    private Vector3 GetReleaseSlideDirection()
+    {
+        Vector3 dir = GetPhysicsPullDirection();
+        if (IsGroundAnchor())
+        {
+            dir = Flatten(dir);
+            if (TryGetGroundContact(out Vector3 groundNormal, out _))
+            {
+                Vector3 onSurface = Vector3.ProjectOnPlane(dir, groundNormal);
+                if (onSurface.sqrMagnitude > 0.01f)
+                    dir = onSurface;
+            }
+        }
+
+        if (dir.sqrMagnitude < 0.01f)
+            dir = _retrieveRunDirectionXZ;
+
+        return dir.normalized;
+    }
+
+    private float GetSpeedAlongDirection(Vector3 direction)
+    {
+        if (direction.sqrMagnitude < 0.01f)
+            return 0f;
+
+        direction.Normalize();
+        Vector3 vel = BodyLinearVelocity;
+
+        if (IsGroundAnchor() && TryGetGroundContact(out Vector3 groundNormal, out _))
+            vel = Vector3.ProjectOnPlane(vel, groundNormal);
+
+        return Mathf.Max(0f, Vector3.Dot(vel, direction));
+    }
+
+    private void UpdatePeakTensionSpeed()
+    {
+        float speed = GetSpeedAlongDirection(GetReleaseSlideDirection());
+        _peakTensionSpeed = Mathf.Max(_peakTensionSpeed, speed);
+    }
+
+    private float GetOvershootSlideDistance()
+    {
+        if (_inertiaSlideDirection.sqrMagnitude < 0.01f)
+            return 0f;
+
+        Vector3 delta = _rb.position - _overshootOrigin;
+        if (IsGroundAnchor())
+            delta.y = 0f;
+
+        return Vector3.Dot(delta, _inertiaSlideDirection.normalized);
+    }
+
+    private void UpdateRetrievePhysics()
+    {
+        float dt = Time.fixedDeltaTime;
+        if (_impactBoostTimer > 0f)
+            _impactBoostTimer = Mathf.Max(0f, _impactBoostTimer - dt);
+
+        _retrieveTimer += dt;
+        if (_retrieveTimer >= _maxRetrieveSeconds)
+        {
+            FinishRetrieveWithMomentum();
+            return;
+        }
+
+        if (TryTriggerImpactSlingshotAhead())
+            return;
+
+        RefreshRetrievePullAxis(dt);
+        RefreshRetrieveStopPoint(dt);
+        CorrectGroundPenetrationOnly();
+        ApplyGroundRetrieveSlide();
+        ApplyRetrievePlayerSteering();
+
+        if (_ropeReleased)
+        {
+            UpdateOvershootPhase();
+            return;
+        }
+
+        if (IsBodyBlocked(_rb.position) && IsStuckOnObstacle())
+        {
+            TriggerImpactSlingshot(null);
+            return;
+        }
+
+        _retrieveTensionBlend = Mathf.MoveTowards(
+            _retrieveTensionBlend, 1f,
+            dt / Mathf.Max(0.05f, _retrieveTensionRampSeconds));
+
+        UpdatePeakTensionSpeed();
+
+        float tensionFalloff = ComputeTensionFalloff(0f);
+        UpdatePullStallTimer(dt);
+
+        if (HasReachedRopeTip() || (IsNearRopeTip() && _pullStallTimer >= _pullStallReleaseSeconds))
+        {
+            ReleaseRopeAtTipWithInertia();
+            UpdateOvershootPhase();
+            return;
+        }
+
+        float dist = GetDistanceToAnchor();
+        Vector3 vel = BodyLinearVelocity;
+        float tensionScale = RetrieveTensionEased * tensionFalloff;
+
+        Vector3 targetPull = GetPhysicsPullDirection();
+        _retrievePullAxis = Vector3.Slerp(_retrievePullAxis, targetPull, 0.55f).normalized;
+        ApplyRetrieveMotor(_retrievePullAxis, vel, dist, tensionScale);
+
+        ApplyMinPullSpeed(_retrievePullAxis, vel, tensionScale);
+        TryPlayTensionSound(tensionScale, dt);
+
+        if (!HasMoveInput())
+            ApplyPerpendicularDamp(_retrievePullAxis, vel, tensionScale);
+
+        ClampExcessUpwardVelocity();
+        ClampRetrieveSpeed();
+    }
+
+    private void RefreshRetrievePullAxis(float dt)
+    {
+        Vector3 target = GetPhysicsPullDirection();
+        if (target.sqrMagnitude < 0.01f)
+            return;
+
+        _retrievePullAxis = Vector3.Slerp(_retrievePullAxis, target, _pullAxisTurnSpeed * dt).normalized;
+    }
+
+    private void RefreshRetrieveStopPoint(float dt)
+    {
+        Vector3 target = ComputeRetrieveStopPoint();
+        if (IsGroundAnchor())
+        {
+            _retrieveStopPoint.x = target.x;
+            _retrieveStopPoint.z = target.z;
+            _retrieveStopPoint.y = Mathf.Lerp(_retrieveStopPoint.y, target.y, Mathf.Clamp01(dt * 6f));
+            return;
+        }
+
+        _retrieveStopPoint = Vector3.Lerp(_retrieveStopPoint, target, Mathf.Clamp01(dt * 4f));
+    }
+
+    private void TryPlayTensionSound(float tensionScale, float dt)
+    {
+        if (_ropeReleased || tensionScale < 0.35f)
+            return;
+
+        _tensionSoundTimer -= dt;
+        if (_tensionSoundTimer > 0f)
+            return;
+
+        float stretch = GetRopeStretch01();
+        _tensionSoundTimer = _tensionSoundInterval * Mathf.Lerp(1f, 0.55f, stretch);
+        GameServices.Audio?.PlaySE(SoundId.RopeTension, Vector3.Lerp(transform.position, _anchorPoint, 0.5f));
+
+        float trauma = _traumaRetrieveStart * (0.35f + stretch * 0.45f);
+        if (BodyLinearVelocity.magnitude > 18f)
+            AddCameraTrauma(trauma);
+    }
+
+    private void ApplyPerpendicularDamp(Vector3 pullDir, Vector3 vel, float tensionScale)
+    {
+        float speedAlong = Vector3.Dot(vel, pullDir);
+        Vector3 lateral = vel - pullDir * speedAlong;
+        if (lateral.sqrMagnitude < 0.01f)
+            return;
+
+        float speed = vel.magnitude;
+        float damp = _pullPerpendicularDamp * tensionScale;
+        damp *= Mathf.Lerp(1f, 0.32f, Mathf.InverseLerp(10f, 28f, speed));
+        if (IsGroundAnchor())
+            damp *= 0.22f;
+
+        AddBodyForce(-lateral.normalized * (damp * lateral.magnitude), ForceMode.Acceleration);
+    }
+
+    private void ApplyMinPullSpeed(Vector3 pullDir, Vector3 vel, float tensionScale)
+    {
+        pullDir = ClampPullElevation(pullDir.normalized);
+        Vector3 useDir = IsGroundAnchor() ? Flatten(pullDir) : pullDir;
+        Vector3 useVel = IsGroundAnchor() ? Flatten(vel) : vel;
+        if (useDir.sqrMagnitude < 0.01f)
+            return;
+        useDir.Normalize();
+
+        float speedAlong = Vector3.Dot(useVel, useDir);
+        float minSpeed = _pullMinSpeed * _retrieveChargeFactor * Mathf.Max(tensionScale, _tensionFalloffFloor);
+        if (speedAlong >= minSpeed)
+            return;
+
+        Vector3 delta = useDir * (minSpeed - speedAlong);
+        float maxDelta = _maxSpeedChangePerSecond * Time.fixedDeltaTime;
+        if (delta.magnitude > maxDelta)
+            delta = delta.normalized * maxDelta;
+
+        if (IsGroundAnchor())
+            SetBodyLinearVelocity(new Vector3(vel.x + delta.x, vel.y, vel.z + delta.z));
+        else
+            AddBodyLinearVelocity(delta);
+
+        ClampExcessUpwardVelocity();
+    }
+
+    private void ApplyGroundSlideAlongPull(Vector3 pullDir, Vector3 vel, float tensionScale)
+    {
+        if (!TryGetGroundContact(out Vector3 groundNormal, out _))
+            return;
+
+        Vector3 slideDir = Vector3.ProjectOnPlane(Flatten(pullDir), groundNormal);
+        if (slideDir.sqrMagnitude < 0.01f)
+            slideDir = Vector3.ProjectOnPlane(Flatten(vel), groundNormal);
+        if (slideDir.sqrMagnitude < 0.01f)
+            return;
+
+        slideDir.Normalize();
+        Vector3 surfaceVel = Vector3.ProjectOnPlane(vel, groundNormal);
+        float along = Vector3.Dot(surfaceVel, slideDir);
+
+        float minSlide = _groundSlideMinSpeed * tensionScale * _retrieveChargeFactor;
+        if (along < minSlide)
+            AddBodyForce(slideDir * (_groundSlideAssistAccel * (1f - along / Mathf.Max(minSlide, 0.5f))), ForceMode.Acceleration);
+        else
+            AddBodyForce(slideDir * (_groundSlideAssistAccel * 0.35f), ForceMode.Acceleration);
+    }
+
+    /// <summary>
+    /// 地面フック回収中: 床接触で止まらず、法線方向の抵抗＋接線方向のスライドを維持する。
+    /// </summary>
+    private void ApplyGroundRetrieveSlide()
+    {
+        if (!IsGroundAnchor() || !CanDriveRigidbody)
+            return;
+
+        if (!TryGetGroundContact(out Vector3 groundNormal, out float groundY))
+            return;
+
+        float halfH = GetBodyHalfHeight();
+        float feetY = groundY + halfH + GroundClearance;
+        float airGap = _rb.position.y - feetY;
+        if (airGap > _groundSlideMaxAirGap)
+            return;
+
+        Vector3 pull = Flatten(_retrievePullAxis);
+        if (pull.sqrMagnitude < 0.01f)
+            pull = _retrieveRunDirectionXZ;
+        pull.Normalize();
+
+        Vector3 slideDir = Vector3.ProjectOnPlane(pull, groundNormal);
+        if (slideDir.sqrMagnitude < 0.01f)
+            slideDir = Vector3.ProjectOnPlane(Flatten(BodyLinearVelocity), groundNormal);
+        if (slideDir.sqrMagnitude < 0.01f)
+            return;
+        slideDir.Normalize();
+
+        Vector3 vel = BodyLinearVelocity;
+        float intoGround = Vector3.Dot(vel, groundNormal);
+        if (intoGround < 0f)
+            vel -= groundNormal * (intoGround * _groundImpactBleed);
+
+        Vector3 surfaceVel = Vector3.ProjectOnPlane(vel, groundNormal);
+        float along = Vector3.Dot(surfaceVel, slideDir);
+        Vector3 lateral = surfaceVel - slideDir * along;
+
+        float tension = _ropeReleased ? 0.45f : Mathf.Max(RetrieveTensionEased, 0.35f);
+        float minSlide = _groundSlideMinSpeed * tension * _retrieveChargeFactor;
+
+        if (along < minSlide)
+        {
+            float deficit = minSlide - Mathf.Max(along, 0f);
+            surfaceVel += slideDir * deficit;
+        }
+
+        if (lateral.sqrMagnitude > 0.04f)
+            surfaceVel -= lateral * Mathf.Clamp01(_groundSlideLateralResist * Time.fixedDeltaTime);
+
+        if (airGap < -0.02f)
+            vel.y = Mathf.Max(vel.y, 0f);
+
+        SetBodyLinearVelocity(new Vector3(surfaceVel.x, vel.y, surfaceVel.z));
+    }
+
+    private bool TryGetGroundContact(out Vector3 groundNormal, out float groundY)
+    {
+        groundNormal = Vector3.up;
+        groundY = _rb.position.y;
+
+        if (!TrySampleGroundHeight(_rb.position, out groundY, out RaycastHit hit))
+            return false;
+
+        if (hit.normal.sqrMagnitude > 0.01f)
+            groundNormal = hit.normal.normalized;
+
+        return true;
+    }
+
+    private void ClampRetrieveSpeed()
+    {
+        float maxSpeed = _impactBoostTimer > 0f ? _impactSlingshotMaxSpeed : _pullMaxSpeed;
+        Vector3 vel = BodyLinearVelocity;
+        if (vel.magnitude <= maxSpeed) return;
+        SetBodyLinearVelocity(Vector3.MoveTowards(vel, vel.normalized * maxSpeed, _maxSpeedChangePerSecond * Time.fixedDeltaTime));
+    }
+
+    private void ReleaseRopeAtTipWithInertia()
+    {
+        if (_ropeReleased)
+            return;
+
+        _ropeReleased = true;
+        _overshootTimer = 0f;
+        _pullStallTimer = 0f;
+        _overshootOrigin = _rb.position;
+
+        Vector3 slideDir = GetReleaseSlideDirection();
+        _inertiaSlideDirection = slideDir;
+        _retrievePullAxis = slideDir;
+
+        float tensionSpeed = Mathf.Max(_peakTensionSpeed, GetSpeedAlongDirection(slideDir));
+        tensionSpeed *= _releaseInertiaScale * _overshootMomentumScale * _retrieveChargeFactor;
+        tensionSpeed = Mathf.Clamp(tensionSpeed, _releaseInertiaMinSpeed, _releaseInertiaMaxSpeed);
+
+        Vector3 vel = BodyLinearVelocity;
+        Vector3 slideVel = slideDir * tensionSpeed;
+        Vector3 perpendicular = vel - slideDir * Vector3.Dot(vel, slideDir);
+        vel = slideVel + perpendicular * _releasePerpendicularRetain;
+
+        if (IsGroundAnchor())
+            vel.y = Mathf.Max(BodyLinearVelocity.y * 0.25f, 0f);
+
+        SetBodyLinearVelocity(vel);
+        ClampExcessUpwardVelocity();
+
+        RetractRopeVisual();
+        GameServices.Audio?.PlaySE(SoundId.RopeCut, transform.position);
+        AddCameraTrauma(_traumaRopeRelease);
+    }
+
+    private void RetractRopeVisual()
+    {
+        ClearHookVisual();
+        SetLineVisible(false);
+    }
+
+    private void UpdatePullStallTimer(float dt)
+    {
+        if (!IsNearRopeTip())
+        {
+            _pullStallTimer = 0f;
+            return;
+        }
+
+        if (IsGroundAnchor() && Flatten(_rb.linearVelocity).magnitude >= _floorSlingshotMinHorizSpeed)
+        {
+            _pullStallTimer = 0f;
+            return;
+        }
+
+        Vector3 slideDir = GetReleaseSlideDirection();
+        if (GetSpeedAlongDirection(slideDir) < 2f)
+            _pullStallTimer += dt;
+        else
+            _pullStallTimer = 0f;
+    }
+
+    private void UpdateOvershootPhase()
+    {
+        _overshootTimer += Time.fixedDeltaTime;
+
+        if (TryTriggerImpactSlingshotAhead())
+            return;
+
+        CorrectGroundPenetrationOnly();
+        ApplyGroundRetrieveSlide();
+        ApplyRetrievePlayerSteering();
+
+        Vector3 vel = BodyLinearVelocity;
+
+        if (_impactBoostTimer > 0f)
+            ApplyImpactSlingshotSustainForce();
+
+        if (HasMoveInput())
+        {
+            FinishRetrieveWithMomentum();
+            return;
+        }
+
+        float speed = GetRetrieveMomentumSpeed(vel);
+        float slideDist = GetOvershootSlideDistance();
+
+        if (_impactBoostTimer <= 0f
+            && (_overshootTimer >= _overshootMaxSeconds
+                || slideDist >= _maxOvershootDistance
+                || speed < _overshootEndSpeed))
+        {
+            FinishRetrieveWithMomentum();
+            return;
+        }
+
+        if (_inertiaSlideDirection.sqrMagnitude > 0.01f)
+        {
+            float speedAlong = Vector3.Dot(vel, _inertiaSlideDirection.normalized);
+            if (speedAlong < 0f && _impactBoostTimer <= 0f)
+                ApplyVelocityDeltaSmooth(_inertiaSlideDirection.normalized * (-speedAlong * 0.2f));
+        }
+
+        ClampExcessUpwardVelocity();
+        ClampRetrieveSpeed();
+    }
+
+    private void ApplyVelocityDeltaSmooth(Vector3 delta)
+    {
+        float maxDelta = _maxSpeedChangePerSecond * Time.fixedDeltaTime;
+        if (delta.magnitude > maxDelta)
+            delta = delta.normalized * maxDelta;
+        AddBodyLinearVelocity(delta);
+    }
+
+    private void FinishRetrieveWithMomentum()
+    {
+        if (_phase != WireRopePhase.Retrieving)
+            return;
+
+        Vector3 vel = BodyLinearVelocity;
+        Vector3 pos = _rb.position;
+
+        if (IsBodyBlocked(pos))
+            ResolveEmbeddedPosition(ref pos);
+        else if (NeedsGroundLift(pos))
+            TryLiftFromTerrain(ref pos);
+
+        if (Vector3.Distance(pos, _rb.position) > 0.05f)
+            SnapBodyPositionOnly(pos);
+
+        SetBodyLinearVelocity(vel);
+        SetBodyAngularVelocity(Vector3.zero);
+        Physics.SyncTransforms();
+
+        CompleteRetrieve();
+    }
+
+    private bool NeedsGroundLift(Vector3 pos)
+    {
+        if (!IsGroundAnchor()) return false;
+        if (!TrySampleGroundHeight(pos, out float groundY, out _)) return false;
+        float minY = groundY + GetBodyHalfHeight() + GroundClearance;
+        return pos.y < minY - GroundPenetrationCorrectThreshold;
+    }
+
+    /// <summary>障害物衝突時: ロープ先端（アンカー）方向へ引き剥がして吹っ飛ばす。</summary>
+    private void TriggerImpactSlingshot(Collision collision)
+    {
+        if (_phase != WireRopePhase.Retrieving)
+            return;
+        if (Time.time - _lastImpactSlingshotTime < _impactSlingshotCooldown)
+            return;
+
+        _lastImpactSlingshotTime = Time.time;
+        _impactBoostTimer = _impactSlingshotBoostSeconds;
+        _pullStallTimer = 0f;
+        _overshootTimer = 0f;
+
+        Vector3 vel = BodyLinearVelocity;
+        if (collision != null && collision.contactCount > 0)
+        {
+            ContactPoint contact = collision.GetContact(0);
+            float into = Vector3.Dot(vel, contact.normal);
+            if (into < 0f)
+                vel -= contact.normal * into;
+
+            _rb.position += contact.normal * 0.1f;
+        }
+
+        Vector3 surfaceNormal = Vector3.up;
+        if (collision != null && collision.contactCount > 0)
+            surfaceNormal = collision.GetContact(0).normal;
+
+        vel = ComputeImpactLaunchVelocity(vel, surfaceNormal);
+
+        if (!_ropeReleased)
+        {
+            _ropeReleased = true;
+            _overshootOrigin = _rb.position;
+            _inertiaSlideDirection = GetReleaseSlideDirection();
+            RetractRopeVisual();
+            GameServices.Audio?.PlaySE(SoundId.RopeCut, transform.position);
+        }
+
+        _retrievePullAxis = IsGroundAnchor() ? Flatten(vel).normalized : ClampPullElevation(vel.normalized);
+        if (_retrievePullAxis.sqrMagnitude < 0.01f)
+            _retrievePullAxis = GetPhysicsPullDirection();
+
+        SetBodyLinearVelocity(Vector3.ClampMagnitude(vel, _impactSlingshotMaxSpeed));
+        SetBodyAngularVelocity(Vector3.zero);
+        Physics.SyncTransforms();
+        AddCameraTrauma(_traumaImpactSlingshot);
+        PulseHookVisual(1.25f);
+    }
+
+    private void ApplyImpactSlingshotSustainForce()
+    {
+        Vector3 pullDir = GetPhysicsPullDirection();
+        if (pullDir.sqrMagnitude < 0.01f)
+            return;
+
+        float mul = ComputeCableTensionMultiplier(
+            Vector3.Distance(_rb.position, _retrieveStopPoint), 0.75f);
+        AddBodyForce(pullDir * (_pullTensionAccel * 0.38f * mul), ForceMode.Acceleration);
+    }
+
+    private Vector3 ComputeImpactLaunchVelocity(Vector3 incomingVel, Vector3 surfaceNormal)
+    {
+        Vector3 alongRope = GetPhysicsPullDirection();
+        Vector3 launchDir = alongRope;
+
+        if (incomingVel.sqrMagnitude > 0.25f && surfaceNormal.sqrMagnitude > 0.01f)
+        {
+            Vector3 reflected = Vector3.Reflect(incomingVel, surfaceNormal.normalized);
+            if (reflected.sqrMagnitude > 0.01f)
+                launchDir = Vector3.Slerp(alongRope, reflected.normalized, 0.4f).normalized;
+        }
+
+        if (surfaceNormal.y >= GroundNormalThreshold)
+        {
+            launchDir = Flatten(launchDir);
+            if (launchDir.sqrMagnitude < 0.01f)
+                launchDir = Flatten(alongRope);
+            if (launchDir.sqrMagnitude < 0.01f)
+                launchDir = GetFlatForward();
+
+            launchDir = launchDir.normalized;
+            if (incomingVel.y < -2f)
+                launchDir = (launchDir + Vector3.up * 0.2f).normalized;
+        }
+        else
+        {
+            launchDir = ClampPullElevation(launchDir);
+        }
+
+        float carry = incomingVel.magnitude * _impactSlingshotCarryFactor;
+        float launchSpeed = Mathf.Max(_impactSlingshotSpeed, carry + _impactSlingshotSpeed * 0.5f);
+        launchSpeed *= _impactRestitution * Mathf.Lerp(1f, 1.06f, _retrieveChargeFactor - 1f);
+        Vector3 result = launchDir * launchSpeed;
+
+        if (surfaceNormal.y >= GroundNormalThreshold && incomingVel.y < -3f)
+            result += Vector3.up * _impactSlingshotFloorPopUp;
+
+        return ClampPullElevation(result.normalized) * result.magnitude;
+    }
+
+    private float GetRetrieveMomentumSpeed(Vector3 vel)
+    {
+        if (!IsGroundAnchor())
+            return vel.magnitude;
+
+        float planar = Flatten(vel).magnitude;
+        float vertical = Mathf.Max(0f, vel.y);
+        return planar + vertical * 0.45f;
+    }
+
+    private bool TryTriggerImpactSlingshotAhead()
+    {
+        if (_phase != WireRopePhase.Retrieving)
+            return false;
+        if (Time.time - _lastImpactSlingshotTime < _impactSlingshotCooldown)
+            return false;
+
+        Vector3 vel = _rb.linearVelocity;
+        if (vel.sqrMagnitude < 1f)
+        {
+            if (!IsStuckOnObstacle())
+                return false;
+
+            TriggerImpactSlingshot(null);
+            return true;
+        }
+
+        Vector3 castDir = vel.normalized;
+        if (IsGroundAnchor())
+        {
+            Vector3 pull = Flatten(_retrievePullAxis);
+            if (pull.sqrMagnitude > 0.01f && Vector3.Dot(Flatten(vel).normalized, pull.normalized) > 0.35f)
+                castDir = pull.normalized;
+        }
+
+        GetCapsuleEnds(_rb.position, out Vector3 p1, out Vector3 p2, out float radius);
+        float castDist = vel.magnitude * Time.fixedDeltaTime + 0.45f;
+        if (!Physics.CapsuleCast(p1, p2, radius * 0.92f, castDir, out RaycastHit hit, castDist, _collisionMask,
+                QueryTriggerInteraction.Ignore))
+            return false;
+
+        if (hit.collider != null && hit.collider.transform.IsChildOf(transform))
+            return false;
+
+        if (hit.normal.y >= GroundNormalThreshold && IsGroundAnchor())
+            return false;
+
+        if (hit.distance > 0.15f && !ShouldTriggerSlingshotFromContact(hit.normal, vel))
+            return false;
+
+        TriggerImpactSlingshot(null);
+        return true;
+    }
+
+    private bool IsStuckOnObstacle()
+    {
+        if (!IsBodyBlocked(_rb.position))
+            return false;
+
+        if (IsGroundAnchor())
+        {
+            if (Flatten(BodyLinearVelocity).magnitude >= 2.5f)
+                return false;
+
+            if (TryGetGroundContact(out Vector3 n, out _) && n.y >= GroundNormalThreshold)
+                return false;
+        }
+
+        Vector3 lifted = _rb.position;
+        if (TryLiftFromTerrain(ref lifted) && lifted.y - _rb.position.y < 0.3f)
+            return false;
+
+        return true;
+    }
+
+    private bool IsImpactSlingshotCollision(Collision collision, bool allowLowSpeedStay)
+    {
+        if (collision == null || collision.contactCount == 0)
+            return false;
+
+        Vector3 relVel = collision.relativeVelocity;
+        if (allowLowSpeedStay && relVel.sqrMagnitude < _impactSlingshotMinIntoSpeed * _impactSlingshotMinIntoSpeed)
+            return false;
+
+        int count = collision.contactCount;
+        for (int i = 0; i < count; i++)
+        {
+            ContactPoint contact = collision.GetContact(i);
+            if (ShouldTriggerSlingshotFromContact(contact.normal, relVel))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool ShouldTriggerSlingshotFromContact(Vector3 normal, Vector3 approachVelocity)
+    {
+        if (normal.sqrMagnitude > 0.01f)
+            normal.Normalize();
+
+        if (IsGroundAnchor() && normal.y >= GroundNormalThreshold)
+            return false;
+
+        if (IsObstacleContactNormal(normal, approachVelocity))
+            return true;
+
+        return IsFloorSlingshotContact(normal, approachVelocity);
+    }
+
+    private bool IsFloorSlingshotContact(Vector3 normal, Vector3 approachVelocity)
+    {
+        if (normal.sqrMagnitude < 0.01f)
+            return false;
+
+        normal.Normalize();
+        if (normal.y < GroundNormalThreshold)
+            return false;
+
+        float into = Vector3.Dot(approachVelocity, normal);
+        if (into >= _floorSlingshotMinIntoSpeed)
+            return true;
+
+        if (IsGroundAnchor())
+            return false;
+
+        return Flatten(approachVelocity).magnitude >= _floorSlingshotMinHorizSpeed;
+    }
+
+    private bool IsObstacleContactNormal(Vector3 normal, Vector3 approachVelocity)
+    {
+        if (normal.sqrMagnitude < 0.01f)
+            return false;
+
+        normal.Normalize();
+        if (normal.y < _obstacleNormalMaxY)
+            return true;
+
+        float into = Vector3.Dot(approachVelocity, normal);
+        if (into >= _impactSlingshotHardImpactSpeed)
+            return true;
+
+        if (normal.y < 0.72f && into >= _impactSlingshotMinIntoSpeed)
+            return true;
+
+        return false;
+    }
+
+    private bool HasMoveInput()
+    {
+        Vector2 move = InputStateReader.ReadMoveVectorRaw(_inputSlot);
+        return move.sqrMagnitude > 0.04f;
+    }
+
+    private void ApplyRetrievePlayerSteering()
+    {
+        Vector2 move = InputStateReader.ReadMoveVectorRaw(_inputSlot);
+        if (move.sqrMagnitude < 0.04f) return;
+
+        Vector3 wish = transform.right * move.x + transform.forward * move.y;
+        if (IsGroundAnchor())
+            wish.y = 0f;
+
+        if (wish.sqrMagnitude < 0.01f)
+            return;
+
+        if (_retrievePullAxis.sqrMagnitude > 0.01f)
+        {
+            Vector3 pull = IsGroundAnchor() ? Flatten(_retrievePullAxis) : _retrievePullAxis;
+            wish = Vector3.Slerp(wish.normalized, pull.normalized, 0.55f);
+        }
+
+        float steerMul = _ropeReleased ? 1f : 0.65f;
+        AddBodyForce(wish.normalized * (_retrieveSteerAccel * steerMul), ForceMode.Acceleration);
+    }
+
+    private void OnCollisionEnter(Collision collision) =>
+        TryTriggerImpactSlingshotFromCollision(collision, allowLowSpeedStay: false);
+
+    private void OnCollisionStay(Collision collision) =>
+        TryTriggerImpactSlingshotFromCollision(collision, allowLowSpeedStay: true);
+
+    private void TryTriggerImpactSlingshotFromCollision(Collision collision, bool allowLowSpeedStay)
+    {
+        if (_phase != WireRopePhase.Retrieving)
+            return;
+        if (collision == null || collision.transform.IsChildOf(transform))
+            return;
+        if (collision.collider != null && collision.collider.isTrigger)
+            return;
+
+        if (IsGroundAnchor() && collision.contactCount > 0)
+        {
+            bool onlyFloor = true;
+            for (int i = 0; i < collision.contactCount; i++)
+            {
+                Vector3 n = collision.GetContact(i).normal;
+                if (n.y < GroundNormalThreshold)
+                {
+                    onlyFloor = false;
+                    break;
+                }
+            }
+
+            if (onlyFloor)
+                return;
+        }
+
+        if (!IsImpactSlingshotCollision(collision, allowLowSpeedStay))
+            return;
+
+        TriggerImpactSlingshot(collision);
+    }
+
+    private void ResolveEmbeddedPosition(ref Vector3 pos)
+    {
+        if (TryLiftFromTerrain(ref pos) && !IsBodyBlocked(pos))
+            return;
+
+        for (int i = 0; i < _depenetrateIterations; i++)
+        {
+            if (!IsBodyBlocked(pos))
+                return;
+
+            if (TryDepenetrateStep(ref pos))
+                continue;
+
+            if (TryLiftFromTerrain(ref pos))
+                continue;
+
+            if (TryFindSafeStandPosition(pos, out Vector3 safe))
+            {
+                pos = safe;
+                if (!IsBodyBlocked(pos))
+                    return;
+            }
+
+            pos += (IsGroundAnchor() ? Vector3.up : _anchorNormal) * 0.25f;
+        }
+
+        TryLiftFromTerrain(ref pos);
+    }
+
+    /// <summary>
+    /// 手続き地形は非凸 MeshCollider のため ComputePenetration が効かないことが多い。
+    /// 地表レイでカプセル中心の最低高度を保証する。
+    /// </summary>
+    private bool TryLiftFromTerrain(ref Vector3 bodyPos)
+    {
+        if (!TrySampleGroundHeight(bodyPos, out float groundY, out _))
+            return false;
+
+        float minCenterY = groundY + GetBodyHalfHeight() + GroundClearance;
+        if (bodyPos.y >= minCenterY - 0.02f)
+            return false;
+
+        bodyPos.y = minCenterY;
+        return true;
+    }
+
+    /// <summary>
+    /// 地形への深いめり込み時だけ持ち上げる。毎フレーム vy=0 にすると重力が無効化されたように見えるため、
+    /// 浅い誤差では触らない。
+    /// </summary>
+    private void CorrectGroundPenetrationOnly()
+    {
+        if (!IsGroundAnchor())
+            return;
+
+        Vector3 pos = _rb.position;
+        if (!TrySampleGroundHeight(pos, out float groundY, out _))
+            return;
+
+        float minCenterY = groundY + GetBodyHalfHeight() + GroundClearance;
+        float penetration = minCenterY - pos.y;
+        if (penetration <= GroundPenetrationCorrectThreshold)
+            return;
+
+        Vector3 vel = BodyLinearVelocity;
+        float planarSpeed = Flatten(vel).magnitude;
+
+        if (vel.y < 0f)
+        {
+            float bleed = planarSpeed >= 4f ? _groundImpactBleed : 0.45f;
+            float vy = vel.y * bleed + penetration * 2.5f;
+            SetBodyLinearVelocity(new Vector3(vel.x, vy, vel.z));
+        }
+
+        if (penetration > _softGroundPenetrationDepth && planarSpeed < 3f)
+        {
+            pos.y = minCenterY;
+            SnapBodyPositionOnly(pos);
+        }
+    }
+
+    private Vector3 ProjectBodyCenterOntoGround(Vector3 xzHint, float extraLift)
+    {
+        if (TrySampleGroundHeight(xzHint, out float groundY, out _))
+            return new Vector3(xzHint.x, groundY + GetBodyHalfHeight() + GroundClearance + extraLift, xzHint.z);
+
+        return new Vector3(xzHint.x, xzHint.y + GetBodyHalfHeight(), xzHint.z);
+    }
+
+    private float GetBodyHalfHeight() =>
+        _bodyCapsule != null ? _bodyCapsule.height * 0.5f : 0.9f;
+
+    private bool TrySampleGroundHeight(Vector3 near, out float groundY, out RaycastHit bestHit)
+    {
+        groundY = near.y;
+        bestHit = default;
+
+        Vector3 origin = new Vector3(near.x, near.y + _groundSnapUp, near.z);
+        var hits = Physics.RaycastAll(origin, Vector3.down, _groundSnapUp * 3f, _collisionMask, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0)
+            return false;
+
+        float bestY = float.MinValue;
+        bool found = false;
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            var h = hits[i];
+            if (h.collider == null) continue;
+            if (h.collider.transform.IsChildOf(transform)) continue;
+            if (h.point.y > bestY)
+            {
+                bestY = h.point.y;
+                bestHit = h;
+                found = true;
+            }
+        }
+
+        if (!found) return false;
+        groundY = bestY;
+        return true;
+    }
+
+    private void SnapBodyPositionOnly(Vector3 pos)
+    {
+        _rb.position = pos;
+        transform.position = pos;
+        Physics.SyncTransforms();
+    }
+
+    private void GetCapsuleEnds(Vector3 bodyCenter, out Vector3 top, out Vector3 bottom, out float radius)
+    {
+        radius = _bodyCapsule != null ? _bodyCapsule.radius * 0.92f : 0.35f;
+        float height = _bodyCapsule != null ? Mathf.Max(_bodyCapsule.height, radius * 2f) : 1.8f;
+        Vector3 up = transform.up;
+        top = bodyCenter + up * (height * 0.5f - radius);
+        bottom = bodyCenter - up * (height * 0.5f - radius);
+    }
+
+    private bool TryDepenetrateStep(ref Vector3 bodyPos)
+    {
+        if (_bodyCapsule == null) return false;
+
+        GetCapsuleEnds(bodyPos, out Vector3 p1, out Vector3 p2, out float radius);
+        var overlaps = Physics.OverlapCapsule(p1, p2, radius, _collisionMask, QueryTriggerInteraction.Ignore);
+        bool pushed = false;
+
+        foreach (var col in overlaps)
+        {
+            if (col == null || col.transform.IsChildOf(transform)) continue;
+
+            if (!Physics.ComputePenetration(
+                    _bodyCapsule, bodyPos, transform.rotation,
+                    col, col.transform.position, col.transform.rotation,
+                    out Vector3 dir, out float dist))
+                continue;
+
+            bodyPos += dir * (dist + 0.06f);
+            pushed = true;
+        }
+
+        return pushed;
+    }
+
+    private bool TryFindSafeStandPosition(Vector3 near, out Vector3 safePos)
+    {
+        safePos = near;
+        float halfHeight = _bodyCapsule != null ? _bodyCapsule.height * 0.5f : 0.9f;
+
+        Vector3 away = _anchorNormal.sqrMagnitude > 0.01f ? _anchorNormal : Vector3.up;
+        Vector3 tangent = Vector3.Cross(away, Vector3.up);
+        if (tangent.sqrMagnitude < 0.01f)
+            tangent = Vector3.Cross(away, Vector3.forward);
+        tangent.Normalize();
+        Vector3 bitangent = Vector3.Cross(away, tangent).normalized;
+
+        float[] radii = { 0f, 0.6f, 1.2f, 2f, 3f };
+        float[] angles = { 0f, 45f, 90f, 135f, 180f, 225f, 270f, 315f };
+
+        foreach (float r in radii)
+        {
+            foreach (float deg in angles)
+            {
+                float rad = deg * Mathf.Deg2Rad;
+                Vector3 offset = away * (_standOffFromSurface + r * 0.35f)
+                                 + (tangent * Mathf.Cos(rad) + bitangent * Mathf.Sin(rad)) * r;
+                Vector3 probe = _anchorPoint + offset;
+                if (!TrySampleGroundHeight(probe, out float groundY, out _))
+                    continue;
+
+                Vector3 stand = new Vector3(probe.x, groundY + halfHeight + GroundClearance, probe.z);
+                if (!IsBodyBlocked(stand))
+                {
+                    safePos = stand;
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsBodyBlocked(Vector3 center)
+    {
+        if (_bodyCapsule == null) return false;
+        GetCapsuleEnds(center, out Vector3 p1, out Vector3 p2, out float radius);
+        return Physics.CheckCapsule(p1, p2, radius, _collisionMask, QueryTriggerInteraction.Ignore);
+    }
+
+    private void CompleteRetrieve()
+    {
+        if (!_ropeReleased)
+            GameServices.Audio?.PlaySE(SoundId.RopeCut, transform.position);
+        ResetToReady();
+    }
+
+    private void ResetToReady()
+    {
+        _phase = WireRopePhase.Ready;
+        _forceGauge = 0f;
+        _retrieveTimer = 0f;
+        _ropeReleased = false;
+        _anchorIsGround = false;
+        _retrieveTensionBlend = 0f;
+        _pullStallTimer = 0f;
+        _overshootTimer = 0f;
+        _impactBoostTimer = 0f;
+        _lastImpactSlingshotTime = -999f;
+        _visualSagBlend = 0f;
+        _tensionSoundTimer = 0f;
+        SetRetrieveSlideFriction(false);
+
+        RestoreRigidbodyMotorState();
+        _rb.WakeUp();
+
+        ClearHookVisual();
+        SetLineVisible(false);
+    }
+
+    // ── ビジュアル ───────────────────────────────────────────
+    private void EnsureVisualHierarchy()
+    {
+        _visualRoot = transform.Find(VisualChildName);
+        if (_visualRoot == null)
+        {
+            var go = new GameObject(VisualChildName);
+            go.transform.SetParent(transform, false);
+            _visualRoot = go.transform;
+        }
+
+        _lineRenderer = _visualRoot.GetComponent<LineRenderer>();
+        if (_lineRenderer == null)
+            _lineRenderer = _visualRoot.gameObject.AddComponent<LineRenderer>();
+
+        ConfigureLineRenderer(_lineRenderer);
+    }
+
+    private void ConfigureLineRenderer(LineRenderer lr)
+    {
+        lr.enabled = false;
+        lr.useWorldSpace = true;
+        lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        lr.receiveShadows = false;
+        lr.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+        lr.textureMode = LineTextureMode.Stretch;
+        lr.alignment = LineAlignment.View;
+        lr.numCapVertices = 6;
+        lr.numCornerVertices = 4;
+        lr.startWidth = _ropeStartWidth;
+        lr.endWidth = _ropeEndWidth;
+        lr.startColor = _ropeColor;
+        lr.endColor = _ropeColor;
+        lr.material = CreateRopeMaterial();
+    }
+
+    private void UpdateRopeBetween(Vector3 start, Vector3 end, float sag, float startWidth)
+    {
+        SetLineVisible(true);
+        _lineRenderer.startWidth = startWidth;
+        _lineRenderer.endWidth = _ropeEndWidth;
+
+        int count = RopeLineSegments + 1;
+        _lineRenderer.positionCount = count;
+        for (int i = 0; i < count; i++)
+        {
+            float t = i / (float)RopeLineSegments;
+            Vector3 p = Vector3.Lerp(start, end, t);
+            p += Vector3.down * (sag * 4f * t * (1f - t));
+            _lineRenderer.SetPosition(i, p);
+        }
+    }
+
+    private void UpdateRopeBetween(Vector3 start, Vector3 end, float sag) =>
+        UpdateRopeBetween(start, end, sag, _ropeStartWidth);
+
+    private void SetLineVisible(bool visible)
+    {
+        if (_lineRenderer != null)
+            _lineRenderer.enabled = visible;
+    }
+
+    private void SpawnHookVisual(Vector3 origin)
+    {
+        ClearHookVisual();
+        var vis = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        vis.name = "WireRopeHook";
+        var col = vis.GetComponent<Collider>();
+        if (col != null) Destroy(col);
+
+        vis.transform.localScale = Vector3.one * 0.22f;
+        vis.transform.position = origin;
+
+        var mr = vis.GetComponent<MeshRenderer>();
+        if (mr != null)
+            mr.sharedMaterial = CreateRopeMaterial();
+
+        _hookVisual = vis;
+    }
+
+    private void SyncHookVisual(Vector3 pos)
+    {
+        if (_hookVisual == null)
+            return;
+
+        _hookVisual.transform.position = pos;
+        _hookVisualScale = Mathf.Lerp(_hookVisualScale, 0.22f, Time.deltaTime * 14f);
+        _hookVisual.transform.localScale = Vector3.one * _hookVisualScale;
+    }
+
+    private void PulseHookVisual(float scaleMul)
+    {
+        if (_hookVisual == null)
+            return;
+
+        _hookVisualScale = 0.22f * scaleMul;
+    }
+
+    private void ClearHookVisual()
+    {
+        if (_hookVisual == null) return;
+        Destroy(_hookVisual);
+        _hookVisual = null;
+    }
+
+    private static Material s_ropeMaterial;
+
+    private static Material CreateRopeMaterial()
+    {
+        if (s_ropeMaterial != null) return s_ropeMaterial;
+
+        var shader = Shader.Find("Universal Render Pipeline/Unlit")
+                     ?? Shader.Find("Unlit/Color")
+                     ?? Shader.Find("Sprites/Default");
+        if (shader == null) return null;
+
+        s_ropeMaterial = new Material(shader) { name = "WireRopeUnlit" };
+        if (s_ropeMaterial.HasProperty("_BaseColor"))
+            s_ropeMaterial.SetColor("_BaseColor", new Color(0.95f, 0.82f, 0.45f, 1f));
+        else
+            s_ropeMaterial.color = new Color(0.95f, 0.82f, 0.45f, 1f);
+
+        return s_ropeMaterial;
+    }
+
+    private Vector3 GetHandOrigin()
+    {
+        if (_handOrigin != null && _handOrigin != _aimTransform)
+            return _handOrigin.position;
+
+        var aim = AimTransform;
+        return aim.position + aim.forward * 0.35f + aim.right * 0.32f + Vector3.down * 0.2f;
+    }
+
+    private Vector3 GetAimDirection()
+    {
+        if (_aimTransform == null) return transform.forward;
+        return _aimTransform.forward.normalized;
+    }
+
+    private void ResolveHookMask()
+    {
+        int mask = _hookableLayers.value;
+        if (mask != 0) return;
+
+        mask = Physics.DefaultRaycastLayers;
+        TryAddLayer(ref mask, "Grappable");
+        TryAddLayer(ref mask, "Ground");
+        TryAddLayer(ref mask, "Default");
+
+        int playerLayer = LayerMask.NameToLayer("Player");
+        if (playerLayer >= 0)
+            mask &= ~(1 << playerLayer);
+
+        _hookableLayers = mask;
+    }
+
+    private static void TryAddLayer(ref int mask, string layerName)
+    {
+        int layer = LayerMask.NameToLayer(layerName);
+        if (layer >= 0)
+            mask |= 1 << layer;
+    }
+
+    private void OnDisable()
+    {
+        if (_throwRoutine != null)
+        {
+            StopCoroutine(_throwRoutine);
+            _throwRoutine = null;
+        }
+
+        if (_phase != WireRopePhase.Ready)
+            ResetToReady();
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (_phase != WireRopePhase.Attached && _phase != WireRopePhase.Retrieving) return;
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireSphere(_anchorPoint, 0.25f);
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireSphere(_retrieveStopPoint.sqrMagnitude > 0.01f ? _retrieveStopPoint : ComputeRetrieveStopPoint(), 0.2f);
+    }
+}

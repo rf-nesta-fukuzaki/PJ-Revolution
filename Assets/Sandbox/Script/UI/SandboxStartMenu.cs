@@ -24,8 +24,7 @@ namespace Sandbox.UI
         {
             EnsureEventSystem();
             BuildUI();
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            GameplayCursorPolicy.SetMenuMode();
         }
 
         private void BuildUI()

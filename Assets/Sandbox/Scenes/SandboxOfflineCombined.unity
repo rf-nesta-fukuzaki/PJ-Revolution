@@ -346,8 +346,8 @@ MonoBehaviour:
   loadRadius: 2
   lod1Distance: 950
   lod2Distance: 2200
-  perFrameDispatchBudget: 8
-  maxChunksInFlight: 4
+  perFrameDispatchBudget: 32
+  maxChunksInFlight: 12
   maxInstancesPerChunk: 4096
   enablePlacement: 1
   placementShader: {fileID: 7200000, guid: fa5ecc23184d042d8b6c4370612d9aa2, type: 3}
@@ -364,6 +364,7 @@ MonoBehaviour:
   autoUseMainCamera: 1
   buildDebugMesh: 1
   debugMeshMaterial: {fileID: 0}
+  castTerrainShadows: 0
 --- !u!4 &8898227
 Transform:
   m_ObjectHideFlags: 0
@@ -445,6 +446,8 @@ MonoBehaviour:
   gameplayCamFarClip: 1800
   enablePostProcessing: 1
   distributeClimbCourse: 1
+  distributeRelics: 1
+  distributeShrines: 1
   climbDistributeMinChunks: 16
   climbSummitStableSeconds: 1.5
   climbStartFraction: 0.08
@@ -10994,6 +10997,16 @@ MonoBehaviour:
   _amp2: 0.22
   _scale3: 0.065
   _amp3: 0.07
+  _routeNoiseScale: 0.018
+  _routeMeanderMeters: 14
+  _routeBaseWidth: 24
+  _routeSummitWidth: 5.5
+  _routeFlattenStrength: 0.29
+  _fractalOctaves: 6
+  _fractalPersistence: 0.47
+  _fractalLacunarity: 2.12
+  _domainWarpScale: 0.01
+  _domainWarpMeters: 18
   _terrainMaterial: {fileID: 0}
 --- !u!1 &638968761
 GameObject:

@@ -54,6 +54,8 @@ public class ExplorerCameraLook : MonoBehaviour
     private Vector2 _smoothedLookDelta;
     private Vector2 _smoothedLookVelocity;
     private bool _isLocalOwner;
+    private bool _localCoopHuman;
+    private int _inputSlot;
     private Rigidbody _rb;
     private readonly List<RendererState> _hiddenRenderers = new();
 
@@ -87,6 +89,14 @@ public class ExplorerCameraLook : MonoBehaviour
             _visualRoot = transform;
 
         _rb = GetComponent<Rigidbody>();
+        _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
+    }
+
+    /// <summary>ローカル Co-op の人間プレイヤーとしてカメラ・入力を有効化する。</summary>
+    public void SetLocalCoopHuman(bool enabled)
+    {
+        _localCoopHuman = enabled;
+        RefreshLocalOwnerState();
     }
 
     private void Start()
@@ -94,7 +104,7 @@ public class ExplorerCameraLook : MonoBehaviour
         RefreshLocalOwnerState();
         if (!_isLocalOwner) return;
 
-        LockCursor();
+        GameplayCursorPolicy.SetGameplayMode();
         DisableRedundantAudioListener();
         ApplyFirstPersonLocalVisuals();
 
@@ -119,13 +129,16 @@ public class ExplorerCameraLook : MonoBehaviour
 
     private void Update()
     {
+        // 入力スロットは毎フレーム再解決（Awake 時点は未構成で -1 になり得る）。
+        _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
         RefreshLocalOwnerState();
         if (!_isLocalOwner) return;
 
         if (_hideLocalBody && _hiddenRenderers.Count == 0)
             ApplyFirstPersonLocalVisuals();
 
-        HandleCursorLock();
+        GameplayCursorPolicy.Enforce();
+        HandleCursorToggleWhenNoPauseMenu();
         HandleSensitivityTuning();
     }
 
@@ -133,9 +146,9 @@ public class ExplorerCameraLook : MonoBehaviour
     {
         if (!_isLocalOwner) return;
         if (_cameraRig == null) return;
-        if (Cursor.lockState != CursorLockMode.Locked) return;
+        if (!GameplayCursorPolicy.AllowsCameraLook) return;
 
-        Vector2 lookDelta = InputStateReader.ReadLookDelta();
+        Vector2 lookDelta = InputStateReader.ReadLookDelta(_inputSlot);
         lookDelta = Vector2.ClampMagnitude(lookDelta, _maxLookDeltaPerFrame);
 
         if (_useLookSmoothing)
@@ -182,15 +195,22 @@ public class ExplorerCameraLook : MonoBehaviour
         _appliedYaw = _yaw;
     }
 
-    private void HandleCursorLock()
+    /// <summary>
+    /// PauseMenu が無いシーン（オフライン検証など）では Esc でカーソル表示を切り替える。
+    /// PauseMenu がある場合は Pause/Resume 側でカーソルを制御する。
+    /// </summary>
+    private void HandleCursorToggleWhenNoPauseMenu()
     {
-        // 左クリックでロック
-        if (InputStateReader.PrimaryPointerPressedThisFrame() && Cursor.lockState != CursorLockMode.Locked)
-            LockCursor();
+        if (PauseMenu.IsPaused)
+            return;
 
-        // ESC でアンロック
-        if (InputStateReader.EscapePressedThisFrame())
-            UnlockCursor();
+        if (!InputStateReader.EscapePressedThisFrame())
+            return;
+
+        if (FindFirstObjectByType<PauseMenu>() != null)
+            return;
+
+        GameplayCursorPolicy.ToggleMenuMode();
     }
 
     /// <summary>
@@ -208,18 +228,6 @@ public class ExplorerCameraLook : MonoBehaviour
         _sensitivityX = Mathf.Clamp(_sensitivityX + step, _minSensitivity, _maxSensitivity);
         _sensitivityY = Mathf.Clamp(_sensitivityY + step, _minSensitivity, _maxSensitivity);
         Debug.Log($"[ExplorerCameraLook] 視点感度 = {_sensitivityX:0.##}");
-    }
-
-    private static void LockCursor()
-    {
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-    }
-
-    private static void UnlockCursor()
-    {
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
     }
 
     private void OnDisable()
@@ -293,6 +301,19 @@ public class ExplorerCameraLook : MonoBehaviour
 
     private void RefreshLocalOwnerState()
     {
+        if (_localCoopHuman)
+        {
+            _isLocalOwner = true;
+            return;
+        }
+
+        var member = GetComponent<LocalCoopPartyMember>();
+        if (member != null)
+        {
+            _isLocalOwner = member.IsHumanControlled;
+            return;
+        }
+
         var netObj = GetComponent<NetworkObject>();
         _isLocalOwner = netObj == null || netObj.IsOwner;
     }

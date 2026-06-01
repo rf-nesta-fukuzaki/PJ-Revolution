@@ -1,20 +1,23 @@
-using System.Text;
 using Unity.Netcode;
 using UnityEngine;
 
 /// <summary>
-/// OfflineTestScene 用 IMGUI デバッグオーバーレイ。
+/// F10 で開閉する統合デバッグメニュー（IMGUI）。
+/// オンライン/オフラインのセッション操作（<see cref="SandboxOnlineSessionBootstrap"/>）と
+/// デバッグコマンド（<see cref="OfflineDebugCommands"/>）を 1 つのパネルに集約する。
 /// </summary>
 public sealed class OfflineDebugOverlay : MonoBehaviour
 {
-    [SerializeField] private float _overlayWidth = 280f;
+    [SerializeField] private float _overlayWidth = 320f;
 
     private bool _visible = true;
     private GUIStyle _boxStyle;
     private GUIStyle _labelStyle;
+    private GUIStyle _headerStyle;
     private float _cachedUiScale = -1f;
     private string _statusMessage = "起動中...";
     private float _messageTimer;
+    private Vector2 _scroll;
 
     public bool Visible
     {
@@ -29,58 +32,105 @@ public sealed class OfflineDebugOverlay : MonoBehaviour
         Debug.Log($"[OfflineBoot] {_statusMessage}");
     }
 
+    private void Update()
+    {
+        if (_messageTimer > 0f)
+            _messageTimer -= Time.deltaTime;
+    }
+
     private void OnGUI()
     {
         if (!_visible) return;
 
         float uiScale = Mathf.Clamp(Screen.height / 1080f, 0.9f, 1.35f);
-        float panelWidth = Mathf.Clamp(_overlayWidth * uiScale, 320f, 460f);
-        float panelHeight = Mathf.Clamp(370f * uiScale, 360f, 560f);
-        float panelPad = 12f * uiScale;
+        float panelWidth = Mathf.Clamp(_overlayWidth * uiScale, 360f, 480f);
+        float panelHeight = Mathf.Min(Screen.height - 24f, 720f * uiScale);
 
         EnsureStyles(uiScale);
 
+        var rect = new Rect(10f, 10f, panelWidth, panelHeight);
+        GUILayout.BeginArea(rect, GUIContent.none, _boxStyle);
+        _scroll = GUILayout.BeginScrollView(_scroll);
+
+        DrawStatusSection();
+
+        var session = SandboxOnlineSessionBootstrap.Instance;
+        if (session != null && session.ShowSessionGui)
+        {
+            GUILayout.Space(8f);
+            // 暗い背景上でも読めるよう、委譲描画の間だけ既定ラベル色を白へ。
+            var prevLabelColor = GUI.skin.label.normal.textColor;
+            GUI.skin.label.normal.textColor = Color.white;
+            session.DrawSessionGui();
+            GUI.skin.label.normal.textColor = prevLabelColor;
+            GUI.enabled = true;
+        }
+
+        GUILayout.Space(8f);
+        DrawDebugCommandSection();
+
+        GUILayout.Space(6f);
+        DrawMessageSection();
+
+        GUILayout.EndScrollView();
+        GUILayout.EndArea();
+    }
+
+    private void DrawStatusSection()
+    {
         var expedition = GameServices.Expedition;
         var networkManager = NetworkManager.Singleton;
         var weather = GameServices.Weather;
 
-        string netStat = networkManager != null && networkManager.IsHost ? "✓ Host (Offline)" : "✗ 未接続";
+        string netStat = networkManager != null && networkManager.IsListening
+            ? (networkManager.IsHost ? "Host" : "Client")
+            : "未接続";
         string phase = expedition != null ? expedition.Phase.ToString() : "N/A";
         string weatherLabel = weather != null ? weather.CurrentWeather.ToString() : "N/A";
-        string msgColor = _messageTimer > 0f ? "<color=#FFD700>" : "<color=#AAAAAA>";
 
-        var sb = new StringBuilder();
-        sb.AppendLine("<b>== Offline Test Scene ==</b>");
-        sb.AppendLine($"ネット : {netStat}");
-        sb.AppendLine($"フェーズ: {phase}");
-        sb.AppendLine($"天候  : {weatherLabel}");
-        sb.AppendLine("─────────────────");
-        sb.AppendLine("[F1] プレイヤー即死");
-        sb.AppendLine("[F2] ヘリ呼び出し");
-        sb.AppendLine("[F3] 強制帰還");
-        sb.AppendLine("[F4] 遺物にダメージ25");
-        sb.AppendLine("[F5] 遠征強制開始");
-        sb.AppendLine("[F6] 遺物を帰還エリアへ");
-        sb.AppendLine("[F7] 祠で幽霊復活");
-        sb.AppendLine("[F8] 天候切り替え");
-        sb.AppendLine("[F9] スタミナゼロ");
-        sb.AppendLine("[F10] デバッグUI ON/OFF");
-        sb.AppendLine("─────────────────");
-        sb.Append($"{msgColor}");
-        sb.Append(_statusMessage);
-        sb.Append("</color>");
+        GUILayout.Label("== Debug Menu (F10) ==", _headerStyle);
 
-        GUI.Box(new Rect(10f, 10f, panelWidth, panelHeight), GUIContent.none, _boxStyle);
-        GUI.Label(
-            new Rect(10f + panelPad, 10f + panelPad, panelWidth - panelPad * 2f, panelHeight - panelPad * 2f),
-            sb.ToString(),
-            _labelStyle);
+        if (LocalCoopSettings.IsActive)
+        {
+            string mode = LocalCoopSettings.IsOnline ? "Online" : "Local";
+            GUILayout.Label($"Co-op ({mode}): 人間 {LocalCoopSettings.HumanCount} / NPC {LocalCoopSettings.NpcFillCount} (計{LocalCoopSettings.MaxPartySize})", _labelStyle);
+        }
+
+        GUILayout.Label($"ネット: {netStat}   フェーズ: {phase}   天候: {weatherLabel}", _labelStyle);
     }
 
-    private void Update()
+    private void DrawDebugCommandSection()
     {
-        if (_messageTimer > 0f)
-            _messageTimer -= Time.deltaTime;
+        GUILayout.Label("== デバッグ操作 ==", _headerStyle);
+
+        if (GUILayout.Button("[F1] プレイヤー即死"))        SetStatusMessage(OfflineDebugCommands.KillLocalPlayer());
+        if (GUILayout.Button("[F2] ヘリ呼び出し"))          SetStatusMessage(OfflineDebugCommands.CallHelicopter());
+        if (GUILayout.Button("[F3] 強制帰還"))              SetStatusMessage(OfflineDebugCommands.ForceReturn());
+        if (GUILayout.Button("[F4] 遺物にダメージ25"))      SetStatusMessage(OfflineDebugCommands.DamageFirstRelic());
+        if (GUILayout.Button("[F5] 遠征強制開始"))          SetStatusMessage(OfflineDebugCommands.ForceStartExpedition());
+        if (GUILayout.Button("[F6] 遺物を帰還エリアへ"))    SetStatusMessage(OfflineDebugCommands.MoveRelicsToReturnZone());
+        if (GUILayout.Button("[F7] 祠で幽霊復活"))          SetStatusMessage(OfflineDebugCommands.ReviveGhost());
+        if (GUILayout.Button("[F8] 天候切り替え"))          SetStatusMessage(OfflineDebugCommands.CycleWeather());
+        if (GUILayout.Button("[F9] スタミナゼロ"))          SetStatusMessage(OfflineDebugCommands.DrainLocalStamina());
+
+        GUILayout.Label("ショートカット: F1〜F9 / F10=開閉", _labelStyle);
+
+        if (LocalCoopSettings.IsActive && !LocalCoopSettings.IsOnline)
+        {
+            GUILayout.Space(4f);
+            GUILayout.Label("ローカル: P1=KB+Mouse / P2-4=Gamepad", _labelStyle);
+            GUILayout.Label("後入り: GP Start / 後抜け: GP Back+Start長押し", _labelStyle);
+            GUILayout.Label("P1後抜け: End / P1後入り: Enter", _labelStyle);
+        }
+    }
+
+    private void DrawMessageSection()
+    {
+        if (string.IsNullOrEmpty(_statusMessage)) return;
+        var prev = _labelStyle.normal.textColor;
+        _labelStyle.normal.textColor = _messageTimer > 0f ? new Color(1f, 0.84f, 0f) : new Color(0.7f, 0.7f, 0.7f);
+        GUILayout.Label($"› {_statusMessage}", _labelStyle);
+        _labelStyle.normal.textColor = prev;
     }
 
     private void EnsureStyles(float uiScale)
@@ -89,7 +139,8 @@ public sealed class OfflineDebugOverlay : MonoBehaviour
         {
             _boxStyle = new GUIStyle(GUI.skin.box)
             {
-                normal = { background = MakeTex(2, 2, new Color(0f, 0f, 0f, 0.7f)) },
+                normal = { background = MakeTex(2, 2, new Color(0.08f, 0.08f, 0.1f, 0.92f)) },
+                padding = new RectOffset(10, 10, 10, 10),
             };
 
             _labelStyle = new GUIStyle(GUI.skin.label)
@@ -99,12 +150,19 @@ public sealed class OfflineDebugOverlay : MonoBehaviour
                 alignment = TextAnchor.UpperLeft,
                 normal = { textColor = Color.white },
             };
+
+            _headerStyle = new GUIStyle(_labelStyle)
+            {
+                fontStyle = FontStyle.Bold,
+                normal = { textColor = new Color(0.6f, 0.85f, 1f) },
+            };
         }
 
         if (Mathf.Abs(_cachedUiScale - uiScale) < 0.01f) return;
 
-        int fontSize = Mathf.RoundToInt(Mathf.Lerp(15f, 20f, Mathf.InverseLerp(0.9f, 1.35f, uiScale)));
+        int fontSize = Mathf.RoundToInt(Mathf.Lerp(13f, 17f, Mathf.InverseLerp(0.9f, 1.35f, uiScale)));
         _labelStyle.fontSize = fontSize;
+        _headerStyle.fontSize = fontSize + 1;
         _cachedUiScale = uiScale;
     }
 

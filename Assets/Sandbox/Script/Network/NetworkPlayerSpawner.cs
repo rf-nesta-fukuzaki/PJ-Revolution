@@ -23,23 +23,38 @@ public class NetworkPlayerSpawner : NetworkBehaviour
     private readonly Dictionary<ulong, NetworkObject> _spawnedPlayers = new();
 
     // ── Server-side ─────────────────────────────────────────────
+    private bool _handlersBound;
+
     public override void OnNetworkSpawn()
     {
         if (!IsServer) return;
 
+        // NetworkConfig.PlayerPrefab 未設定（自動スポーンなし）のため、
+        // ホスト自身のプレイヤーは常にここで生成する。オンライン時は以降の
+        // クライアント接続/切断のみ NetworkPartyManager に委譲する。
+        SpawnPlayerForClient(NetworkManager.Singleton.LocalClientId);
+
+        if (NetworkPartyManager.ShouldManageParty)
+            return;
+
         NetworkManager.Singleton.OnClientConnectedCallback    += HandleClientConnected;
         NetworkManager.Singleton.OnClientDisconnectCallback   += HandleClientDisconnected;
-
-        // ホスト自身をスポーン
-        SpawnPlayerForClient(NetworkManager.Singleton.LocalClientId);
+        _handlersBound = true;
     }
 
     public override void OnNetworkDespawn()
     {
         if (!IsServer) return;
 
-        NetworkManager.Singleton.OnClientConnectedCallback    -= HandleClientConnected;
-        NetworkManager.Singleton.OnClientDisconnectCallback   -= HandleClientDisconnected;
+        if (_handlersBound && NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback    -= HandleClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback   -= HandleClientDisconnected;
+            _handlersBound = false;
+        }
+
+        // セッション切替・再起動に備えて生成済みプレイヤー表をクリアする。
+        _spawnedPlayers.Clear();
     }
 
     // ── 接続ハンドラ ─────────────────────────────────────────────
@@ -54,7 +69,10 @@ public class NetworkPlayerSpawner : NetworkBehaviour
     {
         if (!_spawnedPlayers.TryGetValue(clientId, out var netObj)) return;
 
-        if (netObj != null)
+        // シャットダウン中は NetworkManager が既にオブジェクトをデスポーン済みのため、
+        // スポーン状態・サーバー稼働中を確認してから Despawn する（二重デスポーン回避）。
+        var nm = NetworkManager.Singleton;
+        if (netObj != null && netObj.IsSpawned && nm != null && nm.IsListening && nm.IsServer)
             netObj.Despawn(true);
 
         _spawnedPlayers.Remove(clientId);
@@ -128,6 +146,12 @@ public class NetworkPlayerSpawner : NetworkBehaviour
         // Physics と Transform の同期を強制
         Physics.SyncTransforms();
     }
+
+    /// <summary>ローカル Co-op 用: 指定インデックスのスポーン位置を返す。</summary>
+    public Vector3 GetSpawnPositionForIndex(int index) => GetSpawnPosition(index);
+
+    /// <summary>ローカル Co-op 用: プレイヤープレハブ参照。</summary>
+    public GameObject PlayerPrefab => _playerPrefab;
 
     private Vector3 GetSpawnPosition(int index)
     {

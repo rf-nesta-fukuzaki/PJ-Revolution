@@ -88,6 +88,8 @@ public class PauseMenu : MonoBehaviour
         // GDD §15.2 — ui_click（メニューを開く音）
         GameServices.Audio?.PlaySE2D(SoundId.UiClick);
 
+        GameplayCursorPolicy.SetMenuMode();
+
         OnPaused?.Invoke();
     }
 
@@ -100,6 +102,8 @@ public class PauseMenu : MonoBehaviour
 
         // GDD §15.2 — ui_cancel（メニューを閉じる音）
         GameServices.Audio?.PlaySE2D(SoundId.UiCancel);
+
+        GameplayCursorPolicy.SetGameplayMode();
 
         OnResumed?.Invoke();
     }

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering.Universal;
+using Sandbox.UI;
 using Sandbox.World.Environment;
 
 namespace Sandbox.World.Integration
@@ -162,6 +163,19 @@ namespace Sandbox.World.Integration
                 return;
             }
             CreateSafetyFloor();
+            EnsureWireRopeHud();
+        }
+
+        /// <summary>
+        /// SandboxOfflineCombined は autoAttachSpawners=false のため SandboxGameplayDirector が付かず
+        /// HudManager が無い。R キー ワイヤーロープの力ゲージ表示用に 1 つだけ生成する。
+        /// </summary>
+        private static void EnsureWireRopeHud()
+        {
+            if (Object.FindFirstObjectByType<HudManager>() != null) return;
+            var hudGo = new GameObject("HudManager");
+            hudGo.AddComponent<HudManager>();
+            Debug.Log("[CombinedTerrainConformer] WireRope 用 HudManager を生成しました。");
         }
 
         private void Update()

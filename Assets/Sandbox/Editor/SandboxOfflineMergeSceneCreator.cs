@@ -100,8 +100,10 @@ public static class SandboxOfflineMergeSceneCreator
         }
 
         // 5. TerrainGenerator / SandboxBootstrap を「地形＋大気のみ」に再設定し、地形整合コンフォーマを付与。
+        //    CombinedTerrainConformer は実行時に HudManager（ワイヤーロープ力ゲージ）も生成する。
         ConfigureTerrain(terrainGo);
-        terrainGo.AddComponent<CombinedTerrainConformer>();
+        if (terrainGo.GetComponent<CombinedTerrainConformer>() == null)
+            terrainGo.AddComponent<CombinedTerrainConformer>();
 
         // 6. OfflineTest のフラット Ground と境界 Wall_* を無効化（Sandbox 地形を唯一の地面にする）。
         int disabled = DisableFlatGroundAndWalls(target);

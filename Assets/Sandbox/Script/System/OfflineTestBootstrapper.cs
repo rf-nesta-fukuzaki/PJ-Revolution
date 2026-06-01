@@ -1,6 +1,8 @@
 using System.Collections;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// OfflineTestScene 専用ブートストラッパー（薄いオーケストレーター）。
@@ -23,6 +25,8 @@ public class OfflineTestBootstrapper : MonoBehaviour
 
     private void Awake()
     {
+        EnsureLocalCoopForCombinedScene();
+
         _overlay = GetComponent<OfflineDebugOverlay>();
         if (_overlay == null)
             _overlay = gameObject.AddComponent<OfflineDebugOverlay>();
@@ -44,12 +48,46 @@ public class OfflineTestBootstrapper : MonoBehaviour
 
     private void Start()
     {
-        if (_autoStartHost)
-            StartCoroutine(BootSequence());
+        if (!_autoStartHost) return;
+
+        // SandboxOfflineCombined ではセッションブートストラッパーが Host 起動を
+        // 一元管理する（オフライン自動 Host / オンライン UI の両方）。
+        // 二重 StartHost（"Cannot start Host while an instance is already running"）を
+        // 避けるため、セッションが存在する場合は起動を完全に委譲する。
+        if (SandboxOnlineSessionBootstrap.Instance != null)
+            return;
+
+        StartCoroutine(BootSequence());
+    }
+
+    private static void EnsureLocalCoopForCombinedScene()
+    {
+        var scene = SceneManager.GetActiveScene();
+        if (!scene.name.Contains("SandboxOfflineCombined")) return;
+
+        var nm = Object.FindFirstObjectByType<NetworkManager>();
+        if (nm != null && nm.GetComponent<SandboxOnlineSessionBootstrap>() == null)
+            nm.gameObject.AddComponent<SandboxOnlineSessionBootstrap>();
+        if (nm != null && nm.GetComponent<NetworkPartyManager>() == null)
+            nm.gameObject.AddComponent<NetworkPartyManager>();
+
+        if (Object.FindFirstObjectByType<SandboxLocalCoopBootstrap>() != null) return;
+
+        var go = new GameObject("SandboxLocalCoop");
+        go.AddComponent<SandboxLocalCoopBootstrap>();
+        Debug.Log("[OfflineBoot] SandboxLocalCoopBootstrap を自動生成しました。");
     }
 
     private IEnumerator BootSequence()
     {
+        var nm = NetworkManager.Singleton;
+        if (nm != null && nm.IsListening)
+        {
+            _overlay.SetStatusMessage(nm.IsHost ? "既に Host 接続済み" : "既に Client 接続済み");
+            yield break;
+        }
+
+        LocalCoopSettings.Configure(PartyPlayMode.OfflineLocal);
         _overlay.SetStatusMessage("起動中...");
         yield return _hostBootstrap.StartHost(_offlinePlayerName);
 
@@ -60,7 +98,10 @@ public class OfflineTestBootstrapper : MonoBehaviour
 
     private void Update()
     {
-        if (!_hostBootstrap.IsInitialized) return;
+        // Host 起動者がセッションブートストラッパーであってもデバッグキーを有効にする。
+        var nm = NetworkManager.Singleton;
+        bool hostReady = _hostBootstrap.IsInitialized || (nm != null && nm.IsListening);
+        if (!hostReady) return;
         HandleDebugKeys();
     }
 

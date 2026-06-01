@@ -99,6 +99,9 @@ public class ExplorerController : MonoBehaviour
 
     // しゃがみ状態（GDD §16.2 — EA 版は Animator パラメータのみ予約）
     private bool _isCrouching;
+    private WireRopeActionController _wireRope;
+    private int _inputSlot;
+
     public bool IsCrouching
     {
         get => _isCrouching;
@@ -124,11 +127,22 @@ public class ExplorerController : MonoBehaviour
         if (GetComponent<PlayerNoiseEmitter>() == null)
             gameObject.AddComponent<PlayerNoiseEmitter>();
 
+        // R キー ワイヤーロープアクション（非破壊・無ければ生成）
+        if (GetComponent<WireRopeActionController>() == null)
+            gameObject.AddComponent<WireRopeActionController>();
+        _wireRope = GetComponent<WireRopeActionController>();
+        _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
+
         ResolveGroundMask();
     }
 
     private void Update()
     {
+        // 入力スロットは毎フレーム再解決する。Awake 時点ではブートストラップの
+        // LocalCoopPartyMember 構成が未完了で -1 になり得るうえ、後入り/後抜けで
+        // スロットや人間/NPC 状態が動的に変化するため。
+        _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
+        if (_inputSlot < 0) return;
         // 接地判定
         Vector3 sphereOrigin = _rb.position + Vector3.up * _groundCheckOffsetY;
         _isGroundedRaw = Physics.CheckSphere(
@@ -162,19 +176,19 @@ public class ExplorerController : MonoBehaviour
         UpdateSlideFallSound();
 
         // 移動入力
-        Vector2 moveInput = InputStateReader.ReadMoveVectorRaw();
+        Vector2 moveInput = InputStateReader.ReadMoveVectorRaw(_inputSlot);
         float h = moveInput.x;
         float v = moveInput.y;
         _moveInput   = (transform.right * h + transform.forward * v).normalized;
         // GDD §3.1 — 疲労中はスプリント不可。移動入力があり、接地中の時のみスタミナを消費する。
         _isSprinting = _moveInput.sqrMagnitude > 0.01f
-                       && InputStateReader.IsSprintPressed()
+                       && InputStateReader.IsSprintPressed(_inputSlot)
                        && (_stamina == null || !_stamina.IsExhausted);
         if (_isSprinting && _isGrounded)
             _stamina?.ConsumeSprint();
 
         // ジャンプ入力（接地時のみ受付）
-        if (InputStateReader.JumpPressedThisFrame() && _isGrounded)
+        if (InputStateReader.JumpPressedThisFrame(_inputSlot) && _isGrounded)
             _jumpRequested = true;
 
         // Animator: Speed（State Speed Multiplier）
@@ -311,6 +325,13 @@ public class ExplorerController : MonoBehaviour
 
         // 水平移動（速度ペナルティを合算 — GDD §3.3/3.4）
         if (_moveInput.sqrMagnitude < 0.01f) return;
+
+        if (_wireRope == null)
+            _wireRope = GetComponent<WireRopeActionController>();
+
+        // 張力フェーズ中のみ WireRope と競合するためスキップ（停止・オーバーシュート中は通常移動）
+        if (_wireRope != null && _wireRope.SuppressExplorerLocomotion)
+            return;
 
         if (_isGrounded)
         {

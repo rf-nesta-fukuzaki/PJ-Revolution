@@ -47,20 +47,18 @@ public class DepartureGate : MonoBehaviour
     // ── トリガー判定 ─────────────────────────────────────────
     private void OnTriggerEnter(Collider other)
     {
-        var health = other.GetComponentInParent<PlayerHealthSystem>();
-        if (health == null || health.IsDead) return;
+        if (!TryResolvePartyActor(other, out int actorId)) return;
 
-        _playersInZone.Add(health.GetInstanceID());
+        _playersInZone.Add(actorId);
         Debug.Log($"[DepartureGate] {other.name} がゲート内に入った " +
                   $"({_playersInZone.Count}/{GetTotalPlayerCount()})");
     }
 
     private void OnTriggerExit(Collider other)
     {
-        var health = other.GetComponentInParent<PlayerHealthSystem>();
-        if (health == null) return;
+        if (!TryResolvePartyActor(other, out int actorId)) return;
 
-        _playersInZone.Remove(health.GetInstanceID());
+        _playersInZone.Remove(actorId);
         Debug.Log($"[DepartureGate] {other.name} がゲートから出た " +
                   $"({_playersInZone.Count}/{GetTotalPlayerCount()})");
     }
@@ -106,8 +104,30 @@ public class DepartureGate : MonoBehaviour
     }
 
     // ── ヘルパー ─────────────────────────────────────────────
+    private static bool TryResolvePartyActor(Collider other, out int actorId)
+    {
+        actorId = 0;
+        if (other == null) return false;
+
+        var member = other.GetComponentInParent<LocalCoopPartyMember>();
+        if (member != null)
+        {
+            actorId = member.GetInstanceID();
+            return true;
+        }
+
+        var health = other.GetComponentInParent<PlayerHealthSystem>();
+        if (health == null || health.IsDead) return false;
+
+        actorId = health.GetInstanceID();
+        return true;
+    }
+
     private static int GetTotalPlayerCount()
     {
+        if (LocalCoopSettings.IsActive)
+            return LocalCoopSettings.MaxPartySize;
+
         if (NetworkManager.Singleton && NetworkManager.Singleton.IsListening)
             return NetworkManager.Singleton.ConnectedClients.Count;
 
