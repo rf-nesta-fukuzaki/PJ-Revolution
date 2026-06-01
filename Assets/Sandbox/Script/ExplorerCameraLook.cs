@@ -9,6 +9,7 @@ using UnityEngine.Rendering;
 /// - マウス Y → CameraRig の X 軸回転（視線上下、±80° クランプ）
 /// - ExplorerController と組み合わせて Explorer ルートにアタッチする。
 /// </summary>
+[DefaultExecutionOrder(150)]
 public class ExplorerCameraLook : MonoBehaviour
 {
     [Header("参照")]
@@ -22,6 +23,14 @@ public class ExplorerCameraLook : MonoBehaviour
     [SerializeField] private float _sensitivityX = 5f;
     [Tooltip("垂直方向の視点感度。")]
     [SerializeField] private float _sensitivityY = 5f;
+
+    [Header("視点スムージング")]
+    [Tooltip("入力をスムージングして細かなガタつきを抑える。")]
+    [SerializeField] private bool _useLookSmoothing = true;
+    [Tooltip("スムージングの追従時間（秒）。小さいほどキビキビ、大きいほど滑らか。")]
+    [SerializeField] private float _lookSmoothTime = 0.035f;
+    [Tooltip("1フレームで受け付ける最大入力デルタ。瞬間スパイクによる急旋回を抑える。")]
+    [SerializeField] private float _maxLookDeltaPerFrame = 2.5f;
 
     [Header("感度ライブ調整")]
     [Tooltip("プレイ中に [ / ] キーで感度を増減する際のステップ量。")]
@@ -40,7 +49,12 @@ public class ExplorerCameraLook : MonoBehaviour
     [SerializeField] private bool _preserveBodyShadows = true;
 
     private float _pitch;
+    private float _yaw;
+    private float _appliedYaw;
+    private Vector2 _smoothedLookDelta;
+    private Vector2 _smoothedLookVelocity;
     private bool _isLocalOwner;
+    private Rigidbody _rb;
     private readonly List<RendererState> _hiddenRenderers = new();
 
     private struct RendererState
@@ -71,6 +85,8 @@ public class ExplorerCameraLook : MonoBehaviour
         // 全ボディメッシュを一人称非表示の対象にする（ApplyFirstPersonLocalVisuals 参照）。
         if (_visualRoot == null)
             _visualRoot = transform;
+
+        _rb = GetComponent<Rigidbody>();
     }
 
     private void Start()
@@ -81,6 +97,11 @@ public class ExplorerCameraLook : MonoBehaviour
         LockCursor();
         DisableRedundantAudioListener();
         ApplyFirstPersonLocalVisuals();
+
+        Vector3 euler = transform.rotation.eulerAngles;
+        _yaw = euler.y;
+        _appliedYaw = _yaw;
+        _pitch = NormalizeAngle(_cameraRig != null ? _cameraRig.localEulerAngles.x : 0f);
     }
 
     /// <summary>
@@ -98,26 +119,67 @@ public class ExplorerCameraLook : MonoBehaviour
 
     private void Update()
     {
-        if (_isLocalOwner && _hideLocalBody && _hiddenRenderers.Count == 0)
+        RefreshLocalOwnerState();
+        if (!_isLocalOwner) return;
+
+        if (_hideLocalBody && _hiddenRenderers.Count == 0)
             ApplyFirstPersonLocalVisuals();
 
         HandleCursorLock();
         HandleSensitivityTuning();
+    }
 
+    private void LateUpdate()
+    {
+        if (!_isLocalOwner) return;
         if (_cameraRig == null) return;
         if (Cursor.lockState != CursorLockMode.Locked) return;
 
         Vector2 lookDelta = InputStateReader.ReadLookDelta();
-        float mouseX = lookDelta.x * _sensitivityX;
-        float mouseY = lookDelta.y * _sensitivityY;
+        lookDelta = Vector2.ClampMagnitude(lookDelta, _maxLookDeltaPerFrame);
 
-        // Explorer 本体を Y 軸回転（体の向き = カメラの水平向き）
-        transform.Rotate(Vector3.up, mouseX, Space.World);
+        if (_useLookSmoothing)
+        {
+            _smoothedLookDelta = Vector2.SmoothDamp(
+                _smoothedLookDelta,
+                lookDelta,
+                ref _smoothedLookVelocity,
+                Mathf.Max(0.001f, _lookSmoothTime));
+            lookDelta = _smoothedLookDelta;
+        }
+        else
+        {
+            _smoothedLookDelta = lookDelta;
+        }
+
+        float lookX = lookDelta.x * _sensitivityX;
+        float lookY = lookDelta.y * _sensitivityY;
+
+        _yaw += lookX;
+        _pitch = Mathf.Clamp(_pitch - lookY, _minPitch, _maxPitch);
 
         // CameraRig を X 軸回転（視線上下）
-        _pitch -= mouseY;
-        _pitch = Mathf.Clamp(_pitch, _minPitch, _maxPitch);
         _cameraRig.localRotation = Quaternion.Euler(_pitch, 0f, 0f);
+    }
+
+    private void FixedUpdate()
+    {
+        if (!_isLocalOwner) return;
+
+        // Rigidbody 補間と競合しないよう、水平回転は物理ステップで適用する。
+        if (Mathf.Abs(Mathf.DeltaAngle(_appliedYaw, _yaw)) < 0.0001f) return;
+
+        Quaternion targetRotation = Quaternion.Euler(0f, _yaw, 0f);
+        if (_rb != null && !_rb.isKinematic)
+        {
+            _rb.MoveRotation(targetRotation);
+        }
+        else
+        {
+            transform.rotation = targetRotation;
+        }
+
+        _appliedYaw = _yaw;
     }
 
     private void HandleCursorLock()
@@ -162,6 +224,8 @@ public class ExplorerCameraLook : MonoBehaviour
 
     private void OnDisable()
     {
+        _smoothedLookDelta = Vector2.zero;
+        _smoothedLookVelocity = Vector2.zero;
         RestoreLocalVisuals();
     }
 
@@ -231,5 +295,12 @@ public class ExplorerCameraLook : MonoBehaviour
     {
         var netObj = GetComponent<NetworkObject>();
         _isLocalOwner = netObj == null || netObj.IsOwner;
+    }
+
+    private static float NormalizeAngle(float angle)
+    {
+        angle %= 360f;
+        if (angle > 180f) angle -= 360f;
+        return angle;
     }
 }

@@ -39,6 +39,8 @@ namespace Sandbox.World.Integration
         private float _lastFallSpeed;
         private bool _fallShakeFired;
         private float _seedX, _seedY;
+        private Vector3 _baseLocalPosition;
+        private bool _hasBaseLocalPosition;
 
         private void Awake()
         {
@@ -46,6 +48,8 @@ namespace Sandbox.World.Integration
             _playerRoot = _rb != null ? _rb.transform : transform;
             _seedX = Random.value * 100f;
             _seedY = Random.value * 100f + 50f;
+            _baseLocalPosition = transform.localPosition;
+            _hasBaseLocalPosition = true;
         }
 
         public void AddTrauma(float amount) => _trauma = Mathf.Clamp01(_trauma + amount);
@@ -85,13 +89,37 @@ namespace Sandbox.World.Integration
 
         private void LateUpdate()
         {
-            if (_trauma <= 0f) return;
+            if (!_hasBaseLocalPosition)
+            {
+                _baseLocalPosition = transform.localPosition;
+                _hasBaseLocalPosition = true;
+            }
+
+            if (_trauma <= 0f)
+            {
+                transform.localPosition = _baseLocalPosition;
+                return;
+            }
+
             float shake = _trauma * _trauma; // 二乗で自然な減衰
             float t = Time.time * frequency;
             float ox = (Mathf.PerlinNoise(_seedX, t) - 0.5f) * 2f;
             float oy = (Mathf.PerlinNoise(_seedY, t) - 0.5f) * 2f;
-            transform.localPosition += new Vector3(ox, oy, 0f) * (maxOffset * shake);
+            Vector3 offset = new Vector3(ox, oy, 0f) * (maxOffset * shake);
+            transform.localPosition = _baseLocalPosition + offset;
             _trauma = Mathf.Max(0f, _trauma - traumaDecay * Time.deltaTime);
+        }
+
+        private void OnDisable()
+        {
+            if (_hasBaseLocalPosition)
+                transform.localPosition = _baseLocalPosition;
+        }
+
+        private void OnTransformParentChanged()
+        {
+            _baseLocalPosition = transform.localPosition;
+            _hasBaseLocalPosition = true;
         }
     }
 }

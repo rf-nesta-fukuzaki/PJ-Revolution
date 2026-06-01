@@ -12,6 +12,7 @@ public static class InputStateReader
     // 大きめに設定する。最終的な感度は ExplorerCameraLook の _sensitivityX/Y で調整する。
     private const float MouseLookScale = 0.1f;
     private const float GamepadLookScale = 2f;
+    private const float GamepadLookDeadzone = 0.08f;
 
     public static Vector2 ReadMoveVectorRaw()
     {
@@ -48,7 +49,15 @@ public static class InputStateReader
         Vector2 stickDelta = Vector2.zero;
         var gamepad = Gamepad.current;
         if (gamepad != null)
-            stickDelta = gamepad.rightStick.ReadValue() * GamepadLookScale;
+        {
+            Vector2 stick = gamepad.rightStick.ReadValue();
+            if (stick.sqrMagnitude >= GamepadLookDeadzone * GamepadLookDeadzone)
+            {
+                // スティックは「位置」入力なので deltaTime を掛けてフレームレート依存を抑える。
+                float frameCompensation = Time.unscaledDeltaTime * 60f;
+                stickDelta = stick * (GamepadLookScale * frameCompensation);
+            }
+        }
 
         return mouseDelta + stickDelta;
     }
