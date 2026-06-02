@@ -1,5 +1,6 @@
 using UnityEngine;
 using TMPro;
+using Sandbox.UI;
 
 /// <summary>
 /// GDD §14.3 — 標高メーター HUD 要素。
@@ -41,6 +42,23 @@ public class AltitudeMeter : MonoBehaviour
             var playerGO = GameObject.FindWithTag("Player");
             if (playerGO != null) _player = playerGO.transform;
         }
+        PlaceBelowQuota();
+    }
+
+    /// <summary>
+    /// 標高ラベルが上中央でノルマ/抽出パネルと座標衝突して読めない問題を解消する。
+    /// 上端中央アンカーでノルマ表示の下へずらし、上中央を「ノルマ→抽出→標高」の
+    /// 整った縦スタックにする（中央集約ミニマル）。シーンアセットは書き換えない（非破壊）。
+    /// </summary>
+    private void PlaceBelowQuota()
+    {
+        if (_label == null) return;
+
+        var rt = _label.rectTransform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.anchoredPosition = new Vector2(0f, -96f);
+        _label.color = UiPalette.Cream;
     }
 
     private void Update()

@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using Sandbox.UI;
 
 /// <summary>
 /// GDD §8.1 — メインメニュー。
@@ -76,6 +77,7 @@ public class MainMenuManager : MonoBehaviour
     {
         ShowPanel(_topPanel);
         SetStatus("");
+        UiFocus.Select(_createRoomButton, _topPanel);
     }
 
     private void OnBootstrapError(string message)
@@ -173,6 +175,7 @@ public class MainMenuManager : MonoBehaviour
         ShowPanel(_topPanel);
         SetInteractable(true);
         SetStatus("");
+        UiFocus.Select(_createRoomButton, _topPanel);
     }
 
     private void OnQuit()
@@ -193,6 +196,7 @@ public class MainMenuManager : MonoBehaviour
         _startGameButton.interactable = true;
         SetLobbyStatus("メンバーを待っています...");
         RefreshLobbyPanel();
+        UiFocus.Select(_startGameButton, _lobbyPanel);
     }
 
     private void OnRoomJoined()
@@ -201,6 +205,8 @@ public class MainMenuManager : MonoBehaviour
         _startGameButton.gameObject.SetActive(false);
         SetLobbyStatus("ホストのゲーム開始を待っています...");
         RefreshLobbyPanel();
+        // ゲストは開始ボタンが無いので、退出ボタンを初期フォーカスにする。
+        UiFocus.Select(_leaveRoomButton, _lobbyPanel);
     }
 
     private void RefreshLobbyPanel()

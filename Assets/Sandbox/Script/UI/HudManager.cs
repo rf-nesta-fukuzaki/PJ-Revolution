@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -17,6 +18,15 @@ public class HudManager : MonoBehaviour
 
     [System.Obsolete("FindFirstObjectByType<HudManager>() または GameServices 経由の HUD イベントを使用してください")]
     public static HudManager Instance => _instance;
+
+    /// <summary>
+    /// true のとき、タイマー / チェックポイント / 高度 / サミットパネルの自動生成を抑止し、
+    /// クロスヘアとワイヤーロープ力ゲージのみを表示する。
+    /// SandboxOfflineCombined では ExpeditionHUD が遠征情報（タイマー等）を担うため、
+    /// HudManager は力ゲージ補完役に徹して HUD の二重表示を防ぐ。
+    /// 既定は false（Mountain01 等の単体 HUD 用途では従来どおりフル HUD）。
+    /// </summary>
+    public bool WireRopeGaugeOnly { get; set; }
 
     [Header("UI References (省略時は自動生成)")]
     [SerializeField] private TextMeshProUGUI timerText;
@@ -45,6 +55,10 @@ public class HudManager : MonoBehaviour
     private Transform _playerTransform;
     private WireRopeActionController _wireRope;
     private Canvas _canvas;
+    private CanvasGroup _summitGroup;
+    private bool _messageVisible;
+    private bool _ringWasActive;
+    private bool _gaugeWasFull;
 
     private string _formattedTime = "00:00.00";
     private int _checkpointIndex = -1;
@@ -53,6 +67,7 @@ public class HudManager : MonoBehaviour
     private bool _forcePublish;
     private bool _forceGaugeGrowLayoutApplied;
     private static Sprite s_uiWhiteSprite;
+    private static Sprite s_dotSprite;
 
     private const float AltitudePublishStepMeters = 1f;
 
@@ -215,6 +230,11 @@ public class HudManager : MonoBehaviour
         messageText.gameObject.SetActive(showMessage);
         if (showMessage)
             messageText.text = snapshot.TransientMessage;
+
+        // 非表示→表示の立ち上がりエッジでだけ「パンチ」を出す（毎フレーム再生しない）。
+        if (showMessage && !_messageVisible && isActiveAndEnabled && gameObject.activeInHierarchy)
+            StartCoroutine(UiJuice.Punch(messageText.rectTransform));
+        _messageVisible = showMessage;
     }
 
     private void UpdateCrosshair()
@@ -222,9 +242,21 @@ public class HudManager : MonoBehaviour
         if (crosshairRing == null) return;
 
         bool attached = _wireRope != null && _wireRope.Phase == WireRopeActionController.WireRopePhase.Attached;
-        crosshairRing.gameObject.SetActive(attached);
-        if (attached)
+
+        // 接続が成立した瞬間だけリングを「ポンッ」と弾ませる（成功フィードバック）。
+        if (attached && !_ringWasActive)
+        {
+            crosshairRing.gameObject.SetActive(true);
             crosshairRing.color = attachedColor;
+            if (isActiveAndEnabled && gameObject.activeInHierarchy)
+                StartCoroutine(UiJuice.Punch(crosshairRing.rectTransform, 0.3f, 0.25f));
+        }
+        else
+        {
+            crosshairRing.gameObject.SetActive(attached);
+            if (attached) crosshairRing.color = attachedColor;
+        }
+        _ringWasActive = attached;
     }
 
     private void UpdateForceGauge()
@@ -241,6 +273,12 @@ public class HudManager : MonoBehaviour
         float gauge = Mathf.Clamp01(_wireRope.ForceGauge / 100f);
         ApplyForceGaugeFillWidth(gauge);
         forceGaugeFill.color = Color.Lerp(forceGaugeFillColorLow, forceGaugeFillColorHigh, gauge);
+
+        // 最大チャージ到達の瞬間にゲージを軽くポップさせる（撃ち頃の合図）。
+        bool full = gauge >= 0.98f;
+        if (full && !_gaugeWasFull && isActiveAndEnabled && gameObject.activeInHierarchy)
+            StartCoroutine(UiJuice.Punch(forceGaugeBackground.rectTransform, 0.12f, 0.2f));
+        _gaugeWasFull = full;
     }
 
     private static Sprite GetUiWhiteSprite()
@@ -317,7 +355,16 @@ public class HudManager : MonoBehaviour
 
     public void ShowSummitReached(float elapsed)
     {
-        if (summitPanel != null) summitPanel.SetActive(true);
+        if (summitPanel != null)
+        {
+            summitPanel.SetActive(true);
+
+            // 「ポンッ」と弾むバウンス出現でクリアの達成感を演出する。
+            var rt = summitPanel.transform as RectTransform;
+            if (rt != null && isActiveAndEnabled && gameObject.activeInHierarchy)
+                StartCoroutine(UiJuice.PopIn(rt, _summitGroup));
+        }
+
         if (summitTimeText != null)
         {
             int min = Mathf.FloorToInt(elapsed / 60f);
@@ -344,7 +391,15 @@ public class HudManager : MonoBehaviour
         canvasGo.transform.SetParent(transform);
         _canvas = canvasGo.AddComponent<Canvas>();
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvasGo.AddComponent<CanvasScaler>();
+
+        // 解像度・アスペクト比が変わっても HUD が崩れないよう、他の Canvas
+        // (SandboxStartMenu / QuotaUpgradeHud) と同じ基準でスケールさせる。
+        var scaler = canvasGo.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode         = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.screenMatchMode     = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        scaler.matchWidthOrHeight  = 0.5f;
+
         canvasGo.AddComponent<GraphicRaycaster>();
     }
 
@@ -352,31 +407,37 @@ public class HudManager : MonoBehaviour
     {
         Transform parent = _canvas.transform;
 
-        if (timerText == null)
-            timerText = CreateText(parent, "TimerText", "00:00.00", 24,
-                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(10f, -10f));
-
-        if (checkpointText == null)
-            checkpointText = CreateText(parent, "CheckpointText", "", 20,
-                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(10f, -50f));
-
-        if (altitudeText == null)
-            altitudeText = CreateText(parent, "AltitudeText", "Alt: 0m", 18,
-                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-10f, -10f));
-
-        if (messageText == null)
+        // 遠征情報（タイマー/CP/高度/サミット）は gauge-only モードでは生成しない。
+        // SandboxOfflineCombined では ExpeditionHUD がこれらを担うため二重表示になる。
+        if (!WireRopeGaugeOnly)
         {
-            messageText = CreateText(parent, "MessageText", "", 30,
-                new Vector2(0.5f, 0.7f), new Vector2(0.5f, 0.7f), Vector2.zero);
-            messageText.gameObject.SetActive(false);
+            if (timerText == null)
+                timerText = CreateText(parent, "TimerText", "00:00.00", 24,
+                    new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(10f, -10f));
+
+            if (checkpointText == null)
+                checkpointText = CreateText(parent, "CheckpointText", "", 20,
+                    new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(10f, -50f));
+
+            if (altitudeText == null)
+                altitudeText = CreateText(parent, "AltitudeText", "Alt: 0m", 18,
+                    new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-10f, -10f));
+
+            if (messageText == null)
+            {
+                messageText = CreateText(parent, "MessageText", "", 30,
+                    new Vector2(0.5f, 0.7f), new Vector2(0.5f, 0.7f), Vector2.zero);
+                messageText.gameObject.SetActive(false);
+            }
         }
 
+        // クロスヘア + 力ゲージは HudManager 固有（ExpeditionHUD に無い）なので常に生成する。
         if (crosshairDot == null) crosshairDot = CreateCrosshairDot(parent);
         if (crosshairRing == null) crosshairRing = CreateCrosshairRing(parent);
         if (forceGaugeBackground == null || forceGaugeFill == null)
             CreateForceGauge(parent);
 
-        if (summitPanel == null) CreateSummitPanel(parent);
+        if (!WireRopeGaugeOnly && summitPanel == null) CreateSummitPanel(parent);
     }
 
     private TextMeshProUGUI CreateText(Transform parent, string name, string defaultText,
@@ -394,21 +455,59 @@ public class HudManager : MonoBehaviour
         tmp.text = defaultText;
         tmp.fontSize = fontSize;
         tmp.color = Color.white;
+
+        // 明るい空〜暗い岩肌のどちらでも読めるよう、アウトライン+ソフトシャドウを付与。
+        UiReadability.MakeReadable(tmp);
         return tmp;
     }
 
     private Image CreateCrosshairDot(Transform parent)
     {
-        var go = new GameObject("Crosshair_Dot");
+        // 暗い縁取り（背面）→ 明るい空でも沈まないコントラストを確保する。
+        CreateDotImage(parent, "Crosshair_DotOutline", 11f, UiPalette.Ink);
+        // クリーム色の中心ドット（前面）。丸く柔らかいレティクル。
+        return CreateDotImage(parent, "Crosshair_Dot", 6f, UiPalette.Cream);
+    }
+
+    private Image CreateDotImage(Transform parent, string goName, float size, Color color)
+    {
+        var go = new GameObject(goName);
         go.transform.SetParent(parent, false);
         var rt = go.AddComponent<RectTransform>();
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(6f, 6f);
+        rt.sizeDelta = new Vector2(size, size);
         rt.anchoredPosition = Vector2.zero;
         var img = go.AddComponent<Image>();
-        img.color = Color.white;
+        img.sprite = GetDotSprite();
+        img.color = color;
+        img.raycastTarget = false;
         return img;
+    }
+
+    /// <summary>柔らかい縁の塗りつぶし円スプライトを手続き生成（クロスヘア用）。</summary>
+    private static Sprite GetDotSprite()
+    {
+        if (s_dotSprite != null) return s_dotSprite;
+
+        const int size = 32;
+        const float aa = 1.5f;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+        float c = (size - 1) * 0.5f;
+        float r = c - 1f;
+        var px = new Color[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                px[y * size + x] = new Color(1f, 1f, 1f, Mathf.Clamp01((r - d) / aa));
+            }
+        }
+        tex.SetPixels(px);
+        tex.Apply();
+        s_dotSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+        return s_dotSprite;
     }
 
     private Image CreateCrosshairRing(Transform parent)
@@ -463,6 +562,8 @@ public class HudManager : MonoBehaviour
 
         var bg = panel.AddComponent<Image>();
         bg.color = new Color(0f, 0f, 0f, 0.7f);
+
+        _summitGroup = panel.AddComponent<CanvasGroup>();
 
         summitPanel = panel;
 

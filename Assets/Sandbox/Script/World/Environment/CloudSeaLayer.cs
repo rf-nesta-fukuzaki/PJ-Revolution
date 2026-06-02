@@ -25,10 +25,23 @@ namespace Sandbox.World.Environment
         [Range(0f, 0.5f)] [SerializeField] private float recenterThreshold = 0.10f;
 
         [Header("Fallback（SandboxSummitGoal 不在シーン: combined offline 等）")]
-        [Tooltip("SandboxSummitGoal が無い/未確定のまま この秒数 経過したら、地形最高点(ColliderBaker.GlobalMaxY)を基準に雲海を配置する。")]
+        [Tooltip("地形最高点(GlobalMaxY)がこの秒数 伸び止まったら『山頂確定』とみなして即配置する。" +
+                 "固定待ち(fallbackAfterSeconds)に頼らず、世界が実際に整い次第すぐ雲海を出すための主トリガー。")]
+        [SerializeField] private float summitStableSeconds = 0.75f;
+        [Tooltip("配置開始に必要な最小ベイク済みチャンク数。早すぎる GlobalMaxY での谷底誤配置を防ぐ。")]
+        [SerializeField] private int minBakedChunksForPlacement = 8;
+        [Tooltip("安全弁。山頂が一向に伸び止まらなくても、この秒数 経過したら現在の GlobalMaxY で強制配置する（旧・固定待ち値）。")]
         [SerializeField] private float fallbackAfterSeconds = 8f;
         [Tooltip("フォールバック時の絶対高度[m]。0 以下なら GlobalMaxY * altitudeFraction を使う。")]
         [SerializeField] private float fallbackAbsoluteAltitude = 0f;
+        [Tooltip("配置後に後から焼ける高所チャンクで GlobalMaxY が伸びた際、雲海高度を追従させる速度[m/s]。" +
+                 "早期配置でも最終的に正しい高度へ滑らかに補正され、ぴょこっと跳ねない。")]
+        [SerializeField] private float altitudeFollowSpeed = 80f;
+
+        // 配置タイミング計測用（検証・デバッグ）。-1 = 未配置。
+        public float PlacedAtTime { get; private set; } = -1f;
+        public int PlacedAtFrame { get; private set; } = -1;
+        public bool HasPlaced => _placed;
 
         private GameObject _plane;
         private Sandbox.World.Integration.SandboxBootstrap _bootstrap;
@@ -36,6 +49,9 @@ namespace Sandbox.World.Environment
         private bool _placed;
         private float _placedY;
         private Vector2 _lastCenterXZ;
+        // 山頂(GlobalMaxY)安定検出用。
+        private float _maxYObserved = -1f;
+        private float _maxYStableTime;
 
         private void Awake()
         {
@@ -63,8 +79,11 @@ namespace Sandbox.World.Environment
                 }
                 else
                 {
-                    // SandboxSummitGoal 不在シーン（combined offline 等）: 一定時間待ってから地形最高点を基準に置く。
-                    if (Time.time < fallbackAfterSeconds) return;
+                    // SandboxSummitGoal 不在シーン（combined offline 等）。
+                    // 旧実装は固定 8 秒待ってから置いていたため、地形が一瞬で焼けても雲海が 8 秒間出なかった。
+                    // 改善: 地形最高点(GlobalMaxY)が伸び止まった瞬間（＝山頂チャンクまで焼けて確定）に即配置する。
+                    // これで世界が整い次第すぐ雲海が出る。fallbackAfterSeconds は伸び止まらない場合の安全弁のみ。
+                    bool capReached = Time.time >= fallbackAfterSeconds;
                     if (fallbackAbsoluteAltitude > 0f)
                     {
                         placeY = fallbackAbsoluteAltitude;
@@ -73,19 +92,41 @@ namespace Sandbox.World.Environment
                     else
                     {
                         var baker = _bootstrap.ColliderBaker;
-                        if (baker == null || baker.GlobalMaxY < 1f) return; // 地形最高点が未観測ならまだ待つ
+                        if (baker == null) return;
+                        if (!capReached)
+                        {
+                            // 最低限の地形が焼けるまで待つ（早すぎる GlobalMaxY での谷底配置を防ぐ）。
+                            if (baker.GlobalMaxY < 1f || baker.BakedCount < minBakedChunksForPlacement) return;
+                            // GlobalMaxY が伸びている間は山頂未確定。伸び止まって summitStableSeconds 続いたら確定。
+                            if (baker.GlobalMaxY > _maxYObserved + 1f)
+                            {
+                                _maxYObserved = baker.GlobalMaxY;
+                                _maxYStableTime = 0f;
+                                return;
+                            }
+                            _maxYStableTime += Time.deltaTime;
+                            if (_maxYStableTime < summitStableSeconds) return;
+                        }
+                        else if (baker.GlobalMaxY < 1f)
+                        {
+                            return; // 安全弁時刻でも地形ゼロなら置けない（ごく稀）
+                        }
                         placeY = baker.GlobalMaxY * altitudeFraction;
-                        src = $"terrainMax({baker.GlobalMaxY:F0})*{altitudeFraction:F2}";
+                        src = capReached
+                            ? $"terrainMax({baker.GlobalMaxY:F0})*{altitudeFraction:F2} [cap@{fallbackAfterSeconds:F0}s]"
+                            : $"terrainMax({baker.GlobalMaxY:F0})*{altitudeFraction:F2} [stable@{Time.time:F1}s]";
                     }
                 }
 
                 _placedY = placeY;
                 _plane = CreatePlane(_placedY);
                 _placed = true;
+                PlacedAtTime = Time.time;
+                PlacedAtFrame = Time.frameCount;
                 _lastCenterXZ = _plane != null
                     ? new Vector2(_plane.transform.position.x, _plane.transform.position.z)
                     : Vector2.zero;
-                Debug.Log($"[CloudSeaLayer] placed at Y={_placedY:F1} ({src})");
+                Debug.Log($"[CloudSeaLayer] placed at Y={_placedY:F1} ({src}) t={PlacedAtTime:F2}s frame={PlacedAtFrame}");
                 return;
             }
 
@@ -96,6 +137,19 @@ namespace Sandbox.World.Environment
                 if (Mathf.Abs(targetY - _placedY) > 1f)
                 {
                     _placedY = targetY;
+                    var pp = _plane.transform.position;
+                    _plane.transform.position = new Vector3(pp.x, _placedY, pp.z);
+                }
+            }
+            // SummitGoal 不在シーン: 後から焼ける高所チャンクで GlobalMaxY が伸びたら高度を滑らかに追従。
+            // （早期配置でも最終的に正しい高度へ補正され、瞬間移動でなく緩やかに上がるため自然。）
+            else if (_summitGoal == null && _plane != null && fallbackAbsoluteAltitude <= 0f
+                     && _bootstrap.ColliderBaker != null)
+            {
+                float targetY = _bootstrap.ColliderBaker.GlobalMaxY * altitudeFraction;
+                if (targetY > 1f && Mathf.Abs(targetY - _placedY) > 0.5f)
+                {
+                    _placedY = Mathf.MoveTowards(_placedY, targetY, altitudeFollowSpeed * Time.deltaTime);
                     var pp = _plane.transform.position;
                     _plane.transform.position = new Vector3(pp.x, _placedY, pp.z);
                 }

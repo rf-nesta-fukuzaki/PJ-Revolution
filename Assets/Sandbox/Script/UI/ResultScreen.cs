@@ -5,6 +5,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 using PeakPlunder.Audio;
+using Sandbox.UI;
 
 /// <summary>
 /// GDD §2.2 / §9 / §14.6 — リザルト画面。
@@ -157,6 +158,8 @@ public class ResultScreen : MonoBehaviour
 
         // Stage 6: ボタン表示
         SetStageVisible(_stageButtons, true);
+        // コントローラで即「もう一度」を押せるよう初期フォーカスを当てる。
+        UiFocus.Select(_retryButton, _stageButtons);
         UnsubscribeFromCosmetics();
         _sequenceRoutine = null;
     }

@@ -5,6 +5,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using Unity.Netcode;
 using PeakPlunder.Audio;
+using Sandbox.UI;
 
 /// <summary>
 /// GDD §17.3 — ポーズメニュー。
@@ -90,6 +91,9 @@ public class PauseMenu : MonoBehaviour
 
         GameplayCursorPolicy.SetMenuMode();
 
+        // コントローラー/キーボードが即操作できるよう「ゲームに戻る」を初期フォーカス。
+        UiFocus.Select(_resumeButton, _menuRoot);
+
         OnPaused?.Invoke();
     }
 
@@ -114,6 +118,8 @@ public class PauseMenu : MonoBehaviour
         if (_menuRoot != null)     _menuRoot.SetActive(false);
 
         GameServices.Audio?.PlaySE2D(SoundId.UiClick);
+
+        UiFocus.SelectFirst(_settingsRoot);
     }
 
     private void RequestLeave()
@@ -122,6 +128,9 @@ public class PauseMenu : MonoBehaviour
         if (_menuRoot != null)         _menuRoot.SetActive(false);
 
         GameServices.Audio?.PlaySE2D(SoundId.UiClick);
+
+        // 誤確定で離脱しないよう、安全側の「いいえ」を初期フォーカスにする。
+        UiFocus.Select(_confirmLeaveNo, _confirmLeaveRoot);
     }
 
     private void CancelLeave()
@@ -130,6 +139,8 @@ public class PauseMenu : MonoBehaviour
         if (_menuRoot != null)         _menuRoot.SetActive(true);
 
         GameServices.Audio?.PlaySE2D(SoundId.UiCancel);
+
+        UiFocus.Select(_resumeButton, _menuRoot);
     }
 
     private void ConfirmLeave()

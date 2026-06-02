@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
 using TMPro;
+using Sandbox.UI;
 
 /// <summary>
 /// 抽出ノルマ・所持金・恒久アップグレードを画面表示する HUD（R.E.P.O. の可視化）。
@@ -22,12 +23,12 @@ public class QuotaUpgradeHud : MonoBehaviour
     [SerializeField] private Vector2 _referenceResolution = new Vector2(1920f, 1080f);
     [SerializeField] private int _sortingOrder = 5;
 
-    // ── 色（PEAK 風ミニマル: 暗い半透明パネル + 高コントラスト文字で高視認）──
-    private static readonly Color PanelBg = new Color(0.07f, 0.08f, 0.10f, 0.50f);
-    private static readonly Color TextMain = new Color(0.96f, 0.97f, 1.00f);
-    private static readonly Color TextDim  = new Color(0.74f, 0.80f, 0.86f);
-    private static readonly Color Gold     = new Color(1.00f, 0.86f, 0.40f);
-    private static readonly Color Good      = new Color(0.50f, 1.00f, 0.60f);
+    // ── 色（共有 UiPalette を参照して全 HUD と暖色トーンを統一）──
+    private static readonly Color PanelBg  = UiPalette.PanelBg;
+    private static readonly Color TextMain = UiPalette.Cream;
+    private static readonly Color TextDim  = UiPalette.CreamDim;
+    private static readonly Color Gold     = UiPalette.Amber;
+    private static readonly Color Good     = UiPalette.Sage;
 
     private float _refreshTimer;
     private int   _cachedExtracted;

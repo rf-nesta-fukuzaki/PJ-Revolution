@@ -7,6 +7,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
 using PeakPlunder.Audio;
+using Sandbox.UI;
 
 /// <summary>
 /// GDD §2.2 — ベースキャンプ準備フェーズのショップ UI。
@@ -143,11 +144,19 @@ public class BasecampShop : MonoBehaviour
         if (_shopPanel == null) return;
         _shopPanel.SetActive(visible);
 
+        if (!visible) return;
+
         // GDD §21.3: 初回来訪時のみショップ操作チュートリアルを表示。
-        if (visible && !_tutorialShownThisSession)
+        if (!_tutorialShownThisSession)
         {
             ShopTutorialOverlay.Instance?.ShowIfFirstTime();
             _tutorialShownThisSession = true;
+        }
+        else
+        {
+            // チュートリアル非表示時のみ、ショップ先頭をコントローラ初期フォーカスに。
+            // （初回はチュートリアルオーバーレイにフォーカスを譲り、奪い合いを避ける）
+            UiFocus.SelectFirst(_shopPanel);
         }
     }
 

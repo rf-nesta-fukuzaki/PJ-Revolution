@@ -3,6 +3,7 @@ using System.Text;
 using TMPro;
 using UnityEngine;
 using PeakPlunder.Localization;
+using Sandbox.UI;
 
 /// <summary>
 /// GDD §10.6 — ベースキャンプの天候ボード。
@@ -49,6 +50,10 @@ public class WeatherBoardManager : MonoBehaviour
     private readonly List<RouteGate> _routeGates = new();
     private readonly StringBuilder _sb = new(128);
 
+    // ルート状況の色は共有パレット由来（緑=開通 / コーラル=閉鎖）に統一。
+    private static readonly string OpenHex   = ColorUtility.ToHtmlStringRGB(UiPalette.Sage);
+    private static readonly string ClosedHex = ColorUtility.ToHtmlStringRGB(UiPalette.Coral);
+
     private float _proximityTimer;
     private bool _isExpanded;
 
@@ -61,8 +66,31 @@ public class WeatherBoardManager : MonoBehaviour
             HandleWeatherChanged(_weather.CurrentWeather);
         }
 
+        StyleLabels();
         RefreshRouteGates();
         SetExpanded(false);
+    }
+
+    /// <summary>
+    /// 天候ボードの全ラベルを共有パレット（暖色クリーム）+ 可読性（縁取り/影）に統一する。
+    /// インスペクタ割り当ての TMP を実行時に整えるだけで、シーンアセットは書き換えない（非破壊）。
+    /// </summary>
+    private void StyleLabels()
+    {
+        // 主表示はクリーム、補助（風速）は副次トーンに。
+        ApplyLabelStyle(_compactWeatherLabel,        UiPalette.Cream);
+        ApplyLabelStyle(_compactWindLabel,           UiPalette.CreamDim);
+        ApplyLabelStyle(_expandedWeatherLabel,       UiPalette.Cream);
+        ApplyLabelStyle(_expandedWindLabel,          UiPalette.CreamDim);
+        ApplyLabelStyle(_expandedRecommendationLabel, UiPalette.Cream);
+        ApplyLabelStyle(_expandedRouteStatusLabel,   UiPalette.Cream);
+    }
+
+    private static void ApplyLabelStyle(TextMeshProUGUI label, Color color)
+    {
+        if (label == null) return;
+        label.color = color;
+        UiReadability.MakeReadable(label);
     }
 
     private void OnDestroy()
@@ -237,7 +265,7 @@ public class WeatherBoardManager : MonoBehaviour
         foreach (var gate in _routeGates)
         {
             if (gate == null) continue;
-            string status = gate.IsOpen ? "<color=#7FD46C>開通</color>" : "<color=#E05656>閉鎖</color>";
+            string status = gate.IsOpen ? $"<color=#{OpenHex}>開通</color>" : $"<color=#{ClosedHex}>閉鎖</color>";
             _sb.Append("・").Append(gate.Name).Append(" — ").AppendLine(status);
         }
         return _sb.ToString();

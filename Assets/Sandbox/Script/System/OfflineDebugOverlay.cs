@@ -1,5 +1,6 @@
 using Unity.Netcode;
 using UnityEngine;
+using Sandbox.UI;
 
 /// <summary>
 /// F10 で開閉する統合デバッグメニュー（IMGUI）。
@@ -58,9 +59,9 @@ public sealed class OfflineDebugOverlay : MonoBehaviour
         if (session != null && session.ShowSessionGui)
         {
             GUILayout.Space(8f);
-            // 暗い背景上でも読めるよう、委譲描画の間だけ既定ラベル色を白へ。
+            // 暗い背景上でも読めるよう、委譲描画の間だけ既定ラベル色を共有クリームへ。
             var prevLabelColor = GUI.skin.label.normal.textColor;
-            GUI.skin.label.normal.textColor = Color.white;
+            GUI.skin.label.normal.textColor = UiPalette.Cream;
             session.DrawSessionGui();
             GUI.skin.label.normal.textColor = prevLabelColor;
             GUI.enabled = true;
@@ -128,7 +129,8 @@ public sealed class OfflineDebugOverlay : MonoBehaviour
     {
         if (string.IsNullOrEmpty(_statusMessage)) return;
         var prev = _labelStyle.normal.textColor;
-        _labelStyle.normal.textColor = _messageTimer > 0f ? new Color(1f, 0.84f, 0f) : new Color(0.7f, 0.7f, 0.7f);
+        // 直近メッセージはアンバー強調、時間切れ後は副次トーンへフェード。
+        _labelStyle.normal.textColor = _messageTimer > 0f ? UiPalette.Amber : UiPalette.CreamDim;
         GUILayout.Label($"› {_statusMessage}", _labelStyle);
         _labelStyle.normal.textColor = prev;
     }
@@ -137,9 +139,10 @@ public sealed class OfflineDebugOverlay : MonoBehaviour
     {
         if (_boxStyle == null)
         {
+            var panelBg = UiPalette.Ink; panelBg.a = 0.92f; // 共有インク色の不透明パネル。
             _boxStyle = new GUIStyle(GUI.skin.box)
             {
-                normal = { background = MakeTex(2, 2, new Color(0.08f, 0.08f, 0.1f, 0.92f)) },
+                normal = { background = MakeTex(2, 2, panelBg) },
                 padding = new RectOffset(10, 10, 10, 10),
             };
 
@@ -148,13 +151,13 @@ public sealed class OfflineDebugOverlay : MonoBehaviour
                 richText = true,
                 wordWrap = true,
                 alignment = TextAnchor.UpperLeft,
-                normal = { textColor = Color.white },
+                normal = { textColor = UiPalette.Cream },
             };
 
             _headerStyle = new GUIStyle(_labelStyle)
             {
                 fontStyle = FontStyle.Bold,
-                normal = { textColor = new Color(0.6f, 0.85f, 1f) },
+                normal = { textColor = UiPalette.Amber },
             };
         }
 

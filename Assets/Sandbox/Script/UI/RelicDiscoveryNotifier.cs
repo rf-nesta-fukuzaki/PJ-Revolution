@@ -2,6 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
+using Sandbox.UI;
 
 /// <summary>
 /// GDD §14.9 — 遺物発見通知 UI。
@@ -46,6 +48,80 @@ public class RelicDiscoveryNotifier : MonoBehaviour, IRelicDiscoveryNotifier
 
         if (_group != null) _group.alpha = 0f;
         if (_iconRoot != null) _iconRoot.SetActive(false);
+
+        RestyleAsPill();
+    }
+
+    /// <summary>
+    /// 中央集約ミニマル: 素の黒バナー(上中央)を、画面下中央の角丸ピル型トーストへ
+    /// 実行時に整形する（シーンアセットは書き換えない・非破壊）。
+    /// 背景は 9-slice の角丸スプライト＋パレット色、ラベルはクリーム中央寄せ。
+    /// </summary>
+    private void RestyleAsPill()
+    {
+        if (_group != null)
+        {
+            var rt = _group.transform as RectTransform;
+            if (rt != null)
+            {
+                rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);
+                rt.pivot = new Vector2(0.5f, 0.5f);
+                rt.sizeDelta = new Vector2(440f, 46f);
+                rt.anchoredPosition = new Vector2(0f, 132f);
+            }
+
+            var bg = _group.GetComponent<Image>();
+            if (bg != null)
+            {
+                bg.sprite = GetPillSprite();
+                bg.type = Image.Type.Sliced;
+                bg.pixelsPerUnitMultiplier = 1f;
+                var c = UiPalette.Ink; c.a = 0.72f; // 読みやすさ重視でやや不透明
+                bg.color = c;
+            }
+        }
+
+        if (_label != null)
+        {
+            _label.color = UiPalette.Cream;
+            _label.alignment = TextAlignmentOptions.Center;
+            _label.fontSize = 20f;
+        }
+
+        if (_iconRoot != null) _iconRoot.SetActive(false);
+    }
+
+    private static Sprite s_pillSprite;
+
+    /// <summary>角丸長方形（9-slice 用ボーダー付き）の柔らかいスプライトを手続き生成する。</summary>
+    private static Sprite GetPillSprite()
+    {
+        if (s_pillSprite != null) return s_pillSprite;
+
+        const int size = 48;
+        const float radius = 16f;
+        const float aa = 1.5f;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+        float half = (size - 1) * 0.5f;
+        float b = half - radius;
+
+        var px = new Color[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float qx = Mathf.Max(Mathf.Abs(x - half) - b, 0f);
+                float qy = Mathf.Max(Mathf.Abs(y - half) - b, 0f);
+                float dist = Mathf.Sqrt(qx * qx + qy * qy) - radius; // <0 = 内側
+                px[y * size + x] = new Color(1f, 1f, 1f, Mathf.Clamp01(0.5f - dist / aa));
+            }
+        }
+        tex.SetPixels(px);
+        tex.Apply();
+
+        s_pillSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f),
+            100f, 0, SpriteMeshType.FullRect, new Vector4(radius, radius, radius, radius));
+        return s_pillSprite;
     }
 
     private void OnDestroy()

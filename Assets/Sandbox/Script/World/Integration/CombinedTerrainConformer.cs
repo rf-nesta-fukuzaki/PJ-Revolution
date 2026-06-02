@@ -164,6 +164,7 @@ namespace Sandbox.World.Integration
             }
             CreateSafetyFloor();
             EnsureWireRopeHud();
+            EnsureUiFontUnified();
         }
 
         /// <summary>
@@ -174,20 +175,38 @@ namespace Sandbox.World.Integration
         {
             if (Object.FindFirstObjectByType<HudManager>() != null) return;
             var hudGo = new GameObject("HudManager");
-            hudGo.AddComponent<HudManager>();
-            Debug.Log("[CombinedTerrainConformer] WireRope 用 HudManager を生成しました。");
+            // 力ゲージ + クロスヘアのみ。タイマー/CP/高度は ExpeditionHUD が担うので
+            // gauge-only モードにして HUD の二重表示を防ぐ。
+            hudGo.AddComponent<HudManager>().WireRopeGaugeOnly = true;
+            Debug.Log("[CombinedTerrainConformer] WireRope 用 HudManager (gauge-only) を生成しました。");
+        }
+
+        /// <summary>
+        /// ベイク済み UI に混在する LiberationSans(TMP 既定) を排し、TMP テキストを
+        /// プロジェクト標準の NotoSansJP へ統一する。シーンアセットは書き換えず実行時のみ適用（非破壊）。
+        /// </summary>
+        private static void EnsureUiFontUnified()
+        {
+            int changed = UiFontUnifier.UnifySceneToProjectFont();
+            if (changed > 0)
+                Debug.Log($"[CombinedTerrainConformer] TMP フォントを NotoSansJP へ統一しました（{changed} 件）。");
         }
 
         private void Update()
         {
             if (_bootstrap == null || _bootstrap.ColliderBaker == null) return;
+
+            // フォグは地形ベイク完了を待たず、最初の Update（＝最初の描画前）から整える。
+            // pad ビルド待ちにしていると、その数フレーム〜数秒間だけ初期の濃いフォグ(320-2800m)で遠景が白く霞み、
+            // 整合後に急にクリアになる『フォグの後出し』が見えていた。TuneFog は _fogTuned で冪等。
+            TuneFog();
+
             if (_bootstrap.ColliderBaker.BakedCount < minBakedChunks) return;
             if (!_padBuilt && !TrySampleGround(probeXZ.x, probeXZ.y, out _)) return; // 基地中心に地形が出てから
 
             if (!_padBuilt)
             {
                 if (!TryBuildBasecampPad()) return;
-                TuneFog();
                 CollectPending();
                 SoftenMountainMaterials();
                 _startTime = Time.time;
