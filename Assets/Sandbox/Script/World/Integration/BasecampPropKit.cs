@@ -88,23 +88,6 @@ namespace Sandbox.World.Integration
             return go;
         }
 
-        // ── 板（旗・幕・看板・地面デカール）。常に当たり判定なし ──
-        public static GameObject Quad(string name, Transform parent, Vector3 localPos, Vector2 size,
-                                      Material mat, Vector3 eulerLocal)
-        {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            go.name = name;
-            var t = go.transform;
-            t.SetParent(parent, false);
-            t.localPosition = localPos;
-            t.localRotation = Quaternion.Euler(eulerLocal);
-            t.localScale = new Vector3(size.x, size.y, 1f);
-            go.GetComponent<MeshRenderer>().sharedMaterial = mat;
-            var col = go.GetComponent<Collider>();
-            if (col != null) Object.Destroy(col);
-            return go;
-        }
-
         // ── 空コンテナ ───────────────────────────────────────────
         public static Transform Group(string name, Transform parent, Vector3 localPos)
         {

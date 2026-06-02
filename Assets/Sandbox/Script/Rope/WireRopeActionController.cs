@@ -20,9 +20,6 @@ public class WireRopeActionController : MonoBehaviour
         Retrieving,
     }
 
-    private const int SpinSegments = 32;
-    private const int RopeLineSegments = 12;
-    private const string VisualChildName = "WireRopeVisual";
     private const float GroundNormalThreshold = 0.65f;
     private const float GroundClearance = 0.12f;
     private const float GroundPenetrationCorrectThreshold = 0.2f;
@@ -193,9 +190,7 @@ public class WireRopeActionController : MonoBehaviour
     private Rigidbody _rb;
     private ExplorerController _explorer;
     private int _inputSlot;
-    private LineRenderer _lineRenderer;
-    private Transform _visualRoot;
-    private GameObject _hookVisual;
+    private RopeRenderer _renderer;
 
     private bool _savedUseGravity;
     private bool _savedIsKinematic;
@@ -227,7 +222,6 @@ public class WireRopeActionController : MonoBehaviour
     private float _visualWidthStart;
     private float _attachedRopeSwayPhase;
     private float _tensionSoundTimer;
-    private float _hookVisualScale = 0.22f;
     private float _retrieveChargeFactor = 1f;
     private float _retrieveStartDistance;
     private float _retrieveEngage01;
@@ -247,6 +241,8 @@ public class WireRopeActionController : MonoBehaviour
     private SandboxCameraShake _cameraShake;
     private CapsuleCollider _bodyCapsule;
     private int _collisionMask;
+    // RaycastAll の毎回ヒープ確保を避ける共有バッファ（回収中は FixedUpdate ごとに複数回引くため）。
+    private readonly RaycastHit[] _rayHits = new RaycastHit[16];
 
     public WireRopePhase Phase => _phase;
     public float ForceGauge => _forceGauge;
@@ -273,7 +269,11 @@ public class WireRopeActionController : MonoBehaviour
         if (_handOrigin == null)
             _handOrigin = _aimTransform;
 
-        EnsureVisualHierarchy();
+        _renderer = GetComponent<RopeRenderer>();
+        if (_renderer == null)
+            _renderer = gameObject.AddComponent<RopeRenderer>();
+        _renderer.Configure(_ropeStartWidth, _ropeEndWidth, _ropeColor);
+
         ResolveHookMask();
         ResolveCollisionMask();
     }
@@ -392,8 +392,10 @@ public class WireRopeActionController : MonoBehaviour
 
     private void Update()
     {
-        // 入力スロットは毎フレーム再解決（Awake 時点は未構成で -1 になり得る）。
-        _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
+        // 入力スロットは「確定するまで(-1 の間)」だけ再解決する。Awake 時点は roster 未構成で
+        // -1 になり得るが、一度有効値を得たら固定し、毎フレームの GetComponent を避ける。
+        if (_inputSlot < 0)
+            _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
         if (_inputSlot < 0) return;
 
         switch (_phase)
@@ -469,8 +471,8 @@ public class WireRopeActionController : MonoBehaviour
         _visualSagBlend = Mathf.Lerp(_visualSagBlend, targetSag, Time.deltaTime * _visualBlendSpeed);
         _visualWidthStart = Mathf.Lerp(_visualWidthStart, _ropeStartWidth * widthMul, Time.deltaTime * _visualBlendSpeed);
 
-        UpdateRopeBetween(GetHandOrigin(), _anchorPoint, _visualSagBlend, _visualWidthStart);
-        SyncHookVisual(_anchorPoint);
+        _renderer.DrawCurve(GetHandOrigin(), _anchorPoint, _visualSagBlend, _visualWidthStart);
+        _renderer.SyncHook(_anchorPoint, Time.deltaTime);
     }
 
     private void FixedUpdate()
@@ -493,7 +495,7 @@ public class WireRopeActionController : MonoBehaviour
         _spinAngle = 0f;
         _visualSagBlend = 0f;
         _visualWidthStart = _ropeStartWidth * _lassoHandWidthMul;
-        SetLineVisible(true);
+        _renderer.SetVisible(true);
         UpdateCowboyLassoVisual();
     }
 
@@ -522,24 +524,11 @@ public class WireRopeActionController : MonoBehaviour
 
         float attachAngle = Mathf.Atan2(Vector3.Dot(axisRight, toHand), Vector3.Dot(axisForward, toHand)) * Mathf.Rad2Deg;
 
-        int circleCount = SpinSegments + 1;
-        int totalCount = 1 + circleCount;
-        _lineRenderer.positionCount = totalCount;
-
-        _lineRenderer.SetPosition(0, hand);
-
-        for (int i = 0; i < circleCount; i++)
-        {
-            float angle = (attachAngle + _spinAngle + (360f / SpinSegments) * i) * Mathf.Deg2Rad;
-            Vector3 onCircle = center + (axisRight * Mathf.Cos(angle) + axisForward * Mathf.Sin(angle)) * _lassoRadius;
-            _lineRenderer.SetPosition(1 + i, onCircle);
-        }
-
         float charge = _forceGauge * 0.01f;
         float pulse = 1f + Mathf.Sin(Time.time * 14f) * 0.04f;
         float widthMul = _lassoHandWidthMul * (1f + charge * 0.28f) * pulse;
-        _lineRenderer.startWidth = _ropeStartWidth * widthMul;
-        _lineRenderer.endWidth = _ropeEndWidth * (0.9f + charge * 0.15f);
+        _renderer.DrawLasso(hand, center, axisRight, axisForward, _lassoRadius, _spinAngle, attachAngle,
+                            _ropeStartWidth * widthMul, _ropeEndWidth * (0.9f + charge * 0.15f));
     }
 
     // ── 投擲 ─────────────────────────────────────────────────
@@ -559,9 +548,8 @@ public class WireRopeActionController : MonoBehaviour
     private IEnumerator ThrowRoutine(Vector3 origin, Vector3 direction)
     {
         _phase = WireRopePhase.Throwing;
-        SetLineVisible(true);
-        _lineRenderer.startWidth = _ropeStartWidth;
-        _lineRenderer.endWidth = _ropeEndWidth;
+        _renderer.SetVisible(true);
+        _renderer.SetWidths(_ropeStartWidth, _ropeEndWidth);
 
         bool hit = TryResolveThrowTarget(origin, direction, out RaycastHit hitInfo);
         Vector3 targetPoint = hit ? hitInfo.point : origin + direction * _chargedThrowRange;
@@ -572,7 +560,7 @@ public class WireRopeActionController : MonoBehaviour
             ResolvePullTarget(hitInfo.collider);
         }
 
-        SpawnHookVisual(origin);
+        _renderer.SpawnHook(origin);
         float distance = Vector3.Distance(origin, targetPoint);
         float duration = Mathf.Max(0.08f, distance / _throwSpeed);
         float elapsed = 0f;
@@ -583,8 +571,8 @@ public class WireRopeActionController : MonoBehaviour
             float t = EaseOut(elapsed / duration, _throwEasePower);
             Vector3 hookPos = Vector3.Lerp(origin, targetPoint, t);
             float sag = Mathf.Sin(t * Mathf.PI) * _ropeSag * (1f - t * 0.25f);
-            UpdateRopeBetween(origin, hookPos, sag);
-            SyncHookVisual(hookPos);
+            _renderer.DrawCurve(origin, hookPos, sag, _ropeStartWidth);
+            _renderer.SyncHook(hookPos, Time.deltaTime);
             yield return null;
         }
 
@@ -596,7 +584,7 @@ public class WireRopeActionController : MonoBehaviour
             UpdateRetrieveRopeVisual();
             GameServices.Audio?.PlaySE(SoundId.GrapplingHit, _anchorPoint);
             AddCameraTrauma(_traumaRopeHit);
-            PulseHookVisual(1.45f);
+            _renderer.PulseHook(1.45f);
         }
         else
         {
@@ -610,14 +598,14 @@ public class WireRopeActionController : MonoBehaviour
 
     private bool TryResolveThrowTarget(Vector3 origin, Vector3 direction, out RaycastHit hitInfo)
     {
-        var hits = Physics.RaycastAll(origin, direction, _chargedThrowRange, _hookableLayers, QueryTriggerInteraction.Ignore);
+        int count = Physics.RaycastNonAlloc(origin, direction, _rayHits, _chargedThrowRange, _hookableLayers, QueryTriggerInteraction.Ignore);
         float bestDist = float.MaxValue;
         hitInfo = default;
         bool found = false;
 
-        for (int i = 0; i < hits.Length; i++)
+        for (int i = 0; i < count; i++)
         {
-            var h = hits[i];
+            var h = _rayHits[i];
             if (h.collider == null) continue;
             if (h.collider.transform.IsChildOf(transform)) continue;
             if (h.distance < bestDist)
@@ -713,7 +701,7 @@ public class WireRopeActionController : MonoBehaviour
         _inertiaSlideDirection = _retrievePullAxis;
         ApplyRetrieveStartVelocity();
 
-        SetLineVisible(true);
+        _renderer.SetVisible(true);
         _tensionSoundTimer = 0f;
         if (IsGroundAnchor())
             SetRetrieveSlideFriction(true);
@@ -741,7 +729,7 @@ public class WireRopeActionController : MonoBehaviour
         if (_suppressedTargetController != null)
             _suppressedTargetController.enabled = false;
 
-        SetLineVisible(true);
+        _renderer.SetVisible(true);
         _tensionSoundTimer = 0f;
         GameServices.Audio?.PlaySE(SoundId.WinchStart, transform.position);
         AddCameraTrauma(_traumaRetrieveStart);
@@ -1438,8 +1426,8 @@ public class WireRopeActionController : MonoBehaviour
 
     private void RetractRopeVisual()
     {
-        ClearHookVisual();
-        SetLineVisible(false);
+        _renderer.ClearHook();
+        _renderer.SetVisible(false);
     }
 
     private void UpdatePullStallTimer(float dt)
@@ -1594,7 +1582,7 @@ public class WireRopeActionController : MonoBehaviour
         SetBodyAngularVelocity(Vector3.zero);
         Physics.SyncTransforms();
         AddCameraTrauma(_traumaImpactSlingshot);
-        PulseHookVisual(1.25f);
+        _renderer.PulseHook(1.25f);
     }
 
     private void ApplyImpactSlingshotSustainForce()
@@ -1968,16 +1956,16 @@ public class WireRopeActionController : MonoBehaviour
         bestHit = default;
 
         Vector3 origin = new Vector3(near.x, near.y + _groundSnapUp, near.z);
-        var hits = Physics.RaycastAll(origin, Vector3.down, _groundSnapUp * 3f, _collisionMask, QueryTriggerInteraction.Ignore);
-        if (hits == null || hits.Length == 0)
+        int count = Physics.RaycastNonAlloc(origin, Vector3.down, _rayHits, _groundSnapUp * 3f, _collisionMask, QueryTriggerInteraction.Ignore);
+        if (count == 0)
             return false;
 
         float bestY = float.MinValue;
         bool found = false;
 
-        for (int i = 0; i < hits.Length; i++)
+        for (int i = 0; i < count; i++)
         {
-            var h = hits[i];
+            var h = _rayHits[i];
             if (h.collider == null) continue;
             if (h.collider.transform.IsChildOf(transform)) continue;
             if (h.point.y > bestY)
@@ -2112,133 +2100,8 @@ public class WireRopeActionController : MonoBehaviour
         RestoreRigidbodyMotorState();
         _rb.WakeUp();
 
-        ClearHookVisual();
-        SetLineVisible(false);
-    }
-
-    // ── ビジュアル ───────────────────────────────────────────
-    private void EnsureVisualHierarchy()
-    {
-        _visualRoot = transform.Find(VisualChildName);
-        if (_visualRoot == null)
-        {
-            var go = new GameObject(VisualChildName);
-            go.transform.SetParent(transform, false);
-            _visualRoot = go.transform;
-        }
-
-        _lineRenderer = _visualRoot.GetComponent<LineRenderer>();
-        if (_lineRenderer == null)
-            _lineRenderer = _visualRoot.gameObject.AddComponent<LineRenderer>();
-
-        ConfigureLineRenderer(_lineRenderer);
-    }
-
-    private void ConfigureLineRenderer(LineRenderer lr)
-    {
-        lr.enabled = false;
-        lr.useWorldSpace = true;
-        lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        lr.receiveShadows = false;
-        lr.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
-        lr.textureMode = LineTextureMode.Stretch;
-        lr.alignment = LineAlignment.View;
-        lr.numCapVertices = 6;
-        lr.numCornerVertices = 4;
-        lr.startWidth = _ropeStartWidth;
-        lr.endWidth = _ropeEndWidth;
-        lr.startColor = _ropeColor;
-        lr.endColor = _ropeColor;
-        lr.material = CreateRopeMaterial();
-    }
-
-    private void UpdateRopeBetween(Vector3 start, Vector3 end, float sag, float startWidth)
-    {
-        SetLineVisible(true);
-        _lineRenderer.startWidth = startWidth;
-        _lineRenderer.endWidth = _ropeEndWidth;
-
-        int count = RopeLineSegments + 1;
-        _lineRenderer.positionCount = count;
-        for (int i = 0; i < count; i++)
-        {
-            float t = i / (float)RopeLineSegments;
-            Vector3 p = Vector3.Lerp(start, end, t);
-            p += Vector3.down * (sag * 4f * t * (1f - t));
-            _lineRenderer.SetPosition(i, p);
-        }
-    }
-
-    private void UpdateRopeBetween(Vector3 start, Vector3 end, float sag) =>
-        UpdateRopeBetween(start, end, sag, _ropeStartWidth);
-
-    private void SetLineVisible(bool visible)
-    {
-        if (_lineRenderer != null)
-            _lineRenderer.enabled = visible;
-    }
-
-    private void SpawnHookVisual(Vector3 origin)
-    {
-        ClearHookVisual();
-        var vis = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        vis.name = "WireRopeHook";
-        var col = vis.GetComponent<Collider>();
-        if (col != null) Destroy(col);
-
-        vis.transform.localScale = Vector3.one * 0.22f;
-        vis.transform.position = origin;
-
-        var mr = vis.GetComponent<MeshRenderer>();
-        if (mr != null)
-            mr.sharedMaterial = CreateRopeMaterial();
-
-        _hookVisual = vis;
-    }
-
-    private void SyncHookVisual(Vector3 pos)
-    {
-        if (_hookVisual == null)
-            return;
-
-        _hookVisual.transform.position = pos;
-        _hookVisualScale = Mathf.Lerp(_hookVisualScale, 0.22f, Time.deltaTime * 14f);
-        _hookVisual.transform.localScale = Vector3.one * _hookVisualScale;
-    }
-
-    private void PulseHookVisual(float scaleMul)
-    {
-        if (_hookVisual == null)
-            return;
-
-        _hookVisualScale = 0.22f * scaleMul;
-    }
-
-    private void ClearHookVisual()
-    {
-        if (_hookVisual == null) return;
-        Destroy(_hookVisual);
-        _hookVisual = null;
-    }
-
-    private static Material s_ropeMaterial;
-
-    private static Material CreateRopeMaterial()
-    {
-        if (s_ropeMaterial != null) return s_ropeMaterial;
-
-        var shader = Shader.Find("Universal Render Pipeline/Unlit")
-                     ?? Shader.Find("Unlit/Color")
-                     ?? Shader.Find("Sprites/Default");
-        if (shader == null) return null;
-
-        s_ropeMaterial = new Material(shader) { name = "WireRopeUnlit" };
-        if (s_ropeMaterial.HasProperty("_BaseColor"))
-            s_ropeMaterial.SetColor("_BaseColor", new Color(0.95f, 0.82f, 0.45f, 1f));
-        else
-            s_ropeMaterial.color = new Color(0.95f, 0.82f, 0.45f, 1f);
-
-        return s_ropeMaterial;
+        _renderer.ClearHook();
+        _renderer.SetVisible(false);
     }
 
     private Vector3 GetHandOrigin()

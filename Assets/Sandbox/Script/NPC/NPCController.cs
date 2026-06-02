@@ -59,6 +59,7 @@ public class NPCController : MonoBehaviour
     private bool _isDead;
     private bool _isGrounded;
     private bool _isMoving;
+    private bool _scoreRegistered;
 
     private Vector3 _homePos;
     private Vector3 _stuckLastPos;
@@ -132,7 +133,6 @@ public class NPCController : MonoBehaviour
         _nextThinkTimer -= Time.deltaTime;
         _nextSensorRefreshTimer -= Time.deltaTime;
 
-        EnsureGroundMaskValid();
         EnsureScoreRegistration();
         CheckGrounded();
         UpdateStuckState();
@@ -601,22 +601,6 @@ public class NPCController : MonoBehaviour
         return false;
     }
 
-    private void EnsureGroundMaskValid()
-    {
-        int mask = _groundLayer.value;
-        int defaultLayer = LayerMask.NameToLayer("Default");
-        int groundLayer = LayerMask.NameToLayer("Ground");
-        int playerLayer = LayerMask.NameToLayer("Player");
-
-        bool missingDefault = defaultLayer >= 0 && (mask & (1 << defaultLayer)) == 0;
-        bool missingGround = groundLayer >= 0 && (mask & (1 << groundLayer)) == 0;
-        bool includesPlayer = playerLayer >= 0 && (mask & (1 << playerLayer)) != 0;
-        bool includesIgnoreRaycast = (mask & (1 << 2)) != 0;
-
-        if (missingDefault || missingGround || includesPlayer || includesIgnoreRaycast)
-            ResolveGroundMask();
-    }
-
     private void ResolveGroundMask()
     {
         // 現在値に依存せず、毎回マスクを再構成して不正状態を自己修復する。
@@ -642,11 +626,15 @@ public class NPCController : MonoBehaviour
 
     private void EnsureScoreRegistration()
     {
-        IScoreService score = GameServices.Score;
-        if (score == null)
-            return;
+        if (_scoreRegistered) return;
 
+        IScoreService score = GameServices.Score;
+        if (score == null) return; // サービスが Start 後に生成される構成では次フレーム以降に再試行。
+
+        // 登録は冪等（ScoreTracker 側で id 重複は無視）。一度成功したら以降は
+        // gameObject.name の毎フレーム文字列確保ごとスキップする。
         score.RegisterPlayer(GetInstanceID(), gameObject.name);
+        _scoreRegistered = true;
     }
 
     private RelicCarrier FindNearestRelicCandidate()

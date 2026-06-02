@@ -58,7 +58,6 @@ public class ExpeditionHUD : MonoBehaviour
 
     // ── 内部状態 ─────────────────────────────────────────────
     private readonly ExpeditionTimer _fallbackTimer = new();
-    private readonly ExpeditionHudReadModel _hudReadModel = new();
     private ExpeditionTimer _subscribedTimer;
     private string                       _displayTime = "00:00.00";
     private int                              _currentCheckpoint;
@@ -417,7 +416,6 @@ public class ExpeditionHUD : MonoBehaviour
         if (_checkpointLabel != null)
             _checkpointLabel.text = $"チェックポイント {current}/{total}";
 
-        _hudReadModel.SetTransientMessage($"チェックポイント {current} 通過！", _warningDisplayTime);
         ShowWarning($"チェックポイント {current} 通過！");
     }
 
