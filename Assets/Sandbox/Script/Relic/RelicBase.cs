@@ -61,7 +61,14 @@ public abstract class RelicBase : MonoBehaviour
     protected virtual void Awake()
     {
         _rb = GetComponent<Rigidbody>();
+
+        // RelicVisualizer は [RequireComponent] 指定だが、コンポーネント分離より前に作られた
+        // 既存プレハブ（Assets/Sandbox/Prefabs/Relics/*.prefab）には未付与のまま残っている。
+        // RequireComponent はランタイムの Instantiate では欠落依存を補わないため、ここで
+        // 取得できなければ自前で付与し、後段 RebuildVisual() での NullReference を防ぐ。
         _visualizer = GetComponent<RelicVisualizer>();
+        if (_visualizer == null)
+            _visualizer = gameObject.AddComponent<RelicVisualizer>();
 
         if (_definition != null)
             ApplyDefinition(_definition);
@@ -71,8 +78,10 @@ public abstract class RelicBase : MonoBehaviour
 
         _durability = new RelicDurabilityModel(_maxHp, _impactThreshold, _damageMultiplier);
         _lastCondition = _durability.Condition;
-        RebuildVisual();
 
+        // 仲介コンポーネント群はビジュアル構築より前に確実に付与する。
+        // 仮に RebuildVisual() がシェーダ/マテリアル等の都合で例外を投げても、拾い上げの要となる
+        // RelicCarrier が欠落して「遺物を持てない／置けない」状態に陥らないようにするための順序。
         if (GetComponent<RelicDiscoveryTrigger>() == null)
             gameObject.AddComponent<RelicDiscoveryTrigger>();
 
@@ -82,6 +91,15 @@ public abstract class RelicBase : MonoBehaviour
         // [RequireComponent(typeof(RelicBase))] で安全、保持中以外は FixedUpdate が即 return で不活性。
         if (GetComponent<RelicCarrier>() == null)
             gameObject.AddComponent<RelicCarrier>();
+
+        // RelicDamageTracker も自動付与する（GDD §9.3「遺物を一番ぶつけた人」称号のデータ供給役）。
+        // 従来どのプレハブにも付いておらず OnDamaged を購読する主体が存在せず、ダメージ帰責が
+        // 一切記録されていなかった配線漏れを解消する。RelicCarrier の後に付けて _carrier 取得を保証する。
+        if (GetComponent<RelicDamageTracker>() == null)
+            gameObject.AddComponent<RelicDamageTracker>();
+
+        // 仲介コンポーネントを付与し終えてからビジュアルを構築する。
+        RebuildVisual();
     }
 
     protected void ApplyDefinition(RelicDefinitionSO def)

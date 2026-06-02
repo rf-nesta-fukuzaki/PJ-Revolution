@@ -36,19 +36,28 @@ public class SlipperyFishStatueRelic : RelicBase
             Random.value * 100f,
             Random.value * 100f);
 
-        // 非常に低い摩擦（コンポーネント取得は base.Awake() 後に行う）
+        // 非常に低い摩擦（コンポーネント取得は base.Awake() 後に行う）。
+        // 値は全個体で不変なので、インスタンス毎に new せず静的共有マテリアルを使う
+        // （col.material はインスタンス化＋リークの恐れがあるため sharedMaterial を使用）。
         var col = GetComponent<Collider>();
         if (col != null)
+            col.sharedMaterial = GetSharedOilMaterial();
+    }
+
+    private static PhysicsMaterial s_oilMaterial;
+
+    /// <summary>全個体で共有する低摩擦マテリアル（値が不変なため共有で問題ない）。</summary>
+    private static PhysicsMaterial GetSharedOilMaterial()
+    {
+        if (s_oilMaterial != null) return s_oilMaterial;
+        s_oilMaterial = new PhysicsMaterial("FishOil")
         {
-            var mat = new PhysicsMaterial("FishOil")
-            {
-                staticFriction  = 0.02f,
-                dynamicFriction = 0.01f,
-                bounciness      = 0.1f,
-                frictionCombine = PhysicsMaterialCombine.Minimum
-            };
-            col.material = mat;
-        }
+            staticFriction  = 0.02f,
+            dynamicFriction = 0.01f,
+            bounciness      = 0.1f,
+            frictionCombine = PhysicsMaterialCombine.Minimum
+        };
+        return s_oilMaterial;
     }
 
     private void Update()

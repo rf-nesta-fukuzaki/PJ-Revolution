@@ -26,6 +26,9 @@ public class RockfallTrigger : MonoBehaviour
     [SerializeField] private GameObject _rockPrefab;
 
     private float _nextTriggerTime;
+    private float _lastActivatedTime = -999f;
+    // 外部(歌う壺など)から短時間に連続 Activate() されても落石コルーチンを多重生成しない最小間隔。
+    private const float ACTIVATE_COOLDOWN = 3f;
 
     public event System.Action OnActivated;
 
@@ -56,6 +59,10 @@ public class RockfallTrigger : MonoBehaviour
     // ── トリガー ─────────────────────────────────────────────
     public void Activate()
     {
+        // 多重起動ガード：閾値付近のフラッピングや複数 Vase からの連打で落石が指数的に湧くのを防ぐ。
+        if (Time.time < _lastActivatedTime + ACTIVATE_COOLDOWN) return;
+        _lastActivatedTime = Time.time;
+
         // GDD §15.2 — rockfall_warning（ゴロゴロ…落石の予兆）
         GameServices.Audio?.PlaySE(SoundId.RockfallWarning, transform.position);
 

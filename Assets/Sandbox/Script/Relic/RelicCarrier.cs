@@ -30,6 +30,9 @@ public class RelicCarrier : MonoBehaviour
     private Animator   _holderAnimator;
     private int        _lastCarrierPlayerId = -1;
     private Vector3    _prevHolderPos;
+    // 拾い上げ前の useGravity を保存し、置いたとき復元する。FloatingSphere のように
+    // useGravity=false を中核メカニクスにする遺物が、置いた後に重力で落下してしまう不具合を防ぐ。
+    private bool       _useGravityBeforePickup = true;
 
     private static readonly int IsCarryingHash = Animator.StringToHash("IsCarrying");
     private static readonly int CarryTypeHash  = Animator.StringToHash("CarryType");
@@ -75,6 +78,7 @@ public class RelicCarrier : MonoBehaviour
         _relic.OnPickedUp(holder);
 
         _rb.isKinematic = false;
+        _useGravityBeforePickup = _rb.useGravity;   // 置いたときに復元するため保存
         _rb.useGravity  = false;
 
         // Animator: IsCarrying / CarryType (GDD §16.2)
@@ -100,7 +104,7 @@ public class RelicCarrier : MonoBehaviour
         }
 
         _currentHolder  = null;
-        _rb.useGravity  = true;
+        _rb.useGravity  = _useGravityBeforePickup;   // 拾う前の重力設定を復元（無条件 true 化を廃止）
         _relic.OnPutDown();
     }
 

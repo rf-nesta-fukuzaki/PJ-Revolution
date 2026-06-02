@@ -17,6 +17,11 @@ public class PlayerInteraction : MonoBehaviour
     private const float STRETCHER_RANGE     = 2.0f;   // 担架に乗り込める距離
     private const float HELICOPTER_RANGE    = 8f;     // ヘリ搭乗可能距離（m）
 
+    // 遺物の掴み判定（単発 Raycast より緩く）。
+    private const float RELIC_GRAB_CAST_RADIUS = 0.6f;   // SphereCast の太さ（照準ブレ許容）
+    private const float RELIC_GRAB_RANGE_MULT  = 1.2f;   // 掴みは通常インタラクトより少し遠くまで
+    private const float RELIC_GRAB_MIN_DOT      = 0.3f;  // 近接フォールバックの前方コーン（約72°）
+
     [Header("インタラクション設定")]
     [SerializeField] private float     _interactRange  = INTERACT_RANGE;
     [SerializeField] private Transform _cameraTransform;
@@ -123,13 +128,17 @@ public class PlayerInteraction : MonoBehaviour
 
     private bool TryPickUpRelic()
     {
-        var carrier = RaycastFor<RelicCarrier>(_interactRange);
+        var carrier = FindGrabbableRelic();
         if (carrier == null) return false;
 
         carrier.PickUp(transform, GetInstanceID());
         _carriedRelic = carrier;
         _balanceIndicator?.Show(carrier);
         ScoreService?.RecordRelicFound(GetInstanceID());
+        // チームスコア／リザルトの遺物価値集計に載せる。従来は NPC 経路でしか
+        // RegisterCollectedRelic が呼ばれず、プレイヤーが拾った遺物がチームスコアへ
+        // ゼロ反映だった配線漏れを解消する。
+        ScoreService?.RegisterCollectedRelic(carrier.GetComponent<RelicBase>());
         Debug.Log($"[Interaction] {carrier.name} を拾った");
         return true;
     }
@@ -211,6 +220,55 @@ public class PlayerInteraction : MonoBehaviour
         if (!Physics.Raycast(ray, out RaycastHit hit, range)) return null;
         return hit.collider.GetComponentInParent<T>();
     }
+
+    /// <summary>
+    /// 遺物の掴み判定。単発 Raycast だと正確に狙わないと掴めず厳しいので、
+    /// ① 太めの SphereCast（照準が多少ズレても掴める）→ ② 前方コーン内の最寄り遺物、
+    /// の順で緩く拾い上げ対象を探す。背後の遺物や運搬中の遺物は対象外。
+    /// </summary>
+    private RelicCarrier FindGrabbableRelic()
+    {
+        if (_cameraTransform == null) return null;
+
+        Vector3 origin  = _cameraTransform.position;
+        Vector3 forward = _cameraTransform.forward;
+        float   range   = _interactRange * RELIC_GRAB_RANGE_MULT;
+
+        // ① 太めの SphereCast（トリガーである発見検出コライダーは無視）。
+        if (Physics.SphereCast(origin, RELIC_GRAB_CAST_RADIUS, forward,
+                out RaycastHit hit, range, ~0, QueryTriggerInteraction.Ignore))
+        {
+            var carrier = hit.collider.GetComponentInParent<RelicCarrier>();
+            if (IsGrabbable(carrier)) return carrier;
+        }
+
+        // ② 近接フォールバック：前方コーン内で最も近い遺物を拾う。
+        Vector3 center = origin + forward * (range * 0.5f);
+        var overlaps = Physics.OverlapSphere(center, range, ~0, QueryTriggerInteraction.Ignore);
+
+        RelicCarrier best     = null;
+        float        bestDist = float.MaxValue;
+        foreach (var col in overlaps)
+        {
+            var carrier = col.GetComponentInParent<RelicCarrier>();
+            if (!IsGrabbable(carrier)) continue;
+
+            Vector3 toRelic = carrier.transform.position - origin;
+            float   dist    = toRelic.magnitude;
+            if (dist > range) continue;
+            if (dist > 0.01f && Vector3.Dot(forward, toRelic / dist) < RELIC_GRAB_MIN_DOT) continue;
+
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best     = carrier;
+            }
+        }
+        return best;
+    }
+
+    private static bool IsGrabbable(RelicCarrier carrier)
+        => carrier != null && !carrier.IsBeingCarried;
 
     private void OnDrawGizmosSelected()
     {

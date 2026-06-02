@@ -18,10 +18,11 @@ public class StaminaSystem : MonoBehaviour
 
     [Header("スタミナ設定 (Config 未設定時のフォールバック)")]
     [SerializeField] private float _maxStamina          = 100f;
+    [Tooltip("自然回復速度 (/s)。走り・登攀をしていない間、一定レートで最大値まで回復する。")]
     [SerializeField] private float _regenRateBase        = 12f;
-    [SerializeField] private float _regenRateMoving      = 5f;
     [SerializeField] private float _sprintDrain          = 15f;
-    [SerializeField] private float _climbDrain           = 10f;
+    [Tooltip("スクランブル登攀の消費 (/s)。登攀中は自然回復しないため、この値がそのままネット消費になる。")]
+    [SerializeField] private float _climbDrain           = 5f;
 
     [Header("高山病")]
     [SerializeField] private float _highAltitude         = 2000f;
@@ -35,7 +36,6 @@ public class StaminaSystem : MonoBehaviour
 
     private float MaxStaminaValue            => (_config != null ? _config.MaxStamina : _maxStamina) + _bonusMaxStamina;
     private float RegenRateBaseValue       => _config != null ? _config.RegenRateBase : _regenRateBase;
-    private float RegenRateMovingValue     => _config != null ? _config.RegenRateMoving : _regenRateMoving;
     private float SprintDrainValue         => _config != null ? _config.SprintDrain : _sprintDrain;
     private float ClimbDrainValue          => _config != null ? _config.ClimbDrain : _climbDrain;
     private float HighAltitudeValue        => _config != null ? _config.HighAltitude : _highAltitude;
@@ -45,8 +45,9 @@ public class StaminaSystem : MonoBehaviour
 
     private float _currentStamina;
     private bool  _isExhausted;
-    private Rigidbody       _cachedRigidbody;
     private ShelterOccupant _shelter;
+    // 走り・登攀でスタミナを消費したフレーム番号。このフレームは自然回復しない（走っている間は回復しない）。
+    private int   _exertionFrame = -1;
 
     // GDD §15.2 — stamina_warning SE の閾値（20 未満で心拍音）
     private const float WARNING_THRESHOLD = 20f;
@@ -66,9 +67,8 @@ public class StaminaSystem : MonoBehaviour
     private void Awake()
     {
         Contract.Invariant(MaxStaminaValue > 0f, "StaminaSystem: maxStamina は正の値でなければならない");
-        _currentStamina  = MaxStaminaValue;
-        _cachedRigidbody = GetComponent<Rigidbody>();
-        _shelter         = GetComponent<ShelterOccupant>();
+        _currentStamina = MaxStaminaValue;
+        _shelter        = GetComponent<ShelterOccupant>();
     }
 
     private void OnEnable()
@@ -91,23 +91,31 @@ public class StaminaSystem : MonoBehaviour
     }
 
     // ── 消費 ─────────────────────────────────────────────────
-    public void Consume(float amount)
+    /// <param name="isExertion">
+    /// 走り・登攀など能動的に踏ん張っている消費か。true のフレームはこの直後の自然回復を止める。
+    /// 高山病ドレインなどの受動的消費は false（回復速度の低下として扱う）。
+    /// </param>
+    public void Consume(float amount, bool isExertion = false)
     {
         if (_currentStamina <= 0f) return;
         _currentStamina = Mathf.Max(0f, _currentStamina - amount);
+        if (isExertion) _exertionFrame = Time.frameCount;
     }
 
-    public void ConsumeSprint()   => Consume(SprintDrainValue   * Time.deltaTime);
-    public void ConsumeClimbing() => Consume(ClimbDrainValue    * Time.deltaTime);
+    public void ConsumeSprint()   => Consume(SprintDrainValue * Time.deltaTime, isExertion: true);
+    public void ConsumeClimbing() => Consume(ClimbDrainValue  * Time.deltaTime, isExertion: true);
 
     // ── 回復 ─────────────────────────────────────────────────
     private void RegenerateStamina()
     {
-        if (_isExhausted) return;
+        // 走り・登攀で踏ん張っているフレームは自然回復しない（「走っていない時」だけ回復する）。
+        // ConsumeSprint/ConsumeClimbing と本メソッドの Update 実行順に依存しないよう直近 1
+        // フレームまで猶予を見る。踏ん張りをやめれば一定レートで最大値まで回復する。
+        // ※スプリント可否のゲートは ExplorerController 側の IsEmpty 判定が担うため、ここで
+        //   回復を止めても永久疲労デッドロックにはならない（走りを止めれば必ず回復するため）。
+        if (Time.frameCount - _exertionFrame <= 1) return;
 
-        bool  isMoving = GetIsMoving();
-        float rate     = isMoving ? RegenRateMovingValue : RegenRateBaseValue;
-
+        float rate = RegenRateBaseValue;
         if (_shelter != null && _shelter.IsSheltered)
             rate *= ShelterRegenMultiplierValue;
 
@@ -160,11 +168,6 @@ public class StaminaSystem : MonoBehaviour
             _isExhausted = false;
             OnRecovered?.Invoke();
         }
-    }
-
-    private bool GetIsMoving()
-    {
-        return _cachedRigidbody != null && _cachedRigidbody.linearVelocity.sqrMagnitude > 0.5f;
     }
 
     /// <summary>

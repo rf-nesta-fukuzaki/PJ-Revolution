@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.Rendering.Universal;
 using Sandbox.UI;
 using Sandbox.World.Environment;
+using Sandbox.World.Generation.Placement;
 
 namespace Sandbox.World.Integration
 {
@@ -31,9 +32,10 @@ namespace Sandbox.World.Integration
         [SerializeField] private int minBakedChunks = 4;
 
         [Header("Basecamp Pad（平坦化＋丸角スロープ）")]
-        [SerializeField] private string basecampContainerName = "Basecamp";
-        [SerializeField] private float footprintMargin = 6f;
-        [SerializeField] private float fallbackFootprintHalf = 20f;
+        [Tooltip("拠点（リスポーン地点）の設計上の半辺[m]。BasecampBuilder の手続きキャンプに合わせ、台座を spawn 中心の対称な正方形にする（旧・散在オブジェクト由来の非対称 footprint を廃止）。")]
+        [SerializeField] private float campHalfExtent = 17f;
+        [Tooltip("拠点中心から半径[m]の円内には手続き植生（木/岩）を生やさない。台座の上に木が突き抜けるのを防ぐ。生成開始前(Awake)に ScatterPlacementGPU へ設定する。")]
+        [SerializeField] private float scatterExcludeRadius = 20f;
         [SerializeField] private float padClearance = 0.3f;
         [SerializeField] private int padSampleGrid = 7;
         [Range(0.1f, 1f)] [SerializeField] private float padReadyFraction = 0.7f;
@@ -120,8 +122,9 @@ namespace Sandbox.World.Integration
         [Tooltip("接地面からの持ち上げ[m]（岩棚が地表に乗る）。")]
         [SerializeField] private float climbLift = 0.5f;
 
+        // ※ "Basecamp" は含めない：BasecampBuilder が pad 天面へ精密に配置するため、ここで再スナップしない。
         [SerializeField] private string[] containerNames =
-            { "Basecamp", "Mountain", "Relics", "ReviveShrines", "Hazards", "ClimbingPoints", "NetworkPlayerSpawner" };
+            { "Mountain", "Relics", "ReviveShrines", "Hazards", "ClimbingPoints", "NetworkPlayerSpawner" };
 
         private const string PadName = "BasecampPad";
 
@@ -140,6 +143,7 @@ namespace Sandbox.World.Integration
         private bool _padBuilt;
         private bool _fogTuned;
         private bool _mountainSoftened;
+        private bool _legacyClimbPlaceholdersRemoved;
         private bool _fogCamLinked;
         private bool _camerasResolved;
         private bool _playerPlaced;
@@ -148,12 +152,26 @@ namespace Sandbox.World.Integration
         private float _maintTimer;
         private int _rescuedCount;
 
+        // 維持フェーズの全シーン走査キャッシュ。RescueBuriedBodies / StuckWatchdog は従来
+        // 毎回（初期化中は毎フレーム、維持中は maintenanceInterval=0.4s 毎）に
+        // FindObjectsByType<Rigidbody/NPCController/EnemyController> を呼んでおり、フレーム
+        // スパイクの一因だった。長間隔で 1 回だけ走査し、配列を使い回す（破棄済みは null チェック）。
+        private const float AgentCacheInterval = 2f;
+        private float _agentCacheRefresh = float.MinValue;
+        private Rigidbody[] _cachedBodies;
+        private NPCController[] _cachedNpcs;
+        private EnemyController[] _cachedEnemies;
+
         public bool Done => _initialDone;
 
         private struct AgentTrack { public Vector3 lastPos; public float still; }
 
         private void Awake()
         {
+            // 生成（TerrainGenerator.Start → 各チャンクの scatter dispatch は Update 以降）より前に
+            // 拠点の植生除外円を設定する。Awake は全 Start/Update より先に走るため確実に間に合う。
+            ScatterPlacementGPU.ExcludeXZRadius = new Vector4(probeXZ.x, probeXZ.y, scatterExcludeRadius, 0f);
+
             _bootstrap = GetComponent<SandboxBootstrap>();
             if (_bootstrap == null) _bootstrap = FindFirstObjectByType<SandboxBootstrap>();
             if (_bootstrap == null)
@@ -207,6 +225,10 @@ namespace Sandbox.World.Integration
             if (!_padBuilt)
             {
                 if (!TryBuildBasecampPad()) return;
+                // 平坦化した pad 天面の上に、AAA 級の遠征キャンプを手続き的に組み上げる
+                // （仮の Cube 5 個 → 整理された拠点へ）。機能コンポーネントは温存・見た目のみ作り直す。
+                BasecampBuilder.Build(new Vector3(probeXZ.x, _padTopY, probeXZ.y), _padTopY);
+                RemoveLegacyClimbPlaceholders(); // 拠点直下の茶色い板(Ramp_* + Zone1_Rock*)を除去。Zone2〜山頂は温存
                 CollectPending();
                 SoftenMountainMaterials();
                 _startTime = Time.time;
@@ -242,28 +264,10 @@ namespace Sandbox.World.Integration
         // ── 平坦台座（丸角プラトー） ───────────────────────────────
         private bool TryBuildBasecampPad()
         {
-            Vector2 min, max;
-            var camp = GameObject.Find(basecampContainerName);
-            if (camp != null && camp.transform.childCount > 0)
-            {
-                min = new Vector2(float.MaxValue, float.MaxValue);
-                max = new Vector2(float.MinValue, float.MinValue);
-                foreach (Transform c in camp.transform)
-                {
-                    var p = c.position;
-                    if (p.x < min.x) min.x = p.x;
-                    if (p.x > max.x) max.x = p.x;
-                    if (p.z < min.y) min.y = p.z;
-                    if (p.z > max.y) max.y = p.z;
-                }
-                min -= Vector2.one * footprintMargin;
-                max += Vector2.one * footprintMargin;
-            }
-            else
-            {
-                min = probeXZ - Vector2.one * fallbackFootprintHalf;
-                max = probeXZ + Vector2.one * fallbackFootprintHalf;
-            }
+            // 拠点は BasecampBuilder が手続き的に組むため、台座は spawn 中心の対称な正方形にする
+            // （旧来は散在 Cube の座標から footprint を取っていたため非対称＝散らかった印象だった）。
+            Vector2 min = probeXZ - Vector2.one * campHalfExtent;
+            Vector2 max = probeXZ + Vector2.one * campHalfExtent;
 
             if (!SampleGridHiLo(min, max, out float hi, out _)) return false;
             float topY = hi + padClearance;
@@ -487,6 +491,41 @@ namespace Sandbox.World.Integration
         }
 
         /// <summary>
+        /// 拠点直下（坂下）に見える茶色い板を除去する。Mountain 直下には
+        ///   ・旧テスト用のプレーンなランプ "Ramp_*"（Untagged・ゾーン無し）
+        ///   ・登攀コース最下段の掴める足場 "Zone1_Rock1/2/3"（Grappable）
+        /// があり、いずれも DistributeClimbCourse でルート起点(climbStartFraction)＝拠点直下へ撒かれるため、
+        /// 「坂を降りた先に茶色い長方形の板がある」状態の原因になっていた。ユーザー要望によりこの最下段の
+        /// 板（ランプ＋Zone1 足場）を一掃する。Zone2〜Zone6_Summit の上段コース／山頂ゴールには触れない
+        /// （登攀は Zone2 以上＋ClimbingPoints＋手続き Grappable 岩で継続）。CollectPending より前に消して
+        /// _climbObjects へ拾われないようにする（シーンアセットは編集しない非破壊）。
+        /// </summary>
+        private void RemoveLegacyClimbPlaceholders()
+        {
+            if (_legacyClimbPlaceholdersRemoved) return;
+            _legacyClimbPlaceholdersRemoved = true;
+
+            var mountain = GameObject.Find("Mountain");
+            if (mountain == null) return;
+
+            var doomed = new List<Transform>();
+            foreach (Transform c in mountain.transform)
+            {
+                if (c == null) continue;
+                // 最下段の板のみを対象。Zone2〜Zone6（山頂含む）の上段コースには絶対に触れない。
+                bool isRamp  = c.name.StartsWith("Ramp",  System.StringComparison.Ordinal);
+                bool isZone1 = c.name.StartsWith("Zone1", System.StringComparison.Ordinal);
+                if (isRamp || isZone1) doomed.Add(c);
+            }
+
+            foreach (var d in doomed)
+                if (d != null) Destroy(d.gameObject);
+
+            if (doomed.Count > 0)
+                Debug.Log($"[CombinedTerrainConformer] 拠点直下の茶色い板を除去: {doomed.Count} 個（Ramp_* + Zone1_Rock*。Zone2〜山頂コースは温存）");
+        }
+
+        /// <summary>
         /// Mountain コンテナの Grappable 岩（Zone*_Rock / Zone6_Summit 等）のマテリアルをスタイライズド向けに整える。
         /// これらは近白色(0.9)＋Smoothness 0.5 の半光沢で、強い日射 + ACES + 露出補正により基地前景で真っ白に
         /// 白飛びしていた。フラットなマット(Smoothness 低・Metallic 0)へ統一し、明るすぎる近白色アルベドは
@@ -655,12 +694,24 @@ namespace Sandbox.World.Integration
             return placed > 0;
         }
 
+        // 維持フェーズの重い全シーン走査をまとめてキャッシュ更新する（間隔内は再利用）。
+        private void RefreshAgentCaches()
+        {
+            if (_cachedBodies != null && Time.time < _agentCacheRefresh) return;
+            _agentCacheRefresh = Time.time + AgentCacheInterval;
+            _cachedBodies  = FindObjectsByType<Rigidbody>(FindObjectsSortMode.None);
+            _cachedNpcs    = FindObjectsByType<NPCController>(FindObjectsSortMode.None);
+            _cachedEnemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
+        }
+
         private void RescueBuriedBodies()
         {
-            var bodies = FindObjectsByType<Rigidbody>(FindObjectsSortMode.None);
+            RefreshAgentCaches();
+            var bodies = _cachedBodies;
             for (int i = 0; i < bodies.Length; i++)
             {
                 var rb = bodies[i];
+                if (rb == null) continue; // キャッシュ後に破棄された Rigidbody
                 var t = rb.transform;
                 if (t.parent != null) continue;
                 if (rb.GetComponent<ExplorerController>() != null) continue;
@@ -731,10 +782,13 @@ namespace Sandbox.World.Integration
 
         private IEnumerable<GameObject> EnumerateAgents()
         {
-            var npcs = FindObjectsByType<NPCController>(FindObjectsSortMode.None);
-            for (int i = 0; i < npcs.Length; i++) yield return npcs[i].gameObject;
-            var enemies = FindObjectsByType<EnemyController>(FindObjectsSortMode.None);
-            for (int i = 0; i < enemies.Length; i++) yield return enemies[i].gameObject;
+            RefreshAgentCaches();
+            var npcs = _cachedNpcs;
+            for (int i = 0; i < npcs.Length; i++)
+                if (npcs[i] != null) yield return npcs[i].gameObject;
+            var enemies = _cachedEnemies;
+            for (int i = 0; i < enemies.Length; i++)
+                if (enemies[i] != null) yield return enemies[i].gameObject;
         }
 
         private void TryReanchorAgentOnce(GameObject go, Vector3 groundPos)

@@ -15,6 +15,22 @@ public class GreatStoneSlabRelic : RelicBase
     private float _lastSlopeCheckTime;
     private const float SLOPE_CHECK_INTERVAL = 0.2f;
 
+    // 坂判定で地形以外（プレイヤー/落石/トリガー）を「地面」と誤検出しないためのマスク。
+    private static bool s_groundMaskInit;
+    private static int  s_groundMask;
+    private static int  GroundMask
+    {
+        get
+        {
+            if (!s_groundMaskInit)
+            {
+                s_groundMask = ~LayerMask.GetMask("Player", "Ghost", "RagdollBone");
+                s_groundMaskInit = true;
+            }
+            return s_groundMask;
+        }
+    }
+
     protected override void Awake()
     {
         _relicName        = "儀式用の大石板";
@@ -43,7 +59,8 @@ public class GreatStoneSlabRelic : RelicBase
 
     private void CheckSlope()
     {
-        if (!Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, 2f))
+        if (!Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, 2f,
+                             GroundMask, QueryTriggerInteraction.Ignore))
         {
             _isSlidingOnSlope = false;
             return;
@@ -69,7 +86,8 @@ public class GreatStoneSlabRelic : RelicBase
 
     private Vector3 GetSlopeNormal()
     {
-        if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, 2f))
+        if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, 2f,
+                            GroundMask, QueryTriggerInteraction.Ignore))
             return hit.normal;
         return Vector3.up;
     }

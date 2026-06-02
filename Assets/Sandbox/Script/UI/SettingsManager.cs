@@ -81,6 +81,7 @@ public class SettingsManager : MonoBehaviour, ISettingsService
     SettingsData ISettingsService.Settings => Settings;
     float ISettingsService.MouseSensitivity => MouseSensitivity;
     bool ISettingsService.InvertY => InvertY;
+    bool ISettingsService.IsOpen => IsOpen;
     void ISettingsService.Open() => Open();
     void ISettingsService.Close() => Close();
     void ISettingsService.ApplyAll(SettingsData data) => ApplyAll(data);
@@ -88,6 +89,9 @@ public class SettingsManager : MonoBehaviour, ISettingsService
     // ── マウス感度プロパティ（ExplorerCameraLook から参照）────
     public float MouseSensitivity => Settings.mouseSensitivity;
     public bool  InvertY          => Settings.invertY;
+
+    /// <summary>設定パネルが現在表示中か。PauseMenu が外部クローズを検知するために参照する。</summary>
+    public bool IsOpen => _settingsPanel != null && _settingsPanel.activeSelf;
 
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()

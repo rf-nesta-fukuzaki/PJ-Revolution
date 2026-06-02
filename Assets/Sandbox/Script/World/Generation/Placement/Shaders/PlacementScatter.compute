@@ -15,6 +15,7 @@ cbuffer PlacementConstants
     float4 _WorldOriginXZ;// xy = chunk origin xz
     float4 _TreeParams;   // x=density y=maxSlopeDeg z=scaleMin w=scaleMax
     float4 _RockParams;   // x=density y=scaleMin z=scaleMax
+    float4 _ExcludeXZR;   // xy = 除外円の中心(world xz), z = 半径[m] (0 で無効)。基地キャンプの平坦地に木/岩を生やさない。
     uint4  _PSeed;        // x=seed
 }
 
@@ -85,6 +86,14 @@ void Scatter(uint3 id : SV_DispatchThreadID)
     inst.position  = float3(_WorldOriginXZ.x + (fx - APRON) * CELL_SIZE,
                             height,
                             _WorldOriginXZ.y + (fy - APRON) * CELL_SIZE);
+
+    // 基地キャンプ（平坦化された台座）の上に木/岩を生やさない除外円。
+    if (_ExcludeXZR.z > 0.0)
+    {
+        float2 dxz = float2(inst.position.x - _ExcludeXZR.x, inst.position.z - _ExcludeXZR.y);
+        if (dot(dxz, dxz) < _ExcludeXZR.z * _ExcludeXZR.z) return;
+    }
+
     inst.scale     = scale;
     inst.rotationY = Rand01(seed + 5u) * 6.2831853;
     inst.prototype = (uint)proto;

@@ -22142,6 +22142,188 @@ MonoBehaviour:
   _activateChance: 0.45
   _spawnPrefabs: []
   _pickRandom: 1
+--- !u!1 &1564064940
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1564064944}
+  - component: {fileID: 1564064943}
+  - component: {fileID: 1564064942}
+  - component: {fileID: 1564064941}
+  m_Layer: 0
+  m_Name: wire-rope-command-verification
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1564064941
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1564064940}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cd585eba9654b476bb9bebc77c7b4fdb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Sandbox.Runtime::WireRopeActionController
+  _minThrowRange: 4
+  _maxThrowRange: 28
+  _throwSpeed: 42
+  _hookableLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  _gaugeOscillationSpeed: 55
+  _spinVisualSpeed: 620
+  _lassoElevationDeg: 80
+  _lassoCenterDistance: 1.15
+  _lassoChestHeight: 1.05
+  _lassoRadius: 0.95
+  _lassoHandWidthMul: 1.35
+  _ropeStartWidth: 0.09
+  _ropeEndWidth: 0.05
+  _ropeSag: 0.35
+  _ropeColor: {r: 0.92, g: 0.78, b: 0.42, a: 1}
+  _pullTensionAccel: 46
+  _pullMinSpeed: 14
+  _pullMaxSpeed: 38
+  _pullSnapImpulse: 17
+  _maxPullElevationDeg: 18
+  _maxPullElevationDegWallUp: 36
+  _maxUpwardSpeedFromTension: 12
+  _ropeElasticGain: 0.75
+  _ropeElasticPower: 1.35
+  _swingCentripetalGain: 0.2
+  _chargePowerSpread: 0.22
+  _groundSlideAssistAccel: 22
+  _groundImpactBleed: 0.88
+  _groundSlideLateralResist: 14
+  _groundSlideMaxAirGap: 0.55
+  _pullSnapTensionBoost: 0.68
+  _pullPerpendicularDamp: 0.32
+  _retrieveSteerAccel: 32
+  _overshootMomentumScale: 1.2
+  _anchorArrivalDistance: 1.65
+  _releaseInertiaScale: 1.15
+  _releaseInertiaMinSpeed: 9
+  _releaseInertiaMaxSpeed: 40
+  _releasePerpendicularRetain: 0.2
+  _maxOvershootDistance: 6.5
+  _overshootEndSpeed: 1.4
+  _retrieveStopDistance: 1.4
+  _maxRetrieveSeconds: 10
+  _standOffFromSurface: 0.75
+  _groundSnapUp: 2.5
+  _depenetrateIterations: 20
+  _gaugeLaunchBoost: 8
+  _retrieveTensionRampSeconds: 0.22
+  _releaseSoftDistance: 2.1
+  _retrieveStartVelocityBlend: 0.58
+  _releaseVelocityBlend: 0.58
+  _pullAxisTurnSpeed: 7.5
+  _visualBlendSpeed: 14
+  _maxSpeedChangePerSecond: 70
+  _pullStallReleaseSeconds: 0.45
+  _overshootMaxSeconds: 3.8
+  _tensionFalloffFloor: 0.52
+  _pullSpeedShort: 16
+  _pullFloorFraction: 0.55
+  _pullSpeedChargeSpread: 0.35
+  _overshootDistanceFactor: 0.32
+  _overshootMinDistance: 1
+  _groundClimbLiftThreshold: 1.5
+  _impactSlingshotSpeed: 34
+  _impactRestitution: 1.1
+  _impactSlingshotFloorPopUp: 3.5
+  _impactSlingshotCarryFactor: 0.4
+  _impactSlingshotMaxSpeed: 52
+  _impactSlingshotBoostSeconds: 1.2
+  _impactSlingshotCooldown: 0.14
+  _impactSlingshotMinIntoSpeed: 2
+  _impactSlingshotHardImpactSpeed: 5
+  _obstacleNormalMaxY: 0.55
+  _floorSlingshotMinIntoSpeed: 1.2
+  _floorSlingshotMinHorizSpeed: 9
+  _softGroundPenetrationDepth: 0.35
+  _throwEasePower: 1.85
+  _tensionSoundInterval: 0.38
+  _traumaRetrieveStart: 0.14
+  _traumaRopeHit: 0.22
+  _traumaRopeRelease: 0.2
+  _traumaImpactSlingshot: 0.32
+  _aimTransform: {fileID: 0}
+  _handOrigin: {fileID: 0}
+--- !u!136 &1564064942
+CapsuleCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1564064940}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 2
+  m_Radius: 0.5
+  m_Height: 1
+  m_Direction: 1
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!54 &1564064943
+Rigidbody:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1564064940}
+  serializedVersion: 5
+  m_Mass: 1
+  m_LinearDamping: 0
+  m_AngularDamping: 0.05
+  m_CenterOfMass: {x: 0, y: 0, z: 0}
+  m_InertiaTensor: {x: 1, y: 1, z: 1}
+  m_InertiaRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ImplicitCom: 1
+  m_ImplicitTensor: 1
+  m_UseGravity: 0
+  m_IsKinematic: 0
+  m_Interpolate: 0
+  m_Constraints: 0
+  m_CollisionDetection: 0
+--- !u!4 &1564064944
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1564064940}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1606264702
 GameObject:
   m_ObjectHideFlags: 0
@@ -29296,6 +29478,10 @@ MonoBehaviour:
   _staminaFill: {fileID: 2031095546}
   _staminaFullColor: {r: 0, g: 1, b: 0, a: 1}
   _staminaLowColor: {r: 1, g: 0, b: 0, a: 1}
+  _useCenterStaminaRing: 1
+  _staminaRing: {fileID: 0}
+  _ringFullColor: {r: 0.56, g: 0.82, b: 0.46, a: 0.92}
+  _ringLowColor: {r: 0.94, g: 0.44, b: 0.3, a: 0.98}
   _ropeIndicator: {fileID: 1968964160}
   _ropeConnectedColor: {r: 1, g: 0.5, b: 0, a: 1}
   _ropeIdleColor: {r: 1, g: 1, b: 1, a: 1}
@@ -30341,3 +30527,4 @@ SceneRoots:
   - {fileID: 430113214}
   - {fileID: 1606264703}
   - {fileID: 8898227}
+  - {fileID: 1564064944}

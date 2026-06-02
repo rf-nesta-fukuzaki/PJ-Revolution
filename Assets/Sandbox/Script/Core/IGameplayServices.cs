@@ -59,6 +59,7 @@ public interface ISettingsService
     SettingsData Settings { get; }
     float MouseSensitivity { get; }
     bool InvertY { get; }
+    bool IsOpen { get; }
     void Open();
     void Close();
     void ApplyAll(SettingsData data);

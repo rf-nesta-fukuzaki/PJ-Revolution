@@ -38,7 +38,13 @@ public class ThermalCaseItem : ItemBase
         _protectedRelic = relic;
         _isProtecting   = true;
 
-        // 遺物のダメージを軽減するためにイベントに介入
+        // 衝撃ダメージは「適用前」に軽減する（梱包キットと同じ IRelicDamageModifier 方式）。
+        // 事後 Repair 方式と違い、一撃で HP が 0 になる致命傷も軽減後の値で評価される。
+        var buffer = relic.GetComponent<RelicThermalBuffer>();
+        if (buffer == null) buffer = relic.gameObject.AddComponent<RelicThermalBuffer>();
+        buffer.SetReductionFactor(_damageReductionRate);
+
+        // ケースの耐久消費のためダメージイベントは購読し続ける（軽減自体は buffer が担う）。
         relic.OnDamaged += OnRelicDamaged;
 
         // 凍結ダメージ免疫を通知（GDD §5.2）— _protectsTemperature で gating
@@ -56,6 +62,9 @@ public class ThermalCaseItem : ItemBase
         {
             _protectedRelic.OnDamaged -= OnRelicDamaged;
 
+            // 軽減バッファを無効化（factor=0 で素通しに戻す）。
+            _protectedRelic.GetComponent<RelicThermalBuffer>()?.SetReductionFactor(0f);
+
             // SetInThermalCase(true) を行った場合のみ対称的に false を呼ぶ。
             // _protectsTemperature=false の場合はそもそも true を呼んでいないので無操作。
             if (_protectsTemperature)
@@ -69,15 +78,10 @@ public class ThermalCaseItem : ItemBase
 
     private void OnRelicDamaged(float damage, float currentHp)
     {
-        // ダメージ軽減をイベント後に補正（既適用分を回復で近似）
+        // 軽減は RelicThermalBuffer が適用済み（事前軽減）。ここではケースの耐久のみ消費する。
         if (_protectedRelic == null || _isBroken) return;
 
-        float reduced = damage * _damageReductionRate;
-        if (reduced > 0f)
-            _protectedRelic.Repair(reduced);   // 適用済みダメージの一部を回復で相殺
-
         ConsumeDurability(1f);
-        Debug.Log($"[ThermalCase] ダメージ軽減: {reduced:F1}");
     }
 
     protected override void OnItemBroken()

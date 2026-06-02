@@ -14,9 +14,30 @@ public class FloatingSphereRelic : RelicBase
     [SerializeField] private float _windDriftSpeed  = 2f;       // 風に流される速さ
     [SerializeField] private float _driftChangeTime = 3f;       // 漂流方向変化間隔
 
+    [Header("リーシュ（永久喪失防止）")]
+    [SerializeField] private float _maxLeashDistance    = 22f;  // 基準点からの最大漂流距離
+    [SerializeField] private float _maxFloatAboveGround = 4f;   // 接地点からの最大上昇高度
+
+    // 接地判定で地形以外（プレイヤー/落石/トリガー）を「地面」と誤検出しないためのマスク。
+    private static bool s_groundMaskInit;
+    private static int  s_groundMask;
+    private static int  GroundMask
+    {
+        get
+        {
+            if (!s_groundMaskInit)
+            {
+                s_groundMask = ~LayerMask.GetMask("Player", "Ghost", "RagdollBone");
+                s_groundMaskInit = true;
+            }
+            return s_groundMask;
+        }
+    }
+
     private Vector3 _currentDriftDir;
     private float   _driftTimer;
     private bool    _isFloating;   // 空中に浮いているか（地面より _floatHeight 以上上空＝「逃げ中」）
+    private Vector3 _leashAnchor;  // 復帰の基準点（スポーン地点 → 接地するたびに更新）
 
     /// <summary>
     /// 球体が地面から離れて自由浮遊している（＝プレイヤーが追いかける必要がある）状態か。
@@ -37,6 +58,7 @@ public class FloatingSphereRelic : RelicBase
         _rb.mass       = 0.1f;   // ほぼ無重量
         _rb.useGravity = false;  // 重力無効
 
+        _leashAnchor = transform.position;
         ChangeDriftDirection();
     }
 
@@ -53,9 +75,14 @@ public class FloatingSphereRelic : RelicBase
 
         _rb.linearDamping = 0.5f;
 
-        // 地面チェック
-        bool nearGround = Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit, _floatHeight + 1f);
+        // 地面チェック（地形以外を誤検出しないようマスク＋トリガー無視）
+        bool nearGround = Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit,
+                                          _floatHeight + 1f, GroundMask, QueryTriggerInteraction.Ignore);
         float groundDist = nearGround ? hit.distance : float.MaxValue;
+
+        // 接地点を基準点として更新（ここを起点にリーシュで引き戻す）
+        if (nearGround)
+            _leashAnchor = hit.point;
 
         // 浮遊力：地面より _floatHeight 上を維持
         if (groundDist < _floatHeight)
@@ -66,6 +93,14 @@ public class FloatingSphereRelic : RelicBase
 
         // 漂流
         _rb.AddForce(_currentDriftDir * _windDriftSpeed, ForceMode.Acceleration);
+
+        // リーシュ：基準点から離れすぎ／上空へ逃げた場合は引き戻し、永久喪失（回収不能）を防ぐ。
+        // useGravity=false ＋ 上昇バイアスのある漂流で際限なく上空へ流れる挙動への対策。
+        Vector3 toAnchor = _leashAnchor - transform.position;
+        if (toAnchor.magnitude > _maxLeashDistance)
+            _rb.AddForce(toAnchor.normalized * _floatForce, ForceMode.Acceleration);
+        if (transform.position.y - _leashAnchor.y > _maxFloatAboveGround)
+            _rb.AddForce(Vector3.down * _floatForce, ForceMode.Acceleration);
 
         // 一定間隔で漂流方向を変える
         _driftTimer -= Time.fixedDeltaTime;

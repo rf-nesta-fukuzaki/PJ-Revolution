@@ -299,40 +299,25 @@ public class NPCController : MonoBehaviour
     {
         _nextSensorRefreshTimer = _sensorRefreshInterval;
 
+        // 全 NPC で共有するスロットル付きキャッシュを更新（実走査はグローバルに 1 回）。
+        // 以前は NPC ごとに約 11 回の FindObjectsByType を毎秒実行しており、NPC 数に比例した
+        // 全シーン走査が周期的フレームスパイクの主因だった。ここではキャッシュをコピーするだけ。
+        NpcSensorCache.EnsureFresh(_sensorRefreshInterval);
+
         _relicBuffer.Clear();
-        _relicBuffer.AddRange(Object.FindObjectsByType<RelicCarrier>(FindObjectsSortMode.None));
+        _relicBuffer.AddRange(NpcSensorCache.Carriers);
 
         _relicBaseBuffer.Clear();
-        _relicBaseBuffer.AddRange(Object.FindObjectsByType<RelicBase>(FindObjectsSortMode.None));
+        _relicBaseBuffer.AddRange(NpcSensorCache.Bases);
 
         _shelterBuffer.Clear();
-        _shelterBuffer.AddRange(Object.FindObjectsByType<ShelterZone>(FindObjectsSortMode.None));
+        _shelterBuffer.AddRange(NpcSensorCache.Shelters);
 
         _hazardBuffer.Clear();
-        AddHazards(Object.FindObjectsByType<IcePatch>(FindObjectsSortMode.None));
-        AddHazards(Object.FindObjectsByType<CollapsiblePlatform>(FindObjectsSortMode.None));
-        AddHazards(Object.FindObjectsByType<RockfallTrigger>(FindObjectsSortMode.None));
-        AddHazards(Object.FindObjectsByType<FakeFloor>(FindObjectsSortMode.None));
-        AddHazards(Object.FindObjectsByType<PressurePlateArrow>(FindObjectsSortMode.None));
-        AddHazards(Object.FindObjectsByType<PendulumLog>(FindObjectsSortMode.None));
-        AddHazards(Object.FindObjectsByType<FallingCeiling>(FindObjectsSortMode.None));
+        _hazardBuffer.AddRange(NpcSensorCache.Hazards);
 
         if (_returnZoneTransform == null || force)
-        {
-            var returnZone = Object.FindFirstObjectByType<ReturnZone>();
-            _returnZoneTransform = returnZone != null ? returnZone.transform : null;
-        }
-    }
-
-    private void AddHazards<T>(T[] hazards) where T : Component
-    {
-        foreach (T hazard in hazards)
-        {
-            if (hazard == null)
-                continue;
-
-            _hazardBuffer.Add(hazard.transform);
-        }
+            _returnZoneTransform = NpcSensorCache.ReturnZone;
     }
 
     private void TryHandleRelicInteraction()

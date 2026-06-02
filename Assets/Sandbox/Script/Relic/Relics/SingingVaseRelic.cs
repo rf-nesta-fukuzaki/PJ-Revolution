@@ -99,9 +99,12 @@ public class SingingVaseRelic : RelicBase
             _audio.Stop();
         }
 
-        // 大音量モード
+        // 大音量モード（ヒステリシス：ON/OFF 閾値を分け、閾値付近の Lerp 振動で
+        // 落石トリガーが何度も再発火するフラッピングを防ぐ）
         bool wasLoud = _isLoud;
-        _isLoud = _currentVolume > _rockfallTriggerVolume;
+        float offThreshold = _rockfallTriggerVolume * 0.7f;
+        _isLoud = wasLoud ? _currentVolume > offThreshold
+                          : _currentVolume > _rockfallTriggerVolume;
 
         if (_isLoud && !wasLoud)
         {

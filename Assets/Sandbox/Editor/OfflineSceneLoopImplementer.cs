@@ -491,50 +491,22 @@ public static class OfflineSceneLoopImplementer
         rebindSo.FindProperty("_actions")?.SetValueSafe(AssetDatabase.LoadMainAssetAtPath("Assets/InputSystem_Actions.inputactions"));
         rebindSo.ApplyModifiedPropertiesWithoutUndo();
 
+        // PauseMenu は実行時に PauseMenuView でオーバーレイ UI を自前生成するため、
+        // ここではコンポーネントの付与と遷移先シーンの設定だけ行う（旧クルードパネルは撤去）。
         var pauseRoot = GetOrCreateChild(uiRoot.gameObject, "PauseMenuRoot");
-        var menuPanel = GetOrCreateChild(pauseRoot, "MenuPanel");
-        var blurPanel = GetOrCreateChild(pauseRoot, "BlurPanel");
-        var confirmPanel = GetOrCreateChild(pauseRoot, "ConfirmLeavePanel");
-
-        var menuBg = GetOrAddComponent<Image>(menuPanel);
-        menuBg.color = new Color(0f, 0f, 0f, 0.8f);
-        StretchCenter(menuPanel.GetComponent<RectTransform>(), new Vector2(360f, 260f));
-
-        var blurBg = GetOrAddComponent<Image>(blurPanel);
-        blurBg.color = new Color(0f, 0f, 0f, 0.35f);
-        StretchFull(blurPanel.GetComponent<RectTransform>());
-
-        var confirmBg = GetOrAddComponent<Image>(confirmPanel);
-        confirmBg.color = new Color(0f, 0f, 0f, 0.9f);
-        StretchCenter(confirmPanel.GetComponent<RectTransform>(), new Vector2(320f, 180f));
-
-        var resumeBtn = GetOrCreateButton(menuPanel.transform, "ResumeButton", "ゲームに戻る", new Vector2(0.5f, 1f), new Vector2(0f, -50f));
-        var settingsBtn = GetOrCreateButton(menuPanel.transform, "SettingsButton", "設定", new Vector2(0.5f, 1f), new Vector2(0f, -110f));
-        var leaveBtn = GetOrCreateButton(menuPanel.transform, "LeaveButton", "離脱", new Vector2(0.5f, 1f), new Vector2(0f, -170f));
-
-        var yesBtn = GetOrCreateButton(confirmPanel.transform, "ConfirmYes", "はい", new Vector2(0.5f, 0f), new Vector2(-60f, 35f));
-        var noBtn = GetOrCreateButton(confirmPanel.transform, "ConfirmNo", "いいえ", new Vector2(0.5f, 0f), new Vector2(60f, 35f));
+        RemoveLegacyChild(pauseRoot, "MenuPanel");
+        RemoveLegacyChild(pauseRoot, "BlurPanel");
+        RemoveLegacyChild(pauseRoot, "ConfirmLeavePanel");
 
         var pause = GetOrAddComponent<PauseMenu>(pauseRoot);
         var pauseSo = new SerializedObject(pause);
-        pauseSo.FindProperty("_menuRoot")?.SetValueSafe(menuPanel);
-        pauseSo.FindProperty("_confirmLeaveRoot")?.SetValueSafe(confirmPanel);
-        pauseSo.FindProperty("_blurPanel")?.SetValueSafe(blurPanel);
-        pauseSo.FindProperty("_resumeButton")?.SetValueSafe(resumeBtn);
-        pauseSo.FindProperty("_settingsButton")?.SetValueSafe(settingsBtn);
-        pauseSo.FindProperty("_leaveButton")?.SetValueSafe(leaveBtn);
-        pauseSo.FindProperty("_confirmLeaveYes")?.SetValueSafe(yesBtn);
-        pauseSo.FindProperty("_confirmLeaveNo")?.SetValueSafe(noBtn);
-        pauseSo.FindProperty("_settingsRoot")?.SetValueSafe(settingsPanel);
+        pauseSo.FindProperty("_mainMenuScene")?.SetValueSafe("MainMenu");
         pauseSo.ApplyModifiedPropertiesWithoutUndo();
 
         panelGraphics.SetActive(true);
         panelAudio.SetActive(false);
         panelControls.SetActive(false);
         panelAccessibility.SetActive(false);
-        menuPanel.SetActive(false);
-        confirmPanel.SetActive(false);
-        blurPanel.SetActive(false);
         settingsPanel.SetActive(false);
     }
 
@@ -714,6 +686,13 @@ public static class OfflineSceneLoopImplementer
         return go;
     }
 
+    private static void RemoveLegacyChild(GameObject parent, string name)
+    {
+        var child = parent.transform.Find(name);
+        if (child != null)
+            Object.DestroyImmediate(child.gameObject);
+    }
+
     private static T EnsureChildComponent<T>(GameObject parent, string childName) where T : Component
     {
         var child = parent.transform.Find(childName)?.gameObject;
@@ -838,6 +817,12 @@ public static class OfflineSceneLoopImplementer
     {
         if (prop != null)
             prop.floatValue = value;
+    }
+
+    private static void SetValueSafe(this SerializedProperty prop, string value)
+    {
+        if (prop != null)
+            prop.stringValue = value;
     }
 }
 #endif

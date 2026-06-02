@@ -12,11 +12,13 @@ public class RelicDamageTracker : MonoBehaviour
     // playerId → 累積ダメージ
     private readonly Dictionary<int, float> _damageByPlayer = new();
 
-    private RelicBase _relic;
+    private RelicBase    _relic;
+    private RelicCarrier _carrier;
 
     private void Awake()
     {
-        _relic = GetComponent<RelicBase>();
+        _relic   = GetComponent<RelicBase>();
+        _carrier = GetComponent<RelicCarrier>();
     }
 
     private void OnEnable()
@@ -32,19 +34,19 @@ public class RelicDamageTracker : MonoBehaviour
     // ── ダメージ記録 ─────────────────────────────────────────
     private void HandleDamaged(float damage, float currentHp)
     {
-        // 最後に触れたプレイヤーIDを取得（RelicCarrier 経由）
-        int playerId = GetLastTouchPlayerId();
+        // 帰責は「運搬中に受けたダメージ」に限定する。置いた後に転がって落下した／
+        // 落石や環境ダメージを受けた分まで、最後の運搬者へ加算し続ける誤帰責を防ぐ。
+        if (_carrier == null || !_carrier.IsBeingCarried) return;
+
+        int playerId = _carrier.LastCarrierPlayerId;
         if (playerId < 0) return;
 
         _damageByPlayer.TryGetValue(playerId, out float existing);
         _damageByPlayer[playerId] = existing + damage;
-    }
 
-    /// <summary>最後に遺物に触れたプレイヤーのIDを返す。-1 = 不明。</summary>
-    private int GetLastTouchPlayerId()
-    {
-        var carrier = GetComponent<RelicCarrier>();
-        return carrier != null ? carrier.LastCarrierPlayerId : -1;
+        // 個人スコアの遺物ダメージ・ペナルティ／「遺物クラッシャー」称号へ転送する。
+        // 従来この転送が無く、RelicDamageTracker のデータは死蔵されていた。
+        GameServices.Score?.RecordRelicDamage(playerId, damage);
     }
 
     // ── クエリ ───────────────────────────────────────────────

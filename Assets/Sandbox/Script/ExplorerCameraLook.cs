@@ -27,10 +27,12 @@ public class ExplorerCameraLook : MonoBehaviour
     [Header("視点スムージング")]
     [Tooltip("入力をスムージングして細かなガタつきを抑える。")]
     [SerializeField] private bool _useLookSmoothing = true;
-    [Tooltip("スムージングの追従時間（秒）。小さいほどキビキビ、大きいほど滑らか。")]
-    [SerializeField] private float _lookSmoothTime = 0.035f;
-    [Tooltip("1フレームで受け付ける最大入力デルタ。瞬間スパイクによる急旋回を抑える。")]
-    [SerializeField] private float _maxLookDeltaPerFrame = 2.5f;
+    [Tooltip("スムージングの追従時間（秒）。小さいほどキビキビ、大きいほど滑らか。マウス入力の体感遅延に直結するため小さめに保つ。")]
+    [SerializeField] private float _lookSmoothTime = 0.02f;
+    [Tooltip("1フレームで受け付ける最大入力デルタ。ウィンドウ復帰時などの異常スパイクのみを抑える上限。" +
+             "小さすぎると素早いマウス旋回（フリック）まで頭打ちになり「もっさり」するため、" +
+             "通常の高速旋回は許容しつつ極端なスパイクだけを切る値にする。")]
+    [SerializeField] private float _maxLookDeltaPerFrame = 10f;
 
     [Header("感度ライブ調整")]
     [Tooltip("プレイ中に [ / ] キーで感度を増減する際のステップ量。")]

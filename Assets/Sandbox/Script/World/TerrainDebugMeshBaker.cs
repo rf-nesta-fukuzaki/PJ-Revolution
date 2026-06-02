@@ -42,16 +42,27 @@ namespace Sandbox.World
             }
         }
 
+        // 1 フレームで新規生成する可視メッシュベイクの上限。ダッシュでチャンク境界
+        // (256m 毎) を跨ぐと複数チャンクが同フレームで Ready になり、BuildMesh の
+        // メインスレッド処理（頂点配列構築 + RecalculateNormals, 約 1.7 万頂点/chunk）が
+        // 一斉に走ってフレームが詰まる（ガクつき/瞬間停止）。1 フレーム 1 件に制限して
+        // 数フレームへ分散する。可視メッシュは数フレーム遅延で出現しても問題ない
+        // （コライダーは ChunkColliderBaker 側で即時ベイクするため接地は保たれる）。
+        private const int MaxNewBakesPerFrame = 1;
+
         public void UpdateAll(ChunkManager mgr)
         {
+            int created = 0;
             foreach (var kv in mgr.Active)
             {
                 if (_bakes.ContainsKey(kv.Key)) continue;
                 if (kv.Value.State < ChunkState.Ready) continue;
+                if (created >= MaxNewBakesPerFrame) break;
 
                 var bake = new MeshBake(_root, _material, kv.Value, _shadowMode);
                 _bakes[kv.Key] = bake;
                 bake.RequestReadback(kv.Value.Buffers.HeightTex, kv.Value.Buffers.BiomeColorTex);
+                created++;
             }
 
             // 退避済みチャンクを破棄（毎フレームの List 新規確保を避け、再利用バッファで走査）。

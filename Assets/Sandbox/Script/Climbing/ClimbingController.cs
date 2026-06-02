@@ -175,7 +175,7 @@ public class ClimbingController : MonoBehaviour
 
         if (_stamina != null)
         {
-            _stamina.Consume(_currentGrabPoint.StaminaDrain * Time.fixedDeltaTime);
+            _stamina.Consume(_currentGrabPoint.StaminaDrain * Time.fixedDeltaTime, isExertion: true);
             if (_stamina.IsEmpty)
             {
                 ReleaseGrab();

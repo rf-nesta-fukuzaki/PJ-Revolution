@@ -28,15 +28,19 @@ public class ExpeditionHUD : MonoBehaviour
     [Tooltip("true: スタミナを照準周りの放射リングに集約し、左上バーは隠す")]
     [SerializeField] private bool  _useCenterStaminaRing = true;
     [SerializeField] private Image _staminaRing;
-    // 暖色・低彩度のスタイライズドパレット（PEAK のトーンに寄せる）
-    [SerializeField] private Color _ringFullColor = new Color(0.56f, 0.82f, 0.46f, 0.92f);
-    [SerializeField] private Color _ringLowColor  = new Color(0.94f, 0.44f, 0.30f, 0.98f);
+    // 暖色・低彩度のスタイライズドパレット（PEAK のトーンに寄せる）。
+    // 山の緑に埋もれないよう、満タン色はアンバー＋不透明に寄せ、縁取りで分離する。
+    [SerializeField] private Color _ringFullColor = new Color(0.98f, 0.78f, 0.36f, 1f);
+    [SerializeField] private Color _ringLowColor  = new Color(0.97f, 0.40f, 0.28f, 1f);
+    // リングの縁取り（どんな背景でもコントラストを確保する暗色アウトライン）。
+    [SerializeField] private Color _ringOutlineColor = new Color(0f, 0f, 0f, 0.85f);
     private static Sprite s_ringSprite;
 
     [Header("ロープ状態")]
     [SerializeField] private Image           _ropeIndicator;
-    [SerializeField] private Color           _ropeConnectedColor = new Color(1f, 0.5f, 0f);
-    [SerializeField] private Color           _ropeIdleColor      = Color.white;
+    [SerializeField] private TextMeshProUGUI _ropeLabel;
+    [SerializeField] private Color           _ropeConnectedColor = new Color(1f, 0.55f, 0.18f, 1f);
+    [SerializeField] private Color           _ropeIdleColor      = new Color(0.55f, 0.57f, 0.62f, 0.7f);
 
     [Header("遺物リスト")]
     [SerializeField] private Transform       _relicListParent;
@@ -70,6 +74,8 @@ public class ExpeditionHUD : MonoBehaviour
 
         EnsureFullScreenRoot();
         EnsureCenterStaminaRing();
+        EnsureTimerLabel();
+        EnsureRopeIndicator();
 
         if (_hudCanvasGroup == null)
             _hudCanvasGroup = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
@@ -91,20 +97,22 @@ public class ExpeditionHUD : MonoBehaviour
 
         if (_staminaRing != null) return;
 
-        // 暗いトラック（常時フル円）で、緑地形の上でもコントラストを確保しつつ
+        // 濃い不透明トラック（常時フル円）で、緑地形の上でもコントラストを確保しつつ
         // 「残量の空き」も示す。色付きフィルはこの上に放射状で重ねる。
-        CreateRingImage("StaminaRingTrack", UiPalette.Track, false);
-        _staminaRing = CreateRingImage("StaminaRing", _ringFullColor, true);
+        // 両リングに暗色アウトラインを付け、山の緑と同化しないようにする。
+        var trackColor = new Color(0.05f, 0.06f, 0.08f, 0.88f);
+        CreateRingImage("StaminaRingTrack", trackColor, false, addOutline: true);
+        _staminaRing = CreateRingImage("StaminaRing", _ringFullColor, true, addOutline: true);
     }
 
-    private Image CreateRingImage(string goName, Color color, bool radial)
+    private Image CreateRingImage(string goName, Color color, bool radial, bool addOutline = false)
     {
         var go = new GameObject(goName);
         go.transform.SetParent(transform, false);
         var rt = go.AddComponent<RectTransform>();
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
         rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(116f, 116f);
+        rt.sizeDelta = new Vector2(120f, 120f);
         rt.anchoredPosition = Vector2.zero;
 
         var img = go.AddComponent<Image>();
@@ -119,6 +127,15 @@ public class ExpeditionHUD : MonoBehaviour
             img.fillMethod = Image.FillMethod.Radial360;
             img.fillOrigin = (int)Image.Origin360.Top;
             img.fillClockwise = true;
+        }
+
+        if (addOutline)
+        {
+            // UI Outline は 4 方向にダーク複製を描き、放射フィルの先端エッジも縁取る。
+            var outline = go.AddComponent<Outline>();
+            outline.effectColor = _ringOutlineColor;
+            outline.effectDistance = new Vector2(2f, 2f);
+            outline.useGraphicAlpha = false;
         }
         return img;
     }
@@ -171,6 +188,102 @@ public class ExpeditionHUD : MonoBehaviour
         rt.offsetMax = Vector2.zero;
         rt.localScale = Vector3.one;
         rt.localPosition = Vector3.zero;
+    }
+
+    /// <summary>
+    /// 左上タイマーを自己修復する。シーンの参照配線が壊れている/未設定だと
+    /// UpdateTimerUI が何も書き込めず「00:00.00 のまま動かない」ように見えるため、
+    /// _timerLabel が無ければ実行時に生成し、いずれにせよ左上へ整形配置する（非破壊）。
+    /// </summary>
+    private void EnsureTimerLabel()
+    {
+        if (_timerLabel == null)
+        {
+            var existing = transform.Find("TimerLabel");
+            if (existing != null) _timerLabel = existing.GetComponent<TextMeshProUGUI>();
+        }
+        if (_timerLabel == null)
+        {
+            var go = new GameObject("TimerLabel", typeof(RectTransform), typeof(TextMeshProUGUI));
+            go.transform.SetParent(transform, false);
+            _timerLabel = go.GetComponent<TextMeshProUGUI>();
+            _timerLabel.text = "00:00.00";
+        }
+
+        var rt = _timerLabel.rectTransform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+        rt.pivot = new Vector2(0f, 1f);
+        rt.sizeDelta = new Vector2(260f, 54f);
+        rt.anchoredPosition = new Vector2(28f, -22f);
+
+        _timerLabel.fontSize  = 34f;
+        _timerLabel.fontStyle = FontStyles.Bold;
+        _timerLabel.alignment = TextAlignmentOptions.Left;
+        _timerLabel.color = UiPalette.Cream;
+        _timerLabel.raycastTarget = false;
+        _timerLabel.gameObject.SetActive(true);
+    }
+
+    /// <summary>
+    /// ロープ状態インジケーターを自己修復する。OfflineSceneCreator はスプライト未設定・
+    /// 白色の Image を置くため「白い四角」に見える。リングスプライトを割り当て、
+    /// idle/接続で配色を変える小アイコン＋ラベルへ整える（非破壊）。
+    /// </summary>
+    private void EnsureRopeIndicator()
+    {
+        if (_ropeIndicator == null)
+        {
+            var existing = transform.Find("RopeIndicator");
+            if (existing != null) _ropeIndicator = existing.GetComponent<Image>();
+        }
+        if (_ropeIndicator == null)
+        {
+            var go = new GameObject("RopeIndicator", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(transform, false);
+            _ropeIndicator = go.GetComponent<Image>();
+        }
+
+        _ropeIndicator.sprite = GetRingSprite();
+        _ropeIndicator.type = Image.Type.Simple;
+        _ropeIndicator.preserveAspect = true;
+        _ropeIndicator.raycastTarget = false;
+        _ropeIndicator.color = _ropeIdleColor;
+
+        var rt = _ropeIndicator.rectTransform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
+        rt.pivot = new Vector2(0f, 1f);
+        rt.sizeDelta = new Vector2(26f, 26f);
+        rt.anchoredPosition = new Vector2(30f, -84f);
+
+        if (_ropeLabel == null)
+        {
+            var existing = _ropeIndicator.transform.Find("RopeLabel");
+            if (existing != null)
+            {
+                _ropeLabel = existing.GetComponent<TextMeshProUGUI>();
+            }
+            else
+            {
+                var lgo = new GameObject("RopeLabel", typeof(RectTransform), typeof(TextMeshProUGUI));
+                lgo.transform.SetParent(_ropeIndicator.transform, false);
+                _ropeLabel = lgo.GetComponent<TextMeshProUGUI>();
+                _ropeLabel.text = "ロープ";
+            }
+        }
+
+        if (_ropeLabel != null)
+        {
+            var lrt = _ropeLabel.rectTransform;
+            lrt.anchorMin = lrt.anchorMax = new Vector2(0f, 0.5f);
+            lrt.pivot = new Vector2(0f, 0.5f);
+            lrt.sizeDelta = new Vector2(120f, 26f);
+            lrt.anchoredPosition = new Vector2(34f, 0f);
+            _ropeLabel.fontSize  = 16f;
+            _ropeLabel.alignment = TextAlignmentOptions.Left;
+            _ropeLabel.color = UiPalette.CreamDim;
+            _ropeLabel.raycastTarget = false;
+            UiReadability.MakeReadable(_ropeLabel);
+        }
     }
 
     private void OnEnable()
@@ -309,9 +422,15 @@ public class ExpeditionHUD : MonoBehaviour
     }
 
     // ── スタミナ ─────────────────────────────────────────────
+    // 毎フレームの無駄な Canvas 更新（value/color/fillAmount の dirty 化 → グラフィック
+    // リビルド）を避けるため、前回値からの変化があったときだけ反映する。
+    private float _lastStaminaPct = -1f;
+
     private void UpdateStaminaUI()
     {
         float pct = _localPlayerStamina != null ? _localPlayerStamina.StaminaPercent : 1f;
+        if (Mathf.Abs(pct - _lastStaminaPct) < 0.0015f) return;
+        _lastStaminaPct = pct;
 
         if (_staminaBar != null) _staminaBar.value = pct;
         if (_staminaFill != null)
@@ -325,12 +444,20 @@ public class ExpeditionHUD : MonoBehaviour
     }
 
     // ── ロープ状態 ────────────────────────────────────────────
+    private int _lastRopeConnected = -1; // -1=未初期化, 0=未接続, 1=接続
+
     private void UpdateRopeUI()
     {
-        if (_ropeIndicator == null || GameServices.Ropes == null) return;
+        if (_ropeIndicator == null) return;
 
-        bool connected = GameServices.Ropes.HasAnyRope;
+        bool connected = GameServices.Ropes != null && GameServices.Ropes.HasAnyRope;
+        int connectedFlag = connected ? 1 : 0;
+        if (connectedFlag == _lastRopeConnected) return;
+        _lastRopeConnected = connectedFlag;
+
         _ropeIndicator.color = connected ? _ropeConnectedColor : _ropeIdleColor;
+        if (_ropeLabel != null)
+            _ropeLabel.color = connected ? _ropeConnectedColor : UiPalette.CreamDim;
     }
 
     // ── 遺物リスト ────────────────────────────────────────────

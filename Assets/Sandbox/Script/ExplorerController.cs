@@ -49,6 +49,9 @@ public class ExplorerController : MonoBehaviour
     // GDD §15.2 — LandHard 判定閾値（落下距離 3m 以上で Hard）
     private const float HARD_LAND_DROP_METERS = 3f;
 
+    // ジャンプ先行入力バッファ（着地直前の押下を取りこぼさず、着地と同時にジャンプを発火）
+    private const float JUMP_BUFFER_TIME = 0.12f;
+
     // GDD §15.2 — Footstep SE 設定
     private const float FOOTSTEP_INTERVAL_WALK   = 0.50f;   // 歩き
     private const float FOOTSTEP_INTERVAL_RUN    = 0.32f;   // ダッシュ
@@ -66,6 +69,7 @@ public class ExplorerController : MonoBehaviour
     private Vector3 _moveInput;
     private bool    _isSprinting;
     private bool    _jumpRequested;
+    private float   _jumpBufferedUntil = -999f;
     private bool    _isGrounded;
     private bool    _isGroundedRaw;
     private bool    _wasGrounded;
@@ -180,16 +184,24 @@ public class ExplorerController : MonoBehaviour
         float h = moveInput.x;
         float v = moveInput.y;
         _moveInput   = (transform.right * h + transform.forward * v).normalized;
-        // GDD §3.1 — 疲労中はスプリント不可。移動入力があり、接地中の時のみスタミナを消費する。
+        // スタミナが少しでも残っていれば走れる。0 になった時点で走りを止める
+        // （疲労回復閾値でのロックアウトはしない）。移動入力があり接地中の時のみスタミナを消費する。
         _isSprinting = _moveInput.sqrMagnitude > 0.01f
                        && InputStateReader.IsSprintPressed(_inputSlot)
-                       && (_stamina == null || !_stamina.IsExhausted);
+                       && (_stamina == null || !_stamina.IsEmpty);
         if (_isSprinting && _isGrounded)
             _stamina?.ConsumeSprint();
 
-        // ジャンプ入力（接地時のみ受付）
-        if (InputStateReader.JumpPressedThisFrame(_inputSlot) && _isGrounded)
-            _jumpRequested = true;
+        // ジャンプ入力（先行入力バッファ）。押下を一定時間覚えておき、接地中になった
+        // フレームで発火する。コヨーテタイム（_groundedGraceTime）と対で、着地直前/直後の
+        // 押下取りこぼしを防ぐ。
+        if (InputStateReader.JumpPressedThisFrame(_inputSlot))
+            _jumpBufferedUntil = Time.time + JUMP_BUFFER_TIME;
+        if (_jumpBufferedUntil >= Time.time && _isGrounded)
+        {
+            _jumpRequested     = true;
+            _jumpBufferedUntil = -999f;
+        }
 
         // Animator: Speed（State Speed Multiplier）
         float targetSpeed = _moveInput.sqrMagnitude > 0.01f ? 1f : 0f;

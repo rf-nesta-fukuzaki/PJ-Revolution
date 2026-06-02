@@ -66,6 +66,16 @@ public class WireRopeActionController : MonoBehaviour
     [Tooltip("張力による上向き速度の上限[m/s]。")]
     [SerializeField] private float _maxUpwardSpeedFromTension = 12f;
 
+    [Header("回収 — 対象引き寄せ（遺物 / キャラ）")]
+    [Tooltip("ロープ先が遺物・キャラの場合、回収で対象を自分へ引き寄せる加速度。")]
+    [SerializeField] private float _targetPullAccel = 65f;
+    [Tooltip("対象を引き寄せるときの最大速度[m/s]。")]
+    [SerializeField] private float _targetPullMaxSpeed = 24f;
+    [Tooltip("対象を引き寄せるときの最低速度[m/s]（近づいても止まらない下限）。")]
+    [SerializeField] private float _targetPullMinSpeed = 8f;
+    [Tooltip("対象がこの距離[m]まで近づいたら回収完了。")]
+    [SerializeField] private float _targetPullArrivalDistance = 1.5f;
+
     [Header("バカげ物理 — ロープ弾性（控えめ）")]
     [Tooltip("ロープが伸びた分だけ張力が増える係数。")]
     [SerializeField] private float _ropeElasticGain = 0.75f;
@@ -76,8 +86,6 @@ public class WireRopeActionController : MonoBehaviour
     [SerializeField, Range(0f, 0.35f)] private float _chargePowerSpread = 0.22f;
     [Tooltip("地面をロープ方向へ滑らせる補助（横方向の謎加速はしない）。")]
     [SerializeField] private float _groundSlideAssistAccel = 22f;
-    [Tooltip("地面接触時にロープ方向へ維持する最低スライド速度[m/s]。")]
-    [SerializeField] private float _groundSlideMinSpeed = 9f;
     [Tooltip("地面へのめり込み速度を減衰する係数（抵抗感）。")]
     [SerializeField, Range(0.5f, 1f)] private float _groundImpactBleed = 0.88f;
     [Tooltip("スライドの横ずれを抑える抵抗。")]
@@ -130,6 +138,21 @@ public class WireRopeActionController : MonoBehaviour
     [SerializeField] private float _overshootMaxSeconds = 3.8f;
     [Tooltip("張力減衰の下限（0にすると停止点手前で完全停止しやすい）。")]
     [SerializeField, Range(0.2f, 1f)] private float _tensionFalloffFloor = 0.52f;
+
+    [Header("回収速度 — 射程・ゲージ連動スケール")]
+    [Tooltip("最小射程付近での目標引き速度[m/s]。近距離はここまで穏やかに引く。")]
+    [SerializeField] private float _pullSpeedShort = 16f;
+    [Tooltip("目標速度に対する最低維持速度の割合（近づいても止まらない下限）。")]
+    [SerializeField, Range(0.3f, 0.9f)] private float _pullFloorFraction = 0.55f;
+    [Tooltip("溜めゲージによる引き速度の振れ幅（±割合）。0.35 = 弱溜め×0.65 / 強溜め×1.35。")]
+    [SerializeField, Range(0f, 0.6f)] private float _pullSpeedChargeSpread = 0.35f;
+    [Tooltip("オーバーシュート距離 = 開始時ロープ長 × この係数（上限は _maxOvershootDistance）。")]
+    [SerializeField] private float _overshootDistanceFactor = 0.32f;
+    [Tooltip("オーバーシュート距離の下限[m]。")]
+    [SerializeField] private float _overshootMinDistance = 1f;
+    [Tooltip("地面アンカーがこの高さ[m]以上上方なら登攀とみなし 3D 距離で到達判定し、坂を登り切る。")]
+    [SerializeField] private float _groundClimbLiftThreshold = 1.5f;
+
     [Header("衝突 — アンカー方向スリングショット")]
     [Tooltip("障害物に当たったとき、アンカー（ロープ先端）へ向かう初速[m/s]。")]
     [SerializeField] private float _impactSlingshotSpeed = 34f;
@@ -184,6 +207,12 @@ public class WireRopeActionController : MonoBehaviour
     private Vector3 _anchorPoint;
     private Vector3 _anchorNormal = Vector3.up;
     private bool _anchorIsGround;
+    private bool _pullTargetToPlayer;
+    private Rigidbody _attachedTargetBody;
+    private Transform _attachedTargetTransform;
+    private Behaviour _suppressedTargetController;
+    private bool _targetSavedKinematic;
+    private bool _targetSavedUseGravity;
     private float _chargedThrowRange;
     private float _retrieveTimer;
     private bool _ropeReleased;
@@ -200,6 +229,13 @@ public class WireRopeActionController : MonoBehaviour
     private float _tensionSoundTimer;
     private float _hookVisualScale = 0.22f;
     private float _retrieveChargeFactor = 1f;
+    private float _retrieveStartDistance;
+    private float _retrieveEngage01;
+    private float _targetPullSpeed;
+    private float _effectiveOvershootDistance;
+    private float _effectiveOvershootMaxSeconds;
+    private float _chargeStartTime;
+    private bool _retrieveUsesRaisedGroundPull;
     private float _peakTensionSpeed;
     private Vector3 _overshootOrigin;
     private Vector3 _inertiaSlideDirection = Vector3.forward;
@@ -220,7 +256,8 @@ public class WireRopeActionController : MonoBehaviour
         || (_phase == WireRopePhase.Retrieving && !_ropeReleased);
     /// <summary>張力フェーズ中のみ Explorer の接地 MovePosition を抑止（オーバーシュート・停止時は操作可能）。</summary>
     public bool SuppressExplorerLocomotion =>
-        _phase == WireRopePhase.Retrieving
+        !_pullTargetToPlayer
+        && _phase == WireRopePhase.Retrieving
         && !_ropeReleased
         && _retrieveTensionBlend >= 0.12f
         && _pullStallTimer < _pullStallReleaseSeconds * 0.85f;
@@ -367,7 +404,8 @@ public class WireRopeActionController : MonoBehaviour
                 break;
 
             case WireRopePhase.Charging:
-                _forceGauge = Mathf.PingPong(Time.time * _gaugeOscillationSpeed, 100f);
+                // 溜め開始からの経過で振動させる（毎回 0 から立ち上がる）。
+                _forceGauge = Mathf.PingPong((Time.time - _chargeStartTime) * _gaugeOscillationSpeed, 100f);
                 _spinAngle += _spinVisualSpeed * Time.deltaTime;
                 if (InputStateReader.WireRopeReleasedThisFrame(_inputSlot))
                 {
@@ -404,6 +442,10 @@ public class WireRopeActionController : MonoBehaviour
 
     private void UpdateRetrieveRopeVisual()
     {
+        // 遺物・キャラに引っかかっている場合はアンカーを対象に追従させ、ロープが離れて見えないようにする。
+        if (_attachedTargetTransform != null)
+            _anchorPoint = _attachedTargetTransform.position;
+
         float tensionTight = _phase == WireRopePhase.Retrieving
             ? (_ropeReleased ? 0.35f : 0.4f + RetrieveTensionEased * 0.55f)
             : 0.15f;
@@ -433,7 +475,12 @@ public class WireRopeActionController : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (_phase == WireRopePhase.Retrieving)
+        if (_phase != WireRopePhase.Retrieving)
+            return;
+
+        if (_pullTargetToPlayer)
+            UpdateTargetPullPhysics();
+        else
             UpdateRetrievePhysics();
     }
 
@@ -441,6 +488,8 @@ public class WireRopeActionController : MonoBehaviour
     private void BeginCharging()
     {
         _phase = WireRopePhase.Charging;
+        _chargeStartTime = Time.time;
+        _forceGauge = 0f;
         _spinAngle = 0f;
         _visualSagBlend = 0f;
         _visualWidthStart = _ropeStartWidth * _lassoHandWidthMul;
@@ -520,6 +569,7 @@ public class WireRopeActionController : MonoBehaviour
         {
             _anchorNormal = hitInfo.normal.sqrMagnitude > 0.01f ? hitInfo.normal.normalized : Vector3.up;
             _anchorIsGround = _anchorNormal.y >= GroundNormalThreshold;
+            ResolvePullTarget(hitInfo.collider);
         }
 
         SpawnHookVisual(origin);
@@ -581,6 +631,49 @@ public class WireRopeActionController : MonoBehaviour
         return found;
     }
 
+    /// <summary>
+    /// ロープ先の命中対象が遺物・キャラなら「対象を自分へ引き寄せる」モードにする。
+    /// それ以外（地形・岩など）は従来どおり「自分を対象位置へ移動する」モード。
+    /// </summary>
+    private void ResolvePullTarget(Collider hitCollider)
+    {
+        _pullTargetToPlayer = false;
+        _attachedTargetBody = null;
+        _attachedTargetTransform = null;
+        _suppressedTargetController = null;
+
+        if (hitCollider == null)
+            return;
+
+        var relic = hitCollider.GetComponentInParent<RelicBase>();
+        if (relic != null)
+        {
+            var relicBody = relic.GetComponent<Rigidbody>();
+            if (relicBody != null && relicBody != _rb)
+            {
+                _attachedTargetBody = relicBody;
+                _attachedTargetTransform = relic.transform;
+                _pullTargetToPlayer = true;
+                return;
+            }
+        }
+
+        var npc = hitCollider.GetComponentInParent<NPCController>();
+        var explorer = hitCollider.GetComponentInParent<ExplorerController>();
+        bool isCharacter = npc != null || explorer != null || hitCollider.CompareTag("Player");
+        if (!isCharacter)
+            return;
+
+        var charBody = hitCollider.GetComponentInParent<Rigidbody>();
+        if (charBody == null || charBody == _rb || charBody.transform.IsChildOf(transform))
+            return;
+
+        _attachedTargetBody = charBody;
+        _attachedTargetTransform = charBody.transform;
+        _suppressedTargetController = npc != null ? (Behaviour)npc : explorer;
+        _pullTargetToPlayer = true;
+    }
+
     // ── 回収（AddForce 慣性・重力残し） ─────────────────────
     private void BeginRetrieve()
     {
@@ -591,9 +684,24 @@ public class WireRopeActionController : MonoBehaviour
         _pullStallTimer = 0f;
         _overshootTimer = 0f;
 
+        // 遺物・キャラを引っかけている場合は「対象を自分へ引き寄せる」回収に切り替える。
+        if (_pullTargetToPlayer && _attachedTargetBody != null)
+        {
+            BeginTargetPull();
+            return;
+        }
+
         SaveAndEnableRigidbodyMotor();
 
         _retrieveChargeFactor = 1f + _chargePowerSpread * (_lastChargeGauge / 100f - 0.5f) * 2f;
+
+        // 引き距離とゲージから今回の目標速度・オーバーシュート量を決める（射程連動）。
+        _retrieveStartDistance = Vector3.Distance(_rb.position, _anchorPoint);
+        _retrieveEngage01 = Mathf.Clamp01(Mathf.InverseLerp(_minThrowRange, _maxThrowRange, _retrieveStartDistance));
+        ComputeTargetPullSpeed();
+        _effectiveOvershootDistance = Mathf.Clamp(_retrieveStartDistance * _overshootDistanceFactor, _overshootMinDistance, _maxOvershootDistance);
+        _effectiveOvershootMaxSeconds = Mathf.Lerp(1.2f, _overshootMaxSeconds, _retrieveEngage01);
+        _retrieveUsesRaisedGroundPull = IsGroundAnchor() && GetGroundAnchorLift() > _groundClimbLiftThreshold;
 
         Vector3 runDir = Flatten(_anchorPoint - _rb.position);
         _retrieveRunDirectionXZ = runDir.sqrMagnitude > 0.01f ? runDir.normalized : GetFlatForward();
@@ -612,6 +720,107 @@ public class WireRopeActionController : MonoBehaviour
 
         GameServices.Audio?.PlaySE(SoundId.WinchStart, transform.position);
         AddCameraTrauma(_traumaRetrieveStart);
+    }
+
+    // ── 回収（対象引き寄せ：遺物 / キャラを自分へ） ─────────
+    private void BeginTargetPull()
+    {
+        _retrieveChargeFactor = 1f + _chargePowerSpread * (_lastChargeGauge / 100f - 0.5f) * 2f;
+        _retrieveTensionBlend = 0f;
+        _retrieveTimer = 0f;
+
+        _targetSavedKinematic = _attachedTargetBody.isKinematic;
+        _targetSavedUseGravity = _attachedTargetBody.useGravity;
+        if (_attachedTargetBody.isKinematic)
+            _attachedTargetBody.isKinematic = false;
+        // 引き寄せ中は重力を切って素直に自分へ飛んでくるようにする。
+        _attachedTargetBody.useGravity = false;
+        _attachedTargetBody.WakeUp();
+
+        // キャラ自身の移動制御を一時停止し、引き寄せ力が打ち消されないようにする。
+        if (_suppressedTargetController != null)
+            _suppressedTargetController.enabled = false;
+
+        SetLineVisible(true);
+        _tensionSoundTimer = 0f;
+        GameServices.Audio?.PlaySE(SoundId.WinchStart, transform.position);
+        AddCameraTrauma(_traumaRetrieveStart);
+    }
+
+    private void UpdateTargetPullPhysics()
+    {
+        float dt = Time.fixedDeltaTime;
+        _retrieveTimer += dt;
+
+        if (_attachedTargetBody == null || _retrieveTimer >= _maxRetrieveSeconds)
+        {
+            FinishTargetPull();
+            return;
+        }
+
+        Vector3 handPos = GetHandOrigin();
+        Vector3 targetPos = _attachedTargetBody.worldCenterOfMass;
+        Vector3 toPlayer = handPos - targetPos;
+        float dist = toPlayer.magnitude;
+
+        _anchorPoint = _attachedTargetTransform.position;
+
+        if (dist <= _targetPullArrivalDistance)
+        {
+            FinishTargetPull();
+            return;
+        }
+
+        Vector3 pullDir = toPlayer / Mathf.Max(dist, 0.0001f);
+
+        _retrieveTensionBlend = Mathf.MoveTowards(
+            _retrieveTensionBlend, 1f, dt / Mathf.Max(0.05f, _retrieveTensionRampSeconds));
+        float tensionScale = RetrieveTensionEased;
+
+        _attachedTargetBody.AddForce(
+            pullDir * (_targetPullAccel * _retrieveChargeFactor * tensionScale), ForceMode.Acceleration);
+
+        Vector3 vel = _attachedTargetBody.linearVelocity;
+        float along = Vector3.Dot(vel, pullDir);
+        float minSpeed = _targetPullMinSpeed * tensionScale;
+        if (along < minSpeed)
+        {
+            vel += pullDir * (minSpeed - along);
+            _attachedTargetBody.linearVelocity = vel;
+        }
+
+        if (vel.magnitude > _targetPullMaxSpeed)
+            _attachedTargetBody.linearVelocity = vel.normalized * _targetPullMaxSpeed;
+
+        TryPlayTensionSound(tensionScale, dt);
+    }
+
+    private void FinishTargetPull()
+    {
+        if (_attachedTargetBody != null && !_attachedTargetBody.isKinematic)
+            _attachedTargetBody.linearVelocity *= 0.25f;
+
+        GameServices.Audio?.PlaySE(SoundId.RopeCut, transform.position);
+        ResetToReady();
+    }
+
+    private void RestoreTargetBodyState()
+    {
+        if (_attachedTargetBody != null)
+        {
+            _attachedTargetBody.useGravity = _targetSavedUseGravity;
+            _attachedTargetBody.isKinematic = _targetSavedKinematic;
+            _attachedTargetBody.WakeUp();
+        }
+    }
+
+    private void RestoreSuppressedTargetController()
+    {
+        if (_suppressedTargetController == null)
+            return;
+
+        _suppressedTargetController.enabled = true;
+        _suppressedTargetController = null;
     }
 
     private void SetRetrieveSlideFriction(bool enabled)
@@ -644,6 +853,22 @@ public class WireRopeActionController : MonoBehaviour
         _retrieveSlideFrictionActive = false;
     }
 
+    /// <summary>
+    /// 引き距離（射程）とゲージから今回の目標引き速度を決める。
+    /// 近距離は穏やかに、遠距離は豪快に。ゲージで±振れる。
+    /// </summary>
+    private void ComputeTargetPullSpeed()
+    {
+        float baseSpeed = Mathf.Lerp(_pullSpeedShort, _pullMaxSpeed, _retrieveEngage01);
+        float charge01 = Mathf.Clamp01(_lastChargeGauge / 100f);
+        float chargeMul = Mathf.Lerp(1f - _pullSpeedChargeSpread, 1f + _pullSpeedChargeSpread, charge01);
+        _targetPullSpeed = Mathf.Clamp(baseSpeed * chargeMul, _pullMinSpeed * 0.6f, _pullMaxSpeed);
+    }
+
+    /// <summary>目標速度に対する最低維持速度（近づいても止まらない下限）。</summary>
+    private float PullFloorSpeed(float tensionScale) =>
+        _targetPullSpeed * _pullFloorFraction * Mathf.Max(tensionScale, _tensionFalloffFloor);
+
     private void ApplyRetrieveStartVelocity()
     {
         float snap = (_pullSnapImpulse + _gaugeLaunchBoost * (_lastChargeGauge / 100f)) * _retrieveChargeFactor;
@@ -656,12 +881,18 @@ public class WireRopeActionController : MonoBehaviour
         Vector3 perpendicular = current - pullDir * along;
 
         float blend = _retrieveStartVelocityBlend;
-        float newAlong = Mathf.Max(along, 0f) + snap * blend;
+        // 初速スナップは目標速度を超えない（近距離での過剰な吹っ飛びを防ぐ）。
+        float newAlong = Mathf.Min(Mathf.Max(along, 0f) + snap * blend, _targetPullSpeed);
         SetBodyLinearVelocity(pullDir * newAlong + perpendicular * (1f - blend * 0.35f));
         ClampExcessUpwardVelocity();
     }
 
     private bool IsGroundAnchor() => _anchorIsGround;
+
+    private float GetGroundAnchorLift() => _anchorPoint.y - (_rb != null ? _rb.position.y : transform.position.y);
+
+    private bool ShouldUseRaisedGroundPull() =>
+        IsGroundAnchor() && (_retrieveUsesRaisedGroundPull || GetGroundAnchorLift() > _groundClimbLiftThreshold);
 
     /// <summary>
     /// 地面フック: 空中の停止点にせず、アンカー付近の地表上に停止点を置く（めり込み防止）。
@@ -691,6 +922,9 @@ public class WireRopeActionController : MonoBehaviour
 
         if (IsGroundAnchor())
         {
+            if (ShouldUseRaisedGroundPull())
+                return ClampPullElevation(toAnchor.normalized);
+
             Vector3 flat = Flatten(toAnchor);
             return flat.sqrMagnitude < 0.0001f ? GetFlatForward() : flat.normalized;
         }
@@ -716,11 +950,15 @@ public class WireRopeActionController : MonoBehaviour
         dir.Normalize();
         Vector3 flat = Flatten(dir);
         if (flat.sqrMagnitude < 0.0001f)
-            return dir;
+        {
+            flat = Flatten(_retrieveRunDirectionXZ);
+            if (flat.sqrMagnitude < 0.0001f)
+                flat = GetFlatForward();
+        }
 
         flat.Normalize();
         float maxDeg = _maxPullElevationDeg;
-        if (!IsGroundAnchor())
+        if (!IsGroundAnchor() || ShouldUseRaisedGroundPull())
         {
             float anchorAbove = _anchorPoint.y - _rb.position.y;
             maxDeg = Mathf.Lerp(_maxPullElevationDeg, _maxPullElevationDegWallUp,
@@ -736,7 +974,7 @@ public class WireRopeActionController : MonoBehaviour
     private float GetRopeStretch01()
     {
         float refLen = Mathf.Max(_chargedThrowRange, _minThrowRange);
-        if (IsGroundAnchor())
+        if (IsGroundAnchor() && !ShouldUseRaisedGroundPull())
         {
             float horiz = Vector3.Distance(
                 new Vector3(_rb.position.x, 0f, _rb.position.z),
@@ -797,13 +1035,16 @@ public class WireRopeActionController : MonoBehaviour
         if (vel.y <= _maxUpwardSpeedFromTension)
             return;
 
-        vel.y = Mathf.MoveTowards(vel.y, _maxUpwardSpeedFromTension, _maxSpeedChangePerSecond * Time.fixedDeltaTime);
+        // 上限超過は即座に抑える（レート制限だと数フレーム突き抜けて吹き上がって見える）。
+        vel.y = _maxUpwardSpeedFromTension;
         SetBodyLinearVelocity(vel);
     }
 
     private float GetDistanceToAnchor()
     {
-        if (IsGroundAnchor())
+        // 平らな地面アンカーは水平距離（真下へ吸い込まれない）。
+        // 上方の地面アンカー（坂の上）は登攀とみなし 3D 距離で測り、坂を登り切るまで引き続ける。
+        if (IsGroundAnchor() && !ShouldUseRaisedGroundPull())
         {
             return Vector3.Distance(
                 new Vector3(_rb.position.x, 0f, _rb.position.z),
@@ -864,7 +1105,13 @@ public class WireRopeActionController : MonoBehaviour
         Vector3 vel = BodyLinearVelocity;
 
         if (IsGroundAnchor() && TryGetGroundContact(out Vector3 groundNormal, out _))
+        {
             vel = Vector3.ProjectOnPlane(vel, groundNormal);
+            direction = Vector3.ProjectOnPlane(direction, groundNormal);
+            if (direction.sqrMagnitude < 0.01f)
+                return 0f;
+            direction.Normalize();
+        }
 
         return Mathf.Max(0f, Vector3.Dot(vel, direction));
     }
@@ -1015,14 +1262,15 @@ public class WireRopeActionController : MonoBehaviour
     private void ApplyMinPullSpeed(Vector3 pullDir, Vector3 vel, float tensionScale)
     {
         pullDir = ClampPullElevation(pullDir.normalized);
-        Vector3 useDir = IsGroundAnchor() ? Flatten(pullDir) : pullDir;
-        Vector3 useVel = IsGroundAnchor() ? Flatten(vel) : vel;
+        bool use3dPull = !IsGroundAnchor() || ShouldUseRaisedGroundPull();
+        Vector3 useDir = use3dPull ? pullDir : Flatten(pullDir);
+        Vector3 useVel = use3dPull ? vel : Flatten(vel);
         if (useDir.sqrMagnitude < 0.01f)
             return;
         useDir.Normalize();
 
         float speedAlong = Vector3.Dot(useVel, useDir);
-        float minSpeed = _pullMinSpeed * _retrieveChargeFactor * Mathf.Max(tensionScale, _tensionFalloffFloor);
+        float minSpeed = PullFloorSpeed(tensionScale);
         if (speedAlong >= minSpeed)
             return;
 
@@ -1031,7 +1279,7 @@ public class WireRopeActionController : MonoBehaviour
         if (delta.magnitude > maxDelta)
             delta = delta.normalized * maxDelta;
 
-        if (IsGroundAnchor())
+        if (IsGroundAnchor() && !use3dPull)
             SetBodyLinearVelocity(new Vector3(vel.x + delta.x, vel.y, vel.z + delta.z));
         else
             AddBodyLinearVelocity(delta);
@@ -1044,7 +1292,8 @@ public class WireRopeActionController : MonoBehaviour
         if (!TryGetGroundContact(out Vector3 groundNormal, out _))
             return;
 
-        Vector3 slideDir = Vector3.ProjectOnPlane(Flatten(pullDir), groundNormal);
+        Vector3 baseDir = ShouldUseRaisedGroundPull() ? pullDir : Flatten(pullDir);
+        Vector3 slideDir = Vector3.ProjectOnPlane(baseDir, groundNormal);
         if (slideDir.sqrMagnitude < 0.01f)
             slideDir = Vector3.ProjectOnPlane(Flatten(vel), groundNormal);
         if (slideDir.sqrMagnitude < 0.01f)
@@ -1054,7 +1303,7 @@ public class WireRopeActionController : MonoBehaviour
         Vector3 surfaceVel = Vector3.ProjectOnPlane(vel, groundNormal);
         float along = Vector3.Dot(surfaceVel, slideDir);
 
-        float minSlide = _groundSlideMinSpeed * tensionScale * _retrieveChargeFactor;
+        float minSlide = PullFloorSpeed(tensionScale);
         if (along < minSlide)
             AddBodyForce(slideDir * (_groundSlideAssistAccel * (1f - along / Mathf.Max(minSlide, 0.5f))), ForceMode.Acceleration);
         else
@@ -1078,7 +1327,7 @@ public class WireRopeActionController : MonoBehaviour
         if (airGap > _groundSlideMaxAirGap)
             return;
 
-        Vector3 pull = Flatten(_retrievePullAxis);
+        Vector3 pull = ShouldUseRaisedGroundPull() ? _retrievePullAxis : Flatten(_retrievePullAxis);
         if (pull.sqrMagnitude < 0.01f)
             pull = _retrieveRunDirectionXZ;
         pull.Normalize();
@@ -1100,7 +1349,7 @@ public class WireRopeActionController : MonoBehaviour
         Vector3 lateral = surfaceVel - slideDir * along;
 
         float tension = _ropeReleased ? 0.45f : Mathf.Max(RetrieveTensionEased, 0.35f);
-        float minSlide = _groundSlideMinSpeed * tension * _retrieveChargeFactor;
+        float minSlide = _targetPullSpeed * _pullFloorFraction * tension;
 
         if (along < minSlide)
         {
@@ -1133,10 +1382,17 @@ public class WireRopeActionController : MonoBehaviour
 
     private void ClampRetrieveSpeed()
     {
-        float maxSpeed = _impactBoostTimer > 0f ? _impactSlingshotMaxSpeed : _pullMaxSpeed;
+        float maxSpeed = _impactBoostTimer > 0f ? _impactSlingshotMaxSpeed : _targetPullSpeed;
         Vector3 vel = BodyLinearVelocity;
         if (vel.magnitude <= maxSpeed) return;
-        SetBodyLinearVelocity(Vector3.MoveTowards(vel, vel.normalized * maxSpeed, _maxSpeedChangePerSecond * Time.fixedDeltaTime));
+
+        // 張力フェーズ中は即座にキャップ（張力モータ＋スライド補助の合算で
+        // レート制限だと目標速度を保持できず、近距離でも最大速度まで吹っ飛ぶため）。
+        // 離脱後オーバーシュート／スリングショット中は運動量を残すため緩やかに減速。
+        if (_ropeReleased || _impactBoostTimer > 0f)
+            SetBodyLinearVelocity(Vector3.MoveTowards(vel, vel.normalized * maxSpeed, _maxSpeedChangePerSecond * Time.fixedDeltaTime));
+        else
+            SetBodyLinearVelocity(vel.normalized * maxSpeed);
     }
 
     private void ReleaseRopeAtTipWithInertia()
@@ -1155,15 +1411,22 @@ public class WireRopeActionController : MonoBehaviour
 
         float tensionSpeed = Mathf.Max(_peakTensionSpeed, GetSpeedAlongDirection(slideDir));
         tensionSpeed *= _releaseInertiaScale * _overshootMomentumScale * _retrieveChargeFactor;
-        tensionSpeed = Mathf.Clamp(tensionSpeed, _releaseInertiaMinSpeed, _releaseInertiaMaxSpeed);
+        // 吹っ飛び速度も目標速度に連動させる（近距離は控えめ、遠距離は豪快）。
+        float maxInertia = Mathf.Min(_releaseInertiaMaxSpeed, _targetPullSpeed * _releaseInertiaScale + 2f);
+        float minInertia = Mathf.Lerp(1.5f, _releaseInertiaMinSpeed, _retrieveEngage01);
+        tensionSpeed = Mathf.Clamp(tensionSpeed, minInertia, maxInertia);
 
         Vector3 vel = BodyLinearVelocity;
         Vector3 slideVel = slideDir * tensionSpeed;
         Vector3 perpendicular = vel - slideDir * Vector3.Dot(vel, slideDir);
         vel = slideVel + perpendicular * _releasePerpendicularRetain;
 
-        if (IsGroundAnchor())
+        if (IsGroundAnchor() && ShouldUseRaisedGroundPull())
+            vel.y = Mathf.Clamp(vel.y, 0f, _maxUpwardSpeedFromTension);
+        else if (IsGroundAnchor())
             vel.y = Mathf.Max(BodyLinearVelocity.y * 0.25f, 0f);
+        else if (vel.y > _maxUpwardSpeedFromTension)
+            vel.y = _maxUpwardSpeedFromTension; // 真上アンカーでの吹き上がりを離脱時に確実に抑える
 
         SetBodyLinearVelocity(vel);
         ClampExcessUpwardVelocity();
@@ -1226,8 +1489,8 @@ public class WireRopeActionController : MonoBehaviour
         float slideDist = GetOvershootSlideDistance();
 
         if (_impactBoostTimer <= 0f
-            && (_overshootTimer >= _overshootMaxSeconds
-                || slideDist >= _maxOvershootDistance
+            && (_overshootTimer >= _effectiveOvershootMaxSeconds
+                || slideDist >= _effectiveOvershootDistance
                 || speed < _overshootEndSpeed))
         {
             FinishRetrieveWithMomentum();
@@ -1503,7 +1766,7 @@ public class WireRopeActionController : MonoBehaviour
         if (normal.y < GroundNormalThreshold)
             return false;
 
-        float into = Vector3.Dot(approachVelocity, normal);
+        float into = SurfaceApproachSpeed(normal, approachVelocity);
         if (into >= _floorSlingshotMinIntoSpeed)
             return true;
 
@@ -1519,10 +1782,10 @@ public class WireRopeActionController : MonoBehaviour
             return false;
 
         normal.Normalize();
+        float into = SurfaceApproachSpeed(normal, approachVelocity);
         if (normal.y < _obstacleNormalMaxY)
-            return true;
+            return into >= _impactSlingshotMinIntoSpeed;
 
-        float into = Vector3.Dot(approachVelocity, normal);
         if (into >= _impactSlingshotHardImpactSpeed)
             return true;
 
@@ -1530,6 +1793,15 @@ public class WireRopeActionController : MonoBehaviour
             return true;
 
         return false;
+    }
+
+    private static float SurfaceApproachSpeed(Vector3 normal, Vector3 velocity)
+    {
+        if (normal.sqrMagnitude < 0.01f)
+            return 0f;
+
+        normal.Normalize();
+        return Mathf.Max(0f, -Vector3.Dot(velocity, normal));
     }
 
     private bool HasMoveInput()
@@ -1826,9 +2098,16 @@ public class WireRopeActionController : MonoBehaviour
         _overshootTimer = 0f;
         _impactBoostTimer = 0f;
         _lastImpactSlingshotTime = -999f;
+        _retrieveUsesRaisedGroundPull = false;
         _visualSagBlend = 0f;
         _tensionSoundTimer = 0f;
         SetRetrieveSlideFriction(false);
+
+        RestoreTargetBodyState();
+        RestoreSuppressedTargetController();
+        _pullTargetToPlayer = false;
+        _attachedTargetBody = null;
+        _attachedTargetTransform = null;
 
         RestoreRigidbodyMotorState();
         _rb.WakeUp();

@@ -21,7 +21,15 @@ namespace Sandbox.World.Generation.Placement
         private static readonly int IdWorldOrigin  = Shader.PropertyToID("_WorldOriginXZ");
         private static readonly int IdTreeParams   = Shader.PropertyToID("_TreeParams");
         private static readonly int IdRockParams   = Shader.PropertyToID("_RockParams");
+        private static readonly int IdExcludeXZR   = Shader.PropertyToID("_ExcludeXZR");
         private static readonly int IdPSeed        = Shader.PropertyToID("_PSeed");
+
+        /// <summary>
+        /// 木/岩を生やさない world 空間の除外円。xy = 中心(xz), z = 半径[m]（0 で無効）。
+        /// 基地キャンプの平坦地に植生が侵入しないよう、CombinedTerrainConformer が生成開始前(Awake)に設定する。
+        /// 静的なのは全チャンクの dispatch で共有するため。combined 以外のシーンでは既定の無効(0)のまま。
+        /// </summary>
+        public static Vector4 ExcludeXZRadius = Vector4.zero;
 
         private readonly ComputeShader _shader;
         private readonly PlacementParams _params;
@@ -62,6 +70,7 @@ namespace Sandbox.World.Generation.Placement
                             _params.treeScaleMin, _params.treeScaleMax));
             cmd.SetComputeVectorParam(_shader, IdRockParams,
                 new Vector4(_params.rockDensity, _params.rockScaleMin, _params.rockScaleMax, 0f));
+            cmd.SetComputeVectorParam(_shader, IdExcludeXZR, ExcludeXZRadius);
             cmd.SetComputeIntParams(_shader, IdPSeed, unchecked((int)ctx.Seed), 0, 0, 0);
 
             cmd.SetComputeTextureParam(_shader, _kernel, IdHeightTex,      target.HeightTex);

@@ -19,6 +19,11 @@ public class MagneticHelmetRelic : RelicBase
 
     private readonly List<Rigidbody> _affectedItems = new();
 
+    // 引き寄せられた金属の暴走（プレイヤー追従で磁力中心が高速移動すると発生）を防ぐ速度上限。
+    private const float MAX_PULL_SPEED = 8f;
+    // 保持中は磁力中心がプレイヤー速度で動くため引力を弱める係数（GDD §6.2「保持中も磁力は働く」は維持）。
+    private const float HELD_FORCE_SCALE = 0.3f;
+
     // GDD §15.2 — relic_magnet_pull のエッジトリガー用（引き寄せ開始の瞬間だけ鳴らす）
     private bool _wasAttracting;
 
@@ -77,7 +82,12 @@ public class MagneticHelmetRelic : RelicBase
                 forceMag = _magnetForce * Mathf.Clamp01(t);
             }
 
-            rb.AddForce(dir * forceMag, ForceMode.Force);
+            float heldScale = IsHeld ? HELD_FORCE_SCALE : 1f;
+            rb.AddForce(dir * forceMag * heldScale, ForceMode.Force);
+
+            // 暴走防止：引き寄せ速度に上限を設ける。
+            if (rb.linearVelocity.magnitude > MAX_PULL_SPEED)
+                rb.linearVelocity = rb.linearVelocity.normalized * MAX_PULL_SPEED;
 
             if (dist < 1f)
                 Debug.Log($"[MagneticHelmet] 「俺の{target.ItemName}が！」");

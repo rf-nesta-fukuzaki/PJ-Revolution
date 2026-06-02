@@ -1723,9 +1723,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::StaminaSystem
   _maxStamina: 100
   _regenRateBase: 12
-  _regenRateMoving: 5
   _sprintDrain: 15
-  _climbDrain: 10
+  _climbDrain: 5
   _highAltitude: 2000
   _altitudeDrainBonus: 5
   _hasOxygenTank: 0

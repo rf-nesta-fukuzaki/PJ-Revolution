@@ -9,9 +9,8 @@ public sealed class StaminaConfigSO : ScriptableObject
     [Header("スタミナ")]
     [SerializeField] private float _maxStamina = 100f;
     [SerializeField] private float _regenRateBase = 12f;
-    [SerializeField] private float _regenRateMoving = 5f;
     [SerializeField] private float _sprintDrain = 15f;
-    [SerializeField] private float _climbDrain = 10f;
+    [SerializeField] private float _climbDrain = 5f;
 
     [Header("高山病")]
     [SerializeField] private float _highAltitude = 2000f;
@@ -23,7 +22,6 @@ public sealed class StaminaConfigSO : ScriptableObject
 
     public float MaxStamina => _maxStamina;
     public float RegenRateBase => _regenRateBase;
-    public float RegenRateMoving => _regenRateMoving;
     public float SprintDrain => _sprintDrain;
     public float ClimbDrain => _climbDrain;
     public float HighAltitude => _highAltitude;

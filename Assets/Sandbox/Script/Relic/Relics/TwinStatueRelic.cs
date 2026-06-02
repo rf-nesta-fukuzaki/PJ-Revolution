@@ -36,7 +36,8 @@ public class TwinStatueRelic : RelicBase
 
     private void FixedUpdate()
     {
-        if (_partner == null || _isDestroyed) return;
+        // 相方が破壊済みの場合も停止する。破壊済みリジッドボディへ力を加え続ける不整合を防ぐ。
+        if (_partner == null || _isDestroyed || _partner._isDestroyed) return;
 
         ApplyChainConstraint();
         UpdateChainVisual();
@@ -63,10 +64,13 @@ public class TwinStatueRelic : RelicBase
         _rb.AddForce(totalForce,          ForceMode.Force);
         _partner._rb.AddForce(-totalForce, ForceMode.Force);
 
-        // ダメージ：鎖が強く引っ張られると破損リスク
-        if (excess > _chainLength * 0.5f)
+        // ダメージ：鎖が強く引っ張られると破損リスク。
+        // ただし片方を手に持って運んでいる間は Carrier の MovePosition 追従で距離が開きやすく、
+        // 開幕から両者が自壊してしまうため、運搬中は張力ダメージを与えない。
+        // また excess を _chainLength でクランプし、片側保持時の暴走的な大ダメージを防ぐ。
+        if (excess > _chainLength * 0.5f && !_isHeld && !_partner._isHeld)
         {
-            float stretchDamage = excess * 2f;
+            float stretchDamage = Mathf.Min(excess, _chainLength) * 2f;
             ApplyDamage(stretchDamage);
             _partner.ApplyDamage(stretchDamage);
         }
@@ -154,5 +158,16 @@ public class TwinStatueRelic : RelicBase
         Debug.Log("[TwinStatue] 双子像の片方が壊れた。鎖の意味がなくなった。");
         if (_chainLineRenderer != null)
             _chainLineRenderer.enabled = false;
+
+        // 鎖を双方向に解除する。相方の FixedUpdate が破壊済みの自分へ力を加え続けないように
+        // 相互参照を切り、相方側の鎖描画も止める。
+        if (_partner != null)
+        {
+            var partner = _partner;
+            _partner = null;
+            partner._partner = null;
+            if (partner._chainLineRenderer != null)
+                partner._chainLineRenderer.enabled = false;
+        }
     }
 }
