@@ -51,7 +51,14 @@ public sealed class OfflineHostBootstrap
 
         yield return null;
 
-        GameServices.Score?.RegisterPlayer(0, offlinePlayerName);
+        // 個人スコアは正準ID（プレイヤー root の InstanceID）で統一する。NetworkPlayerSpawner も
+        // 同じ FromRoot で登録するため、同一キーで重複無視され（先に登録した名前=offlinePlayerName が残る）、
+        // 旧来の固定 id=0 登録が生んでいた「記録が当たらない幻エントリ」を解消する。
+        var playerObj = networkManager.LocalClient?.PlayerObject;
+        if (playerObj != null)
+            GameServices.Score?.RegisterPlayer(PlayerScoreId.FromRoot(playerObj.gameObject), offlinePlayerName);
+        else
+            GameServices.Score?.RegisterPlayer(0, offlinePlayerName); // フォールバック（通常は到達しない）
         IsInitialized = true;
         Debug.Log("[OfflineBoot] NGO Host 起動完了。ゲームループをオフラインで検証開始。");
     }

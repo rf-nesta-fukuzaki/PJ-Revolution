@@ -234,7 +234,7 @@ public sealed class SandboxLocalCoopBootstrap : MonoBehaviour
         _roster?.RegisterSlot(slot, member);
         if (slot == 0)
             _roster?.RegisterHost(root, member);
-        GameServices.Score?.RegisterPlayer(slot, displayName);
+        GameServices.Score?.RegisterPlayer(PlayerScoreId.FromRoot(root), displayName);
     }
 
     public GameObject SpawnNetworkNpcAt(int partySlot, Vector3 position)
@@ -252,7 +252,8 @@ public sealed class SandboxLocalCoopBootstrap : MonoBehaviour
         var member = go.GetComponent<LocalCoopPartyMember>();
         member?.SetNetworkOwner(NetworkPartyManager.NoClient);
         _roster?.RegisterSlot(partySlot, member);
-        GameServices.Score?.RegisterPlayer(partySlot, name);
+        // 個人スコア登録は NPCController が自身の GetInstanceID で冪等に行う（記録側と同一スキーム）。
+        // bootstrap 側で別キー登録すると記録の当たらない幻エントリになるため、ここでは登録しない。
         return go;
     }
 
@@ -302,7 +303,8 @@ public sealed class SandboxLocalCoopBootstrap : MonoBehaviour
         member.SetNetworkOwner(NetworkPartyManager.NoClient);
 
         _roster?.RegisterSlot(partySlot, member);
-        GameServices.Score?.RegisterPlayer(partySlot, name);
+        // 個人スコア登録は NPCController が自身の GetInstanceID で冪等に行う（記録側と同一スキーム）。
+        // bootstrap 側で別キー登録すると記録の当たらない幻エントリになるため、ここでは登録しない。
         return go;
     }
 
@@ -346,7 +348,7 @@ public sealed class SandboxLocalCoopBootstrap : MonoBehaviour
             color);
 
         _roster.RegisterSlot(partySlot, go.GetComponent<LocalCoopPartyMember>());
-        GameServices.Score?.RegisterPlayer(partySlot, displayName);
+        // 個人スコア登録は NPCController(GetInstanceID) が冪等に行う（幻エントリ回避）。
         return go;
     }
 
@@ -378,7 +380,7 @@ public sealed class SandboxLocalCoopBootstrap : MonoBehaviour
             member = hostRoot.AddComponent<LocalCoopPartyMember>();
         member.Configure(0, isHuman: false, npcName);
         _roster.RegisterSlot(0, member);
-        GameServices.Score?.RegisterPlayer(0, npcName);
+        // 個人スコア登録は NPCController(GetInstanceID) が冪等に行う（幻エントリ回避）。
     }
 
     private void SetHostControlMode(GameObject hostRoot, bool human)
@@ -554,7 +556,7 @@ public sealed class SandboxLocalCoopBootstrap : MonoBehaviour
             member = root.AddComponent<LocalCoopPartyMember>();
         member.Configure(slot, isHuman: true, displayName, gamepad);
 
-        GameServices.Score?.RegisterPlayer(slot, displayName);
+        GameServices.Score?.RegisterPlayer(PlayerScoreId.FromRoot(root), displayName);
 
         var look = root.GetComponent<ExplorerCameraLook>();
         if (look != null)

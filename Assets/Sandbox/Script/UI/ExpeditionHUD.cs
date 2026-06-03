@@ -6,7 +6,8 @@ using Sandbox.UI;
 
 /// <summary>
 /// GDD §2.1 / §9 — 遠征中の HUD。
-/// タイマー・チェックポイント・スタミナ・ロープ状態・遺物リストを表示。
+/// 左上に体力・スタミナのバイタルバー（R.E.P.O.風）、ロープ状態・遺物リスト・警告を表示。
+/// タイマーは非表示（経過時間の計測はリザルト用に内部で継続）。
 /// </summary>
 public class ExpeditionHUD : MonoBehaviour
 {
@@ -18,23 +19,20 @@ public class ExpeditionHUD : MonoBehaviour
     [Header("チェックポイント")]
     [SerializeField] private TextMeshProUGUI _checkpointLabel;
 
-    [Header("スタミナ")]
-    [SerializeField] private Slider          _staminaBar;
-    [SerializeField] private Image           _staminaFill;
-    [SerializeField] private Color           _staminaFullColor   = Color.green;
-    [SerializeField] private Color           _staminaLowColor    = Color.red;
+    [Header("旧スタミナ Slider（シーン互換・実行時は隠す）")]
+    [SerializeField] private Slider _staminaBar;
 
-    [Header("スタミナリング（中央集約ミニマル / PEAK寄り）")]
-    [Tooltip("true: スタミナを照準周りの放射リングに集約し、左上バーは隠す")]
-    [SerializeField] private bool  _useCenterStaminaRing = true;
-    [SerializeField] private Image _staminaRing;
-    // 暖色・低彩度のスタイライズドパレット（PEAK のトーンに寄せる）。
-    // 山の緑に埋もれないよう、満タン色はアンバー＋不透明に寄せ、縁取りで分離する。
-    [SerializeField] private Color _ringFullColor = new Color(0.98f, 0.78f, 0.36f, 1f);
-    [SerializeField] private Color _ringLowColor  = new Color(0.97f, 0.40f, 0.28f, 1f);
-    // リングの縁取り（どんな背景でもコントラストを確保する暗色アウトライン）。
-    [SerializeField] private Color _ringOutlineColor = new Color(0f, 0f, 0f, 0.85f);
     private static Sprite s_ringSprite;
+
+    [Header("バイタルゲージ（左上 / R.E.P.O.風）")]
+    // 体力（上段）: 満タン=緑 / 残量わずか=赤。低残量ほど赤へ寄りパルスする。
+    [SerializeField] private Color _healthFullColor = new Color(0.42f, 0.84f, 0.40f, 1f);
+    [SerializeField] private Color _healthLowColor  = new Color(0.93f, 0.27f, 0.24f, 1f);
+    // 気力（下段）: 満タン=アンバー / 残量わずか=オレンジレッド。
+    [SerializeField] private Color _staminaBarFullColor = new Color(0.98f, 0.80f, 0.32f, 1f);
+    [SerializeField] private Color _staminaBarLowColor  = new Color(0.95f, 0.45f, 0.22f, 1f);
+    private VitalsBar _healthVitals;
+    private VitalsBar _staminaVitals;
 
     [Header("ロープ状態")]
     [SerializeField] private Image           _ropeIndicator;
@@ -51,10 +49,16 @@ public class ExpeditionHUD : MonoBehaviour
     [SerializeField] private float           _warningDisplayTime = 3f;
 
     [Header("プレイヤー参照")]
-    [SerializeField] private StaminaSystem   _localPlayerStamina;
+    [SerializeField] private StaminaSystem      _localPlayerStamina;
+    [SerializeField] private PlayerHealthSystem _localPlayerHealth;
 
     [Header("表示制御")]
     [SerializeField] private CanvasGroup     _hudCanvasGroup;
+
+    [Header("描画順")]
+    // HUD を最前面に固定するソート順。一人称で間近に描画されるプレイヤー自身のモデルや
+    // WorldSpace UI（看板等）より常に前へ出すための値。
+    [SerializeField] private int _hudSortingOrder = 100;
 
     // ── 内部状態 ─────────────────────────────────────────────
     private readonly ExpeditionTimer _fallbackTimer = new();
@@ -72,71 +76,53 @@ public class ExpeditionHUD : MonoBehaviour
         Instance = this;
 
         EnsureFullScreenRoot();
-        EnsureCenterStaminaRing();
-        EnsureTimerLabel();
+        EnforceTopMostOverlay();
+        HideLegacyStaminaWidgets();
+        EnsureVitalsBars();
         EnsureRopeIndicator();
+        EnsureWarningLabel();
+        HideTimerLabel();
 
         if (_hudCanvasGroup == null)
             _hudCanvasGroup = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
     }
 
     /// <summary>
-    /// スタミナを「照準周りの放射リング」に集約する（中央集約ミニマル）。
-    /// 中央の3D空間を遮らない細いリングで、減少時は暖色レッドへ。
-    /// 既存の左上スタミナバーは隠して情報を中央へ一本化する。シーンアセットは書き換えない（非破壊）。
+    /// 旧スタミナ表示（左上スライダー・中央リング）を隠す。スタミナは左上のバーへ一本化する。
+    /// 中央集約ミニマルの CP ラベルも隠す（通過時は警告トーストで一瞬だけ出る）。
+    /// シーンアセットは書き換えず実行時に隠すだけ（非破壊）。
     /// </summary>
-    private void EnsureCenterStaminaRing()
+    private void HideLegacyStaminaWidgets()
     {
-        if (!_useCenterStaminaRing) return;
-
         if (_staminaBar != null) _staminaBar.gameObject.SetActive(false);
-
-        // 中央集約ミニマル: 常時表示の CP ラベルは隠す（通過時は警告で一瞬だけ出る）。
         if (_checkpointLabel != null) _checkpointLabel.gameObject.SetActive(false);
 
-        if (_staminaRing != null) return;
-
-        // 濃い不透明トラック（常時フル円）で、緑地形の上でもコントラストを確保しつつ
-        // 「残量の空き」も示す。色付きフィルはこの上に放射状で重ねる。
-        // 両リングに暗色アウトラインを付け、山の緑と同化しないようにする。
-        var trackColor = new Color(0.05f, 0.06f, 0.08f, 0.88f);
-        CreateRingImage("StaminaRingTrack", trackColor, false, addOutline: true);
-        _staminaRing = CreateRingImage("StaminaRing", _ringFullColor, true, addOutline: true);
+        // 旧バージョンが生成した中央リングが残っていれば名前で探して隠す（再生成は行わない）。
+        var ring  = transform.Find("StaminaRing");
+        if (ring  != null) ring.gameObject.SetActive(false);
+        var track = transform.Find("StaminaRingTrack");
+        if (track != null) track.gameObject.SetActive(false);
     }
 
-    private Image CreateRingImage(string goName, Color color, bool radial, bool addOutline = false)
+    /// <summary>
+    /// 左上（旧タイマー位置）に体力（上段）と気力（下段）の R.E.P.O. 風バイタルゲージを積む。
+    /// 描画・アニメ（残像・グロス・目盛・低残量パルス）は VitalsBar に委譲し、ここは配置のみ（非破壊）。
+    /// </summary>
+    private void EnsureVitalsBars()
     {
-        var go = new GameObject(goName);
-        go.transform.SetParent(transform, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta = new Vector2(120f, 120f);
-        rt.anchoredPosition = Vector2.zero;
+        if (_healthVitals != null && _staminaVitals != null) return;
 
-        var img = go.AddComponent<Image>();
-        img.sprite = GetRingSprite();
-        img.preserveAspect = true;
-        img.raycastTarget = false;
-        img.color = color;
+        const float originX = 26f;   // 旧タイマーと同じ左マージン
+        const float originY = -20f;  // 旧タイマーと同じ上マージン
+        const float width   = 300f;
+        const float barH    = 24f;
+        const float gap     = 10f;
+        const float row     = barH + 4f; // VitalsBar の行高（アイコン分を含む）
 
-        if (radial)
-        {
-            img.type = Image.Type.Filled;
-            img.fillMethod = Image.FillMethod.Radial360;
-            img.fillOrigin = (int)Image.Origin360.Top;
-            img.fillClockwise = true;
-        }
-
-        if (addOutline)
-        {
-            // UI Outline は 4 方向にダーク複製を描き、放射フィルの先端エッジも縁取る。
-            var outline = go.AddComponent<Outline>();
-            outline.effectColor = _ringOutlineColor;
-            outline.effectDistance = new Vector2(2f, 2f);
-            outline.useGraphicAlpha = false;
-        }
-        return img;
+        _healthVitals  = VitalsBar.Create(transform, new Vector2(originX, originY),
+            width, barH, VitalIcon.Heart, _healthFullColor, _healthLowColor, showNumber: true);
+        _staminaVitals = VitalsBar.Create(transform, new Vector2(originX, originY - row - gap),
+            width, barH, VitalIcon.Bolt, _staminaBarFullColor, _staminaBarLowColor, showNumber: true);
     }
 
     /// <summary>ソフトな環状（ドーナツ）スプライトを手続き生成する（アンチエイリアス付き）。</summary>
@@ -171,6 +157,28 @@ public class ExpeditionHUD : MonoBehaviour
     }
 
     /// <summary>
+    /// HUD を 3D より確実に前面へ固定する（描画順ポリシー）。
+    /// ルート Canvas を ScreenSpaceOverlay に固定すると、全カメラ描画後に合成されるため
+    /// 一人称で間近に映るプレイヤー自身のモデルや地形・WorldSpace UI に絶対被らない。
+    /// さらに高ソート順を与え、他のスクリーン/ワールド Canvas より前に出す。
+    /// シーンや将来の改変で ScreenSpaceCamera 等にされても起動時に自己修復する（非破壊）。
+    /// </summary>
+    private void EnforceTopMostOverlay()
+    {
+        var canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) return;
+
+        var root = canvas.rootCanvas;
+        if (root.renderMode != RenderMode.ScreenSpaceOverlay)
+        {
+            // ScreenSpaceCamera/WorldSpace だと 3D に被られ得るため、必ず Overlay へ。
+            root.renderMode = RenderMode.ScreenSpaceOverlay;
+        }
+        if (root.sortingOrder < _hudSortingOrder)
+            root.sortingOrder = _hudSortingOrder;
+    }
+
+    /// <summary>
     /// ルートが素の Transform だと、子の四隅アンカー（タイマー=左上 / 遺物=右上 / 警告=上中央）が
     /// 0×0 の原点矩形（= Canvas 中央）基準で解決され、HUD 全体が画面中央（照準域）へ寄ってしまう。
     /// ルートを全画面ストレッチの RectTransform にして、子要素を本来の四隅へ正しく配置する。
@@ -190,37 +198,18 @@ public class ExpeditionHUD : MonoBehaviour
     }
 
     /// <summary>
-    /// 左上タイマーを自己修復する。シーンの参照配線が壊れている/未設定だと
-    /// UpdateTimerUI が何も書き込めず「00:00.00 のまま動かない」ように見えるため、
-    /// _timerLabel が無ければ実行時に生成し、いずれにせよ左上へ整形配置する（非破壊）。
+    /// タイマー表示は不要になったため非表示にする。経過時間の計測自体は
+    /// リザルト（クリアタイム）用に内部で継続する（_timerLabel が null でも UpdateTimerUI は無害）。
+    /// シーンの TimerLabel が残っていれば隠すだけ（非破壊）。
     /// </summary>
-    private void EnsureTimerLabel()
+    private void HideTimerLabel()
     {
         if (_timerLabel == null)
         {
             var existing = transform.Find("TimerLabel");
             if (existing != null) _timerLabel = existing.GetComponent<TextMeshProUGUI>();
         }
-        if (_timerLabel == null)
-        {
-            var go = new GameObject("TimerLabel", typeof(RectTransform), typeof(TextMeshProUGUI));
-            go.transform.SetParent(transform, false);
-            _timerLabel = go.GetComponent<TextMeshProUGUI>();
-            _timerLabel.text = "00:00.00";
-        }
-
-        var rt = _timerLabel.rectTransform;
-        rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
-        rt.pivot = new Vector2(0f, 1f);
-        rt.sizeDelta = new Vector2(260f, 54f);
-        rt.anchoredPosition = new Vector2(28f, -22f);
-
-        _timerLabel.fontSize  = 34f;
-        _timerLabel.fontStyle = FontStyles.Bold;
-        _timerLabel.alignment = TextAlignmentOptions.Left;
-        _timerLabel.color = UiPalette.Cream;
-        _timerLabel.raycastTarget = false;
-        _timerLabel.gameObject.SetActive(true);
+        if (_timerLabel != null) _timerLabel.gameObject.SetActive(false);
     }
 
     /// <summary>
@@ -252,7 +241,7 @@ public class ExpeditionHUD : MonoBehaviour
         rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
         rt.pivot = new Vector2(0f, 1f);
         rt.sizeDelta = new Vector2(26f, 26f);
-        rt.anchoredPosition = new Vector2(30f, -84f);
+        rt.anchoredPosition = new Vector2(30f, -104f); // 体力/気力ゲージの下に逃がす
 
         if (_ropeLabel == null)
         {
@@ -283,6 +272,39 @@ public class ExpeditionHUD : MonoBehaviour
             _ropeLabel.raycastTarget = false;
             UiReadability.MakeReadable(_ropeLabel);
         }
+    }
+
+    /// <summary>
+    /// 中央上の警告/通知ラベルを自己修復する。シーンの参照配線が無い（Stage01 等）場合でも
+    /// 「チェックポイント通過」「ジップライン開通」等のトーストを確実に表示できるようにする（非破壊）。
+    /// </summary>
+    private void EnsureWarningLabel()
+    {
+        if (_warningLabel == null)
+        {
+            var existing = transform.Find("WarningLabel");
+            if (existing != null) _warningLabel = existing.GetComponent<TextMeshProUGUI>();
+        }
+        if (_warningLabel == null)
+        {
+            var go = new GameObject("WarningLabel", typeof(RectTransform), typeof(TextMeshProUGUI));
+            go.transform.SetParent(transform, false);
+            _warningLabel = go.GetComponent<TextMeshProUGUI>();
+        }
+
+        var rt = _warningLabel.rectTransform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1f);
+        rt.pivot = new Vector2(0.5f, 1f);
+        rt.sizeDelta = new Vector2(720f, 48f);
+        rt.anchoredPosition = new Vector2(0f, -110f);
+
+        _warningLabel.fontSize  = 28f;
+        _warningLabel.fontStyle = FontStyles.Bold;
+        _warningLabel.alignment = TextAlignmentOptions.Center;
+        _warningLabel.color = UiPalette.Amber;
+        _warningLabel.raycastTarget = false;
+        UiReadability.MakeReadable(_warningLabel);
+        _warningLabel.enabled = false;
     }
 
     private void OnEnable()
@@ -340,19 +362,6 @@ public class ExpeditionHUD : MonoBehaviour
         }
 
         SetWarning("");
-        StyleTimerLabel();
-    }
-
-    /// <summary>
-    /// タイマーをパレットのクリーム色＋ソフトシャドウで仕上げる。
-    /// フォント統一(UiFontUnifier, 各 Awake)後に確実に適用したいので Start で行う
-    /// （font 差し替えはマテリアルを戻すため Awake では underlay が消えうる）。
-    /// </summary>
-    private void StyleTimerLabel()
-    {
-        if (_timerLabel == null) return;
-        _timerLabel.color = UiPalette.Cream;
-        UiReadability.MakeReadable(_timerLabel);
     }
 
     private void Update()
@@ -361,24 +370,28 @@ public class ExpeditionHUD : MonoBehaviour
         if (ReferenceEquals(timer, _fallbackTimer) && timer.IsRunning)
             timer.Tick(Time.deltaTime);
 
-        ResolveLocalStaminaIfNeeded();
-        UpdateStaminaUI();
+        ResolveLocalPlayerRefsIfNeeded();
+        UpdateVitals();
         UpdateRopeUI();
         UpdateWarning();
     }
 
     /// <summary>
-    /// _localPlayerStamina は Inspector 未設定（combined ではプレイヤーが実行時生成）。
-    /// HUD の他要素と同じく Player タグから StaminaSystem を一度だけ解決し、
-    /// スタミナリングが実際の残量を反映するようにする。
+    /// _localPlayerStamina / _localPlayerHealth は Inspector 未設定（combined ではプレイヤーが実行時生成）。
+    /// Player タグから StaminaSystem / PlayerHealthSystem を一度だけ解決し、
+    /// 左上のバイタルバーが実際の残量を反映するようにする。
     /// </summary>
-    private void ResolveLocalStaminaIfNeeded()
+    private void ResolveLocalPlayerRefsIfNeeded()
     {
-        if (_localPlayerStamina != null) return;
+        if (_localPlayerStamina != null && _localPlayerHealth != null) return;
 
         var player = GameObject.FindGameObjectWithTag("Player");
-        if (player != null)
+        if (player == null) return;
+
+        if (_localPlayerStamina == null)
             _localPlayerStamina = player.GetComponentInChildren<StaminaSystem>();
+        if (_localPlayerHealth == null)
+            _localPlayerHealth = player.GetComponentInChildren<PlayerHealthSystem>();
     }
 
     // ── タイマー ─────────────────────────────────────────────
@@ -419,25 +432,19 @@ public class ExpeditionHUD : MonoBehaviour
         ShowWarning($"チェックポイント {current} 通過！");
     }
 
-    // ── スタミナ ─────────────────────────────────────────────
-    // 毎フレームの無駄な Canvas 更新（value/color/fillAmount の dirty 化 → グラフィック
-    // リビルド）を避けるため、前回値からの変化があったときだけ反映する。
-    private float _lastStaminaPct = -1f;
-
-    private void UpdateStaminaUI()
+    // ── バイタル（体力・気力） ────────────────────────────────
+    // 値は VitalsBar に渡すだけ。補間・ダメージ残像・低残量パルスは VitalsBar 側が毎フレーム処理する。
+    private void UpdateVitals()
     {
-        float pct = _localPlayerStamina != null ? _localPlayerStamina.StaminaPercent : 1f;
-        if (Mathf.Abs(pct - _lastStaminaPct) < 0.0015f) return;
-        _lastStaminaPct = pct;
-
-        if (_staminaBar != null) _staminaBar.value = pct;
-        if (_staminaFill != null)
-            _staminaFill.color = Color.Lerp(_staminaLowColor, _staminaFullColor, pct);
-
-        if (_staminaRing != null)
+        if (_healthVitals != null)
         {
-            _staminaRing.fillAmount = pct;
-            _staminaRing.color = Color.Lerp(_ringLowColor, _ringFullColor, pct);
+            _healthVitals.SetTarget(_localPlayerHealth != null ? _localPlayerHealth.HpPercent : 1f);
+            _healthVitals.SetNumber(_localPlayerHealth != null ? _localPlayerHealth.CurrentHp : 100f);
+        }
+        if (_staminaVitals != null)
+        {
+            _staminaVitals.SetTarget(_localPlayerStamina != null ? _localPlayerStamina.StaminaPercent : 1f);
+            _staminaVitals.SetNumber(_localPlayerStamina != null ? _localPlayerStamina.CurrentStamina : 100f);
         }
     }
 

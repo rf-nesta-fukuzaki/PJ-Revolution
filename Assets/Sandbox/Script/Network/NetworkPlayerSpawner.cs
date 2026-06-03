@@ -92,7 +92,7 @@ public class NetworkPlayerSpawner : NetworkBehaviour
             TeleportToSpawnPoint(existingPlayer, spawnPos);
             _spawnedPlayers[clientId] = existingPlayer;
 
-            GameServices.Score?.RegisterPlayer((int)clientId, $"Player {clientId}");
+            GameServices.Score?.RegisterPlayer(PlayerScoreId.FromRoot(existingPlayer.gameObject), $"Player {clientId}");
             Debug.Log($"[Spawner] NGO自動スポーン済みプレイヤーを移動: client={clientId}  pos={spawnPos}");
             return;
         }
@@ -118,7 +118,7 @@ public class NetworkPlayerSpawner : NetworkBehaviour
         _spawnedPlayers[clientId] = netObj;
 
         // IScoreService にプレイヤーを登録（GameServices 経由でシングルトン直結を回避）
-        GameServices.Score?.RegisterPlayer((int)clientId, $"Player {clientId}");
+        GameServices.Score?.RegisterPlayer(PlayerScoreId.FromRoot(netObj.gameObject), $"Player {clientId}");
 
         Debug.Log($"[Spawner] プレイヤースポーン: client={clientId}  pos={spawnPos}");
     }

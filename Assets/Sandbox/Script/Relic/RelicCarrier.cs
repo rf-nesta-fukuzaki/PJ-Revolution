@@ -24,10 +24,21 @@ public class RelicCarrier : MonoBehaviour
     [Tooltip("この遺物を持ったときの Animator CarryType 値。0=なし/1=片手/2=両手/3=背負い/4=担架")]
     [SerializeField, Range(0, 4)] private int _carryType = CARRY_TYPE_TWO_HANDS;
 
+    [Header("運搬による移動コスト (コアループ: 重い遺物ほど遅くなる → 持つか置くかの判断)")]
+    [Tooltip("最も軽い遺物(質量 _lightMass 以下)を持ったときの移動速度低下率。")]
+    [SerializeField, Range(0f, 1f)] private float _minCarryPenalty = 0.06f;
+    [Tooltip("最も重い遺物(質量 _heavyMass 以上)を持ったときの移動速度低下率。")]
+    [SerializeField, Range(0f, 1f)] private float _maxCarryPenalty = 0.5f;
+    [Tooltip("ペナルティ最小となる質量(kg)。")]
+    [SerializeField] private float _lightMass = 1f;
+    [Tooltip("ペナルティ最大となる質量(kg)。")]
+    [SerializeField] private float _heavyMass = 80f;
+
     private RelicBase  _relic;
     private Rigidbody  _rb;
     private Transform  _currentHolder;
     private Animator   _holderAnimator;
+    private ExplorerController _holderController; // 運搬中の移動ペナルティ適用先
     private int        _lastCarrierPlayerId = -1;
     private Vector3    _prevHolderPos;
     // 拾い上げ前の useGravity を保存し、置いたとき復元する。FloatingSphere のように
@@ -88,6 +99,12 @@ public class RelicCarrier : MonoBehaviour
             _holderAnimator.SetBool(IsCarryingHash, true);
             _holderAnimator.SetInteger(CarryTypeHash, _carryType);
         }
+
+        // 運搬コスト: 質量に応じた移動速度ペナルティを適用する。これで「重い遺物を山頂まで運ぶか、
+        // 諦めて身軽に進むか」が全遺物共通の意味ある判断になる（従来は質量が速度に効いていなかった）。
+        _holderController = holder.GetComponentInParent<ExplorerController>();
+        if (_holderController == null) _holderController = holder.GetComponentInChildren<ExplorerController>();
+        _holderController?.SetCarryPenalty(ComputeCarryPenalty());
     }
 
     /// <summary>遺物を置く。</summary>
@@ -103,9 +120,21 @@ public class RelicCarrier : MonoBehaviour
             _holderAnimator = null;
         }
 
+        // 運搬コスト解除（置いたら身軽に戻る）
+        _holderController?.SetCarryPenalty(0f);
+        _holderController = null;
+
         _currentHolder  = null;
         _rb.useGravity  = _useGravityBeforePickup;   // 拾う前の重力設定を復元（無条件 true 化を廃止）
         _relic.OnPutDown();
+    }
+
+    /// <summary>運搬中の移動速度低下率を質量から算出する（軽い→ _minCarryPenalty / 重い→ _maxCarryPenalty）。</summary>
+    private float ComputeCarryPenalty()
+    {
+        float mass = _rb != null ? _rb.mass : _lightMass;
+        float t = Mathf.InverseLerp(_lightMass, _heavyMass, mass);
+        return Mathf.Lerp(_minCarryPenalty, _maxCarryPenalty, t);
     }
 
     /// <summary>ドロップ（衝撃あり）。</summary>

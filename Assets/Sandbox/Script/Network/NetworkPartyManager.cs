@@ -280,7 +280,7 @@ public sealed class NetworkPartyManager : NetworkBehaviour
         }
 
         netObj.SpawnAsPlayerObject(clientId, true);
-        GameServices.Score?.RegisterPlayer(slot, $"Player {slot + 1}");
+        GameServices.Score?.RegisterPlayer(PlayerScoreId.FromRoot(instance), $"Player {slot + 1}");
         return netObj;
     }
 

@@ -143,8 +143,12 @@ public class StaminaSystem : MonoBehaviour
     {
         if (_hasOxygenTank) return;
 
-        float altitude = transform.position.y;
-        if (altitude < HighAltitudeValue) return;
+        // 高山病による消費は「山高に対する割合」で判定する（実山高 ~460m に対し絶対 2000m 固定では
+        // 永遠に発火しなかったため）。MountainProfile 未準備時は従来の絶対標高フォールバック。
+        float threshold = MountainProfile.IsReady
+            ? MountainProfile.WorldYAtFraction(0.75f)
+            : HighAltitudeValue;
+        if (transform.position.y < threshold) return;
 
         Consume(AltitudeDrainBonusValue * Time.deltaTime);
     }

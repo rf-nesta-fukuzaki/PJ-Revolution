@@ -23,6 +23,10 @@ public class WireRopeActionController : MonoBehaviour
     private const float GroundNormalThreshold = 0.65f;
     private const float GroundClearance = 0.12f;
     private const float GroundPenetrationCorrectThreshold = 0.2f;
+    // 地表より深く潜った（足元サンプルが届かない）ときの救済用：高所から下キャストして直上の面を探す高さ。
+    private const float DeepRecoverySampleUp = 200f;
+    // この深さ[m]以上潜ったら速度に関係なく即座に地表へスナップ（地面すり抜け落下の防止）。
+    private const float HardSnapPenetrationDepth = 0.6f;
 
     [Header("投擲")]
     [SerializeField] private float _minThrowRange = 4f;
@@ -473,6 +477,10 @@ public class WireRopeActionController : MonoBehaviour
 
         _renderer.DrawCurve(GetHandOrigin(), _anchorPoint, _visualSagBlend, _visualWidthStart);
         _renderer.SyncHook(_anchorPoint, Time.deltaTime);
+
+        // 巻き取り中は撚り柄を流して「ケーブルが手繰り寄せられている」感を出す（離脱後・待機中は停止）。
+        bool winching = _phase == WireRopePhase.Retrieving && !_ropeReleased;
+        _renderer.SetReelScroll(winching ? Mathf.Clamp(speed * 0.14f, 0.8f, 4.5f) : 0f);
     }
 
     private void FixedUpdate()
@@ -535,24 +543,28 @@ public class WireRopeActionController : MonoBehaviour
     private void ReleaseThrow()
     {
         _chargedThrowRange = Mathf.Lerp(_minThrowRange, _maxThrowRange, _lastChargeGauge / 100f);
-        Vector3 origin = GetHandOrigin();
+        // 物理アンカーは「クロスヘア中心（カメラ）」からキャストする。手元（右に 0.32m オフセット）から
+        // 撃つとアンカーが照準より右にずれ、回収が右へ寄って見える原因になるため分離する。
+        Vector3 aimOrigin = AimTransform.position;
+        Vector3 visualOrigin = GetHandOrigin();
         Vector3 direction = GetAimDirection();
 
-        GameServices.Audio?.PlaySE(SoundId.GrapplingFire, origin);
+        GameServices.Audio?.PlaySE(SoundId.GrapplingFire, visualOrigin);
 
         if (_throwRoutine != null)
             StopCoroutine(_throwRoutine);
-        _throwRoutine = StartCoroutine(ThrowRoutine(origin, direction));
+        _throwRoutine = StartCoroutine(ThrowRoutine(aimOrigin, visualOrigin, direction));
     }
 
-    private IEnumerator ThrowRoutine(Vector3 origin, Vector3 direction)
+    private IEnumerator ThrowRoutine(Vector3 aimOrigin, Vector3 visualOrigin, Vector3 direction)
     {
         _phase = WireRopePhase.Throwing;
         _renderer.SetVisible(true);
         _renderer.SetWidths(_ropeStartWidth, _ropeEndWidth);
 
-        bool hit = TryResolveThrowTarget(origin, direction, out RaycastHit hitInfo);
-        Vector3 targetPoint = hit ? hitInfo.point : origin + direction * _chargedThrowRange;
+        // 命中判定は照準中心ライン（aimOrigin）で行い、アンカーを照準どおりに置く。
+        bool hit = TryResolveThrowTarget(aimOrigin, direction, out RaycastHit hitInfo);
+        Vector3 targetPoint = hit ? hitInfo.point : aimOrigin + direction * _chargedThrowRange;
         if (hit)
         {
             _anchorNormal = hitInfo.normal.sqrMagnitude > 0.01f ? hitInfo.normal.normalized : Vector3.up;
@@ -560,8 +572,9 @@ public class WireRopeActionController : MonoBehaviour
             ResolvePullTarget(hitInfo.collider);
         }
 
-        _renderer.SpawnHook(origin);
-        float distance = Vector3.Distance(origin, targetPoint);
+        // 見た目のフック飛翔・ロープは手元（visualOrigin）から描く。
+        _renderer.SpawnHook(visualOrigin);
+        float distance = Vector3.Distance(visualOrigin, targetPoint);
         float duration = Mathf.Max(0.08f, distance / _throwSpeed);
         float elapsed = 0f;
 
@@ -569,9 +582,9 @@ public class WireRopeActionController : MonoBehaviour
         {
             elapsed += Time.deltaTime;
             float t = EaseOut(elapsed / duration, _throwEasePower);
-            Vector3 hookPos = Vector3.Lerp(origin, targetPoint, t);
+            Vector3 hookPos = Vector3.Lerp(visualOrigin, targetPoint, t);
             float sag = Mathf.Sin(t * Mathf.PI) * _ropeSag * (1f - t * 0.25f);
-            _renderer.DrawCurve(origin, hookPos, sag, _ropeStartWidth);
+            _renderer.DrawCurve(visualOrigin, hookPos, sag, _ropeStartWidth);
             _renderer.SyncHook(hookPos, Time.deltaTime);
             yield return null;
         }
@@ -585,6 +598,8 @@ public class WireRopeActionController : MonoBehaviour
             GameServices.Audio?.PlaySE(SoundId.GrapplingHit, _anchorPoint);
             AddCameraTrauma(_traumaRopeHit);
             _renderer.PulseHook(1.45f);
+            _renderer.AddTwang(0.13f);
+            _renderer.HitBurst(_anchorPoint, _pullTargetToPlayer ? 0.7f : 1f, spark: true);
         }
         else
         {
@@ -707,6 +722,7 @@ public class WireRopeActionController : MonoBehaviour
             SetRetrieveSlideFriction(true);
 
         GameServices.Audio?.PlaySE(SoundId.WinchStart, transform.position);
+        GameServices.Audio?.PlaySE2D(SoundId.WinchLoop);
         AddCameraTrauma(_traumaRetrieveStart);
     }
 
@@ -732,6 +748,7 @@ public class WireRopeActionController : MonoBehaviour
         _renderer.SetVisible(true);
         _tensionSoundTimer = 0f;
         GameServices.Audio?.PlaySE(SoundId.WinchStart, transform.position);
+        GameServices.Audio?.PlaySE2D(SoundId.WinchLoop);
         AddCameraTrauma(_traumaRetrieveStart);
     }
 
@@ -901,7 +918,7 @@ public class WireRopeActionController : MonoBehaviour
         return ProjectBodyCenterOntoGround(xz, extraLift: 0f);
     }
 
-    /// <summary>プレイヤー→アンカーのロープ方向。地面は水平、壁は法線に沿った面内のみ。</summary>
+    /// <summary>プレイヤー→アンカー（フック）の引き方向。常にフックへ向けて引く（仰角はクランプ）。</summary>
     private Vector3 GetPhysicsPullDirection()
     {
         Vector3 toAnchor = _anchorPoint - _rb.position;
@@ -917,17 +934,10 @@ public class WireRopeActionController : MonoBehaviour
             return flat.sqrMagnitude < 0.0001f ? GetFlatForward() : flat.normalized;
         }
 
-        Vector3 alongSurface = toAnchor;
-        if (_anchorNormal.sqrMagnitude > 0.01f)
-            alongSurface = Vector3.ProjectOnPlane(toAnchor, _anchorNormal);
-
-        if (alongSurface.sqrMagnitude < 0.0001f)
-            alongSurface = Vector3.ProjectOnPlane(-_anchorNormal, Vector3.up);
-
-        if (alongSurface.sqrMagnitude < 0.0001f)
-            return GetFlatForward();
-
-        return ClampPullElevation(alongSurface.normalized);
+        // 壁・岩などの非地面アンカー：フック（アンカー）そのものへ向かって引く（仰角クランプのみ）。
+        // 旧実装は toAnchor を壁面へ射影していたため、壁に少しでも斜めに当てると射影残差（壁沿いの
+        // 横成分）が正規化されてフル強度の「真横へ滑る」引きになり、フックではなく右/左へ移動していた。
+        return ClampPullElevation(toAnchor.normalized);
     }
 
     private Vector3 ClampPullElevation(Vector3 dir)
@@ -1229,6 +1239,9 @@ public class WireRopeActionController : MonoBehaviour
         float trauma = _traumaRetrieveStart * (0.35f + stretch * 0.45f);
         if (BodyLinearVelocity.magnitude > 18f)
             AddCameraTrauma(trauma);
+
+        // 張力に同期してロープを軽く弾く（負荷で震えて見える）。
+        _renderer.AddTwang(0.04f + stretch * 0.05f);
     }
 
     private void ApplyPerpendicularDamp(Vector3 pullDir, Vector3 vel, float tensionScale)
@@ -1511,28 +1524,26 @@ public class WireRopeActionController : MonoBehaviour
 
         Vector3 vel = BodyLinearVelocity;
         Vector3 pos = _rb.position;
+        float originalY = pos.y;
 
         if (IsBodyBlocked(pos))
             ResolveEmbeddedPosition(ref pos);
-        else if (NeedsGroundLift(pos))
+        else
+            // 地表より下に潜って宙に浮いている場合も救済（TryLiftFromTerrain は地表上なら何もしない）。
             TryLiftFromTerrain(ref pos);
 
         if (Vector3.Distance(pos, _rb.position) > 0.05f)
             SnapBodyPositionOnly(pos);
+
+        // 地表下から引き上げた場合は下向き速度を消し、終了直後の自由落下（すり抜け再発）を断つ。
+        if (pos.y > originalY + 0.05f && vel.y < 0f)
+            vel.y = 0f;
 
         SetBodyLinearVelocity(vel);
         SetBodyAngularVelocity(Vector3.zero);
         Physics.SyncTransforms();
 
         CompleteRetrieve();
-    }
-
-    private bool NeedsGroundLift(Vector3 pos)
-    {
-        if (!IsGroundAnchor()) return false;
-        if (!TrySampleGroundHeight(pos, out float groundY, out _)) return false;
-        float minY = groundY + GetBodyHalfHeight() + GroundClearance;
-        return pos.y < minY - GroundPenetrationCorrectThreshold;
     }
 
     /// <summary>障害物衝突時: ロープ先端（アンカー）方向へ引き剥がして吹っ飛ばす。</summary>
@@ -1583,6 +1594,12 @@ public class WireRopeActionController : MonoBehaviour
         Physics.SyncTransforms();
         AddCameraTrauma(_traumaImpactSlingshot);
         _renderer.PulseHook(1.25f);
+        _renderer.AddTwang(0.12f);
+
+        Vector3 burstAt = collision != null && collision.contactCount > 0
+            ? collision.GetContact(0).point
+            : _rb.position;
+        _renderer.HitBurst(burstAt, 1.2f, spark: true);
     }
 
     private void ApplyImpactSlingshotSustainForce()
@@ -1894,7 +1911,12 @@ public class WireRopeActionController : MonoBehaviour
     private bool TryLiftFromTerrain(ref Vector3 bodyPos)
     {
         if (!TrySampleGroundHeight(bodyPos, out float groundY, out _))
-            return false;
+        {
+            // 足元サンプル（+_groundSnapUp 起点）が届かない＝地表より深く潜っている可能性。
+            // 高所から下キャストして体の直上にある面（地表）を探し、そこへ救済する。
+            if (!TryFindSurfaceAboveBody(bodyPos, out groundY))
+                return false; // 上にも面が無い＝空中（通常落下中）→触らない
+        }
 
         float minCenterY = groundY + GetBodyHalfHeight() + GroundClearance;
         if (bodyPos.y >= minCenterY - 0.02f)
@@ -1905,17 +1927,56 @@ public class WireRopeActionController : MonoBehaviour
     }
 
     /// <summary>
-    /// 地形への深いめり込み時だけ持ち上げる。毎フレーム vy=0 にすると重力が無効化されたように見えるため、
-    /// 浅い誤差では触らない。
+    /// 体が地表より深く潜って足元サンプルが届かないときの救済。高所から下キャストし、
+    /// 体中心より「上」にある最も低い面（＝直上の地表）の高さを返す。空中なら false。
+    /// 構造物の屋根などに吸着しないよう、体より上で最も近い面のみ採用する。
+    /// </summary>
+    private bool TryFindSurfaceAboveBody(Vector3 bodyPos, out float surfaceY)
+    {
+        surfaceY = bodyPos.y;
+        Vector3 origin = new Vector3(bodyPos.x, bodyPos.y + DeepRecoverySampleUp, bodyPos.z);
+        int count = Physics.RaycastNonAlloc(origin, Vector3.down, _rayHits,
+            DeepRecoverySampleUp + 8f, _collisionMask, QueryTriggerInteraction.Ignore);
+
+        float lowestAbove = float.MaxValue;
+        bool found = false;
+        for (int i = 0; i < count; i++)
+        {
+            var h = _rayHits[i];
+            if (h.collider == null || h.collider.transform.IsChildOf(transform)) continue;
+            if (h.point.y <= bodyPos.y + 0.05f) continue; // 体より上の面だけ採用
+            if (h.point.y < lowestAbove)
+            {
+                lowestAbove = h.point.y;
+                found = true;
+            }
+        }
+
+        if (found) surfaceY = lowestAbove;
+        return found;
+    }
+
+    /// <summary>
+    /// 地形へのめり込みを補正する。浅い誤差では速度を弱く押し上げるだけ（重力感を残す）が、
+    /// 深いめり込み（または足元サンプルが届かない＝地表下へ潜行）は速度に関係なく即スナップし、
+    /// 地面すり抜け→奈落落下を防ぐ。地面アンカーに限らず全モードで毎物理ステップ実行する
+    /// （壁・坂フックで地面へ押し込まれるケースも救済するため）。
     /// </summary>
     private void CorrectGroundPenetrationOnly()
     {
-        if (!IsGroundAnchor())
+        if (!CanDriveRigidbody)
             return;
 
         Vector3 pos = _rb.position;
-        if (!TrySampleGroundHeight(pos, out float groundY, out _))
-            return;
+        bool nearFound = TrySampleGroundHeight(pos, out float groundY, out _);
+        bool deepBelow = false;
+        if (!nearFound)
+        {
+            // 足元（+_groundSnapUp）で見つからない＝地表より深く潜っている可能性。直上の面を探す。
+            deepBelow = TryFindSurfaceAboveBody(pos, out groundY);
+            if (!deepBelow)
+                return; // 上にも下にも面が無い＝空中（通常落下）→触らない
+        }
 
         float minCenterY = groundY + GetBodyHalfHeight() + GroundClearance;
         float penetration = minCenterY - pos.y;
@@ -1932,10 +1993,21 @@ public class WireRopeActionController : MonoBehaviour
             SetBodyLinearVelocity(new Vector3(vel.x, vy, vel.z));
         }
 
-        if (penetration > _softGroundPenetrationDepth && planarSpeed < 3f)
+        // 深い潜行／地表下は速度に関係なく即スナップ（沈下を毎ステップ打ち切り、復帰不能深度に達するのを防ぐ）。
+        // 浅い潜りは低速時のみスナップ（高速スライドのスムーズさを保つ）。
+        bool snap = deepBelow
+                    || penetration > HardSnapPenetrationDepth
+                    || (penetration > _softGroundPenetrationDepth && planarSpeed < 3f);
+        if (snap)
         {
             pos.y = minCenterY;
             SnapBodyPositionOnly(pos);
+            Vector3 v = BodyLinearVelocity;
+            if (v.y < 0f)
+            {
+                v.y = 0f;
+                SetBodyLinearVelocity(v);
+            }
         }
     }
 
@@ -2090,6 +2162,7 @@ public class WireRopeActionController : MonoBehaviour
         _visualSagBlend = 0f;
         _tensionSoundTimer = 0f;
         SetRetrieveSlideFriction(false);
+        GameServices.Audio?.StopLoop(SoundId.WinchLoop);
 
         RestoreTargetBodyState();
         RestoreSuppressedTargetController();

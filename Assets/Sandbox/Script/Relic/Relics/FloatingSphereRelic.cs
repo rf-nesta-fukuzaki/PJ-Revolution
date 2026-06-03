@@ -37,13 +37,18 @@ public class FloatingSphereRelic : RelicBase
     private Vector3 _currentDriftDir;
     private float   _driftTimer;
     private bool    _isFloating;   // 空中に浮いているか（地面より _floatHeight 以上上空＝「逃げ中」）
-    private Vector3 _leashAnchor;  // 復帰の基準点（スポーン地点 → 接地するたびに更新）
+    private Vector3 _leashAnchor;  // 復帰の基準点（接地設置位置 → 下方の地表へは追従するが上方=登坂はしない）
+    private float   _homeY;        // 配置高度。浮遊の絶対上限 Y の基準（斜面を漂流で登って凍結帯へ侵入するのを防ぐ）
 
     /// <summary>
     /// 球体が地面から離れて自由浮遊している（＝プレイヤーが追いかける必要がある）状態か。
     /// HUD やチーム通知、感情表現システムが購読できるように公開する。
     /// </summary>
     public bool IsFloating => _isFloating;
+
+    // 浮遊が本質の遺物。設置後も物理を有効に保つ（kinematic 静止にすると地面に張り付いて浮かない）。
+    // 壊れにくい（mult 0.8 / threshold 2）うえリーシュで回収可能なため、静止凍結による保護は不要。
+    protected override bool RestsKinematicUntilHandled => false;
 
     protected override void Awake()
     {
@@ -59,7 +64,18 @@ public class FloatingSphereRelic : RelicBase
         _rb.useGravity = false;  // 重力無効
 
         _leashAnchor = transform.position;
+        _homeY       = transform.position.y; // 設置前の暫定値。OnSettled で正規配置高度へ更新
         ChangeDriftDirection();
+    }
+
+    /// <summary>
+    /// 接地設置の瞬間に配置高度を基準として捕捉する。これ以降、浮遊は「配置高度 + _maxFloatAboveGround」を
+    /// 絶対上限とし、斜面を漂流で「登って」高所の凍結帯へ侵入し凍傷で破損する不具合を防ぐ（下方へは追従可）。
+    /// </summary>
+    protected override void OnSettled()
+    {
+        _homeY       = transform.position.y;
+        _leashAnchor = transform.position;
     }
 
     private void FixedUpdate()
@@ -80,12 +96,20 @@ public class FloatingSphereRelic : RelicBase
                                           _floatHeight + 1f, GroundMask, QueryTriggerInteraction.Ignore);
         float groundDist = nearGround ? hit.distance : float.MaxValue;
 
-        // 接地点を基準点として更新（ここを起点にリーシュで引き戻す）
+        // 接地点を基準点として更新するが、配置高度(_homeY)より上には基準を上げない（非対称クランプ）。
+        // これで下り斜面へは追従しつつ、上り斜面を伝って凍結帯へ登っていくのを防ぐ。
         if (nearGround)
+        {
             _leashAnchor = hit.point;
+            if (_leashAnchor.y > _homeY) _leashAnchor.y = _homeY;
+        }
 
-        // 浮遊力：地面より _floatHeight 上を維持
-        if (groundDist < _floatHeight)
+        // 配置高度を基準にした絶対上限。これを超えている間は上昇を止め、下方へ引き戻す。
+        bool aboveAltitudeCap = transform.position.y > _homeY + _maxFloatAboveGround;
+
+        // 浮遊力：地面より _floatHeight 上を維持。ただし上限を超えている間は上昇させない
+        // （斜面で地表が迫り上がっても、配置高度の上限より上へは浮かせない＝凍結帯侵入防止）。
+        if (groundDist < _floatHeight && !aboveAltitudeCap)
         {
             float forceMag = (_floatHeight - groundDist) * _floatForce;
             _rb.AddForce(Vector3.up * forceMag, ForceMode.Acceleration);
@@ -94,12 +118,12 @@ public class FloatingSphereRelic : RelicBase
         // 漂流
         _rb.AddForce(_currentDriftDir * _windDriftSpeed, ForceMode.Acceleration);
 
-        // リーシュ：基準点から離れすぎ／上空へ逃げた場合は引き戻し、永久喪失（回収不能）を防ぐ。
-        // useGravity=false ＋ 上昇バイアスのある漂流で際限なく上空へ流れる挙動への対策。
+        // リーシュ：基準点から水平に離れすぎたら引き戻し、永久喪失（回収不能）を防ぐ。
         Vector3 toAnchor = _leashAnchor - transform.position;
         if (toAnchor.magnitude > _maxLeashDistance)
             _rb.AddForce(toAnchor.normalized * _floatForce, ForceMode.Acceleration);
-        if (transform.position.y - _leashAnchor.y > _maxFloatAboveGround)
+        // 配置高度の上限を超えたら下方へ引き戻す（登坂・上空逃げ・凍結帯侵入の防止）。
+        if (aboveAltitudeCap)
             _rb.AddForce(Vector3.down * _floatForce, ForceMode.Acceleration);
 
         // 一定間隔で漂流方向を変える

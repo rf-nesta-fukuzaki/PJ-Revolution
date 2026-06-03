@@ -183,7 +183,7 @@ public class ExpeditionManager : MonoBehaviour, IExpeditionService
     // ── 死亡リスポーン ────────────────────────────────────────
     public void OnPlayerDied(PlayerHealthSystem player)
     {
-        GameServices.Score?.RecordFall(player.GetInstanceID());
+        GameServices.Score?.RecordFall(PlayerScoreId.FromMember(player));
 
         var ghost = player.GetComponent<GhostSystem>();
         if (ghost == null)

@@ -33,6 +33,14 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
     [SerializeField] private ParticleSystem _rainParticles;
     [SerializeField] private ParticleSystem _snowParticles;
 
+    [Header("高度連動の天候悪化 (コアループ: 中腹で悪化・高地でクライマックス)")]
+    [Tooltip("ON で、プレイヤーの高度が上がるほど悪天候(雨/吹雪)へ寄せる。OFF で従来の固定ランダム。")]
+    [SerializeField] private bool _altitudeDrivenWeather = true;
+    [Tooltip("この割合(0=基地,1=山頂)以上では吹雪を強制し、高地のクライマックスを演出する。")]
+    [SerializeField, Range(0.5f, 1f)] private float _climaxFraction = 0.85f;
+    [Tooltip("クライマックス帯に入ってから吹雪へ強制遷移するまでの猶予秒数（晴天滞在の防止）。")]
+    [SerializeField] private float _climaxEnforceDelay = 5f;
+
     // ── 状態 ────────────────────────────────────────────────
     private WeatherType  _currentWeather;
     private float        _weatherTimer;
@@ -84,6 +92,9 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
         if (_weatherTimer <= 0f)
             ChangeWeather(PickNextWeather());
 
+        // 高地クライマックスの担保（晴天のまま山頂に居続けるのを防ぐ）
+        EnforceClimaxWeather();
+
         // 風の更新
         UpdateWind();
 
@@ -100,7 +111,11 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
     private void ChangeWeather(WeatherType next)
     {
         _currentWeather = next;
-        _weatherTimer   = Random.Range(_minWeatherDuration, _maxWeatherDuration);
+        // 高所ほど天候が目まぐるしく荒れる（継続時間を最大半分まで短縮）。
+        float volatility = (_altitudeDrivenWeather && MountainProfile.IsReady)
+            ? Mathf.Lerp(1f, 0.5f, CurrentAltitudeFraction())
+            : 1f;
+        _weatherTimer   = Random.Range(_minWeatherDuration, _maxWeatherDuration) * volatility;
 
         _targetWindSpeed = next switch
         {
@@ -135,16 +150,70 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
 
     private WeatherType PickNextWeather()
     {
-        // 重み付き抽選
-        float r = Random.value;
-        return r switch
+        // 高度非連動 or プロファイル未準備時は従来の固定重み付き抽選。
+        if (!_altitudeDrivenWeather || !MountainProfile.IsReady)
         {
-            < 0.3f => WeatherType.Sunny,
-            < 0.5f => WeatherType.Cloudy,
-            < 0.65f => WeatherType.Fog,
-            < 0.80f => WeatherType.Rain,
-            _       => WeatherType.Blizzard
-        };
+            float rr = Random.value;
+            return rr < 0.30f ? WeatherType.Sunny
+                 : rr < 0.50f ? WeatherType.Cloudy
+                 : rr < 0.65f ? WeatherType.Fog
+                 : rr < 0.80f ? WeatherType.Rain
+                 :              WeatherType.Blizzard;
+        }
+
+        float f = CurrentAltitudeFraction(); // 0=基地, 1=山頂
+
+        // 山頂直下（_climaxFraction 以上）では吹雪を強制し、高地のクライマックスを演出する。
+        if (f >= _climaxFraction) return WeatherType.Blizzard;
+
+        // 各天候の重み（f で悪天へシフト）。低地=晴れ主体 → 中腹=曇/霧/雨 → 高地=雨/吹雪。
+        float sunny    = Mathf.Lerp(0.55f, 0.0f,  Mathf.InverseLerp(0.0f,  0.55f, f)); // 中腹で晴れが消える
+        float cloudy   = Mathf.Lerp(0.30f, 0.15f, f);
+        float fog      = Mathf.Lerp(0.12f, 0.22f, f);
+        float rain     = Mathf.Lerp(0.05f, 0.30f, f);
+        float blizzard = Mathf.Lerp(0.0f,  0.55f, Mathf.InverseLerp(0.35f, 1f, f));    // 中腹(0.35)から立ち上がる
+
+        float total = sunny + cloudy + fog + rain + blizzard;
+        float r = Random.value * total;
+        if ((r -= sunny)  < 0f) return WeatherType.Sunny;
+        if ((r -= cloudy) < 0f) return WeatherType.Cloudy;
+        if ((r -= fog)    < 0f) return WeatherType.Fog;
+        if ((r -= rain)   < 0f) return WeatherType.Rain;
+        return WeatherType.Blizzard;
+    }
+
+    // ── 高度連動（コアループの天候悪化）─────────────────────────
+    private Transform _playerTf;
+    private float     _climaxEnforceTimer;
+
+    /// <summary>
+    /// プレイヤーがクライマックス帯(_climaxFraction 以上)に居るのに晴天が続く状況を防ぐ。
+    /// 一定秒数で吹雪へ強制遷移し、高地帯のクライマックスを確実に成立させる。
+    /// </summary>
+    private void EnforceClimaxWeather()
+    {
+        if (!_altitudeDrivenWeather || !MountainProfile.IsReady) return;
+        if (_currentWeather == WeatherType.Blizzard) { _climaxEnforceTimer = 0f; return; }
+        if (CurrentAltitudeFraction() < _climaxFraction) { _climaxEnforceTimer = 0f; return; }
+
+        _climaxEnforceTimer += Time.deltaTime;
+        if (_climaxEnforceTimer >= _climaxEnforceDelay)
+        {
+            _climaxEnforceTimer = 0f;
+            ChangeWeather(WeatherType.Blizzard);
+        }
+    }
+
+    /// <summary>プレイヤーの「山に対する割合(0=基地,1=山頂)」。未準備/未出現時は 0（＝低地扱い）。</summary>
+    public float CurrentAltitudeFraction()
+    {
+        if (!_altitudeDrivenWeather || !MountainProfile.IsReady) return 0f;
+        if (_playerTf == null)
+        {
+            var go = GameObject.FindGameObjectWithTag("Player");
+            if (go != null) _playerTf = go.transform;
+        }
+        return _playerTf != null ? MountainProfile.Fraction(_playerTf.position.y) : 0f;
     }
 
     // ── 風の更新 ─────────────────────────────────────────────
@@ -288,6 +357,12 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
         };
         ChangeWeather(next);
     }
+
+    /// <summary>
+    /// 高度連動の抽選で天候を即時に引き直す（デバッグ/検証用）。プレイヤーが高所にいれば
+    /// 悪天候へ、山頂直下なら吹雪へ寄る。F キー等のデバッグや動作確認から呼ぶ。
+    /// </summary>
+    public void DebugForcePickWeather() => ChangeWeather(PickNextWeather());
 }
 
 public enum WeatherType { Sunny, Cloudy, Fog, Rain, Blizzard }

@@ -111,4 +111,37 @@ public static class OfflineDebugCommands
         stamina.ConsumeAll();
         return "F9: スタミナゼロ";
     }
+
+    // ── ジップライン（拠点⇄チェックポイント） ─────────────────
+    /// <summary>指定番号(0始まり)のチェックポイントを強制解放し、拠点へのジップラインを開通させる。</summary>
+    public static string OpenZipline(int index)
+    {
+        var cps = Object.FindObjectsByType<Sandbox.World.Zipline.ZiplineCheckpoint>(FindObjectsSortMode.None);
+        if (cps.Length == 0) return "ジップラインCP未配置（地形生成待ち？）";
+
+        foreach (var cp in cps)
+        {
+            if (cp == null || cp.Index != index) continue;
+            if (cp.IsReached) return $"CP{index + 1}: 既に開通済み";
+            cp.ForceReach();
+            return $"CP{index + 1} 解放 → 拠点ジップライン開通";
+        }
+        return $"CP{index + 1} が見つかりません（配置数 {cps.Length}）";
+    }
+
+    /// <summary>全チェックポイントを強制解放し、全ジップラインを開通させる。</summary>
+    public static string OpenAllZiplines()
+    {
+        var cps = Object.FindObjectsByType<Sandbox.World.Zipline.ZiplineCheckpoint>(FindObjectsSortMode.None);
+        if (cps.Length == 0) return "ジップラインCP未配置（地形生成待ち？）";
+
+        int opened = 0;
+        foreach (var cp in cps)
+        {
+            if (cp == null || cp.IsReached) continue;
+            cp.ForceReach();
+            opened++;
+        }
+        return opened > 0 ? $"ジップライン {opened} 本 開通" : "全ジップライン開通済み";
+    }
 }

@@ -98,6 +98,15 @@ namespace Sandbox.World.Integration
         //    （conformer は exec order -20 で後から動くので崩落/落下判定が壊れる）。本フラグの対象外。
         [Tooltip("ON で 遺物(Relics) も登攀ルート沿いへゾーン順に再配置する。Hazards は位置キャッシュのため対象外。")]
         [SerializeField] private bool distributeRelics = true;
+        // 遺物の供給を一系統（authored の手作り Relics コンテナ＝conformer がルート沿いへ接地配置する正規収集物）に
+        // 統一する。SandboxOfflineCombined は OfflineTest 由来の SpawnManager L3 が SpawnPoint(Relic) からも
+        // 3〜5個の遺物クローンを基地/原点付近に生成しており（遺物供給二系統）、それらは適切に接地されず
+        // NPC に拾われて拠点構造物で破壊される・あるいは ReturnZone 内に湧いて「無料ノルマ」になる等の不具合源。
+        // ON で SpawnManager.Start（=L3 生成）より前（Awake）に SpawnPoint(Relic) を無効化し、クローン供給を断つ。
+        // 抽出ノルマは価値ベース（ReturnZone 内遺物価値の合計, レベル1=120pt）で、authored 8種(各~100-130pt,計~880pt)
+        // のみで十分達成可能なため安全。Hazard/Item/Route 層の SpawnPoint には触れない。
+        [Tooltip("ON で SpawnPoint(Relic) を無効化し、遺物供給を authored の Relics コンテナ一系統に統一する（基地に湧く重複クローンを断つ）。")]
+        [SerializeField] private bool disableSpawnPointRelicSupply = true;
         // 復活の祠(ReviveShrines)もルート沿いへ再配置する。安全性は調査済（2026-06-01）:
         //  - ReviveShrine は static s_registeredShrines に OnEnable で登録し、検出は GhostSystem が
         //    shrine.transform.position を実距離で参照する（位置キャッシュ無し）＝ runtime 再配置に追従する。
@@ -122,6 +131,20 @@ namespace Sandbox.World.Integration
         [Tooltip("接地面からの持ち上げ[m]（岩棚が地表に乗る）。")]
         [SerializeField] private float climbLift = 0.5f;
 
+        [Header("Zipline Checkpoints（拠点⇄チェックポイントのジップライン）")]
+        [Tooltip("ON で 基地→山頂ルート沿いにジップライン用チェックポイントを配置し、到達で拠点へのジップラインを開通させる。")]
+        [SerializeField] private bool placeZiplineCheckpoints = true;
+        [Tooltip("チェックポイントを置く『ステージ(ゾーン)』番号。各ゾーンの始まり（最下端）に 1 本ずつジップラインを開通させる。1=基地隣接, 6=山頂。既定は中間ステージ Zone2〜5。")]
+        [SerializeField] private int[] ziplineCheckpointZones = { 2, 3, 4, 5 };
+        [Tooltip("（任意）ゾーン指定の代わりに使うルート割合（0=基地, 1=山頂）。ziplineCheckpointZones が空のときのみ使用。")]
+        [SerializeField] private float[] ziplineCheckpointFractions = { 0.34f, 0.58f, 0.82f };
+        [Tooltip("チェックポイント到達トリガーの半径[m]。")]
+        [SerializeField] private float ziplineCheckpointRadius = 5f;
+        [Tooltip("登攀コースの岩/足場をチェックポイント中心からこの半径[m]内に置かない（ジップラインのステーションと被らないよう確保）。")]
+        [SerializeField] private float checkpointClearRadius = 7f;
+        [Tooltip("チェックポイントをルート中心線から左右へ振る量[m]。直線上に密集して見えるのを避け、各ステージで散らす。")]
+        [SerializeField] private float ziplineCheckpointLateralSpread = 26f;
+
         // ※ "Basecamp" は含めない：BasecampBuilder が pad 天面へ精密に配置するため、ここで再スナップしない。
         [SerializeField] private string[] containerNames =
             { "Mountain", "Relics", "ReviveShrines", "Hazards", "ClimbingPoints", "NetworkPlayerSpawner" };
@@ -136,6 +159,11 @@ namespace Sandbox.World.Integration
         private readonly List<Transform> _pending = new List<Transform>();
         private readonly List<Transform> _climbObjects = new List<Transform>();
         private bool _climbDistributed;
+        private bool _ziplineCheckpointsPlaced;
+        // ジップライン用チェックポイントの確定 XZ と、全ライン共通の持ち上げ量[m]（探索で算出して一度だけ確定）。
+        private bool _ziplineChosen;
+        private readonly List<Vector2> _ziplineXZ = new List<Vector2>();
+        private float _ziplineUniformRaise;
         private float _climbMaxY = -1f;
         private float _climbStableTime;
         private readonly HashSet<int> _anchored = new HashSet<int>();
@@ -183,6 +211,30 @@ namespace Sandbox.World.Integration
             CreateSafetyFloor();
             EnsureWireRopeHud();
             EnsureUiFontUnified();
+            DisableSpawnPointRelicSupply();
+        }
+
+        /// <summary>
+        /// 遺物供給を authored の Relics コンテナ一系統に統一するため、SpawnPoint(Relic) を Awake で無効化する。
+        /// SpawnManager.Start（L3 遺物生成）は全 Awake の後に走り、かつ FindObjectsByType は既定で inactive を
+        /// 除外するため、ここで SetActive(false) にした Relic 用 SpawnPoint からはクローンが生成されない。
+        /// 万一 既に生成済みなら Deactivate() で取り除く（防御的）。Hazard/Item/Route 層には触れない。
+        /// </summary>
+        private void DisableSpawnPointRelicSupply()
+        {
+            if (!disableSpawnPointRelicSupply) return;
+
+            var points = FindObjectsByType<SpawnPoint>(FindObjectsSortMode.None);
+            int disabled = 0;
+            foreach (var sp in points)
+            {
+                if (sp == null || sp.Layer != SpawnLayer.Relic) continue;
+                sp.Deactivate();                 // 既に湧いていれば除去（通常は未生成で no-op）
+                sp.gameObject.SetActive(false);  // SpawnManager.Start の走査対象から外す
+                disabled++;
+            }
+            if (disabled > 0)
+                Debug.Log($"[CombinedTerrainConformer] 遺物供給を一系統化: SpawnPoint(Relic) を {disabled} 個無効化（authored Relics のみ使用）。");
         }
 
         /// <summary>
@@ -237,6 +289,8 @@ namespace Sandbox.World.Integration
             LinkFogCamera();          // プレイヤー出現後、高度連動フォグの参照を追従カメラへ（一度成功で固定）
             ResolveDuplicateCameras(); // 残置 MainCamera を無効化し追従カメラを唯一の MainCamera に（同上）
             DistributeClimbCourse();   // 山頂ベイク確定後、登攀コースを手続き山へ標高順に再配置（一度成功で固定）
+            PlaceZiplineCheckpoints(); // 登攀コース確定後、ルート沿いにジップライン用チェックポイントを設置（一度成功で固定）
+            PublishAltitudeProfile();  // 実山高(基地→山頂)を MountainProfile へ公開（天候/凍傷/高山病/高度計が連動）
 
             if (!_initialDone)
             {
@@ -405,6 +459,64 @@ namespace Sandbox.World.Integration
         /// 写像し、各オブジェクトを地表に接地させる。山頂チャンクが焼けて GlobalMaxPos が確定するまで待つ。
         /// 一度成功したら固定（その後プレイヤーが登っても再配置しない）。
         /// </summary>
+        /// <summary>
+        /// 実山高（基地 pad 天面 → 観測山頂）を MountainProfile へ公開する。GlobalMaxY は地形ベイク
+        /// 進行に伴い単調増加で真の山頂へ収束するため、毎フレーム最新値を渡して追従させる。
+        /// これにより 天候悪化・凍傷・高山病・高度計 が実山高(~50→460m)に連動する
+        /// （絶対メートル固定 1600m/2000m が実山高に永遠に届かず死蔵していた問題を解消）。
+        /// </summary>
+        private void PublishAltitudeProfile()
+        {
+            float summitY = _bootstrap.ColliderBaker.GlobalMaxY;
+            if (summitY < _padTopY + 1f) return; // まだ基地より高い山頂を観測できていない
+            MountainProfile.Publish(_padTopY, summitY);
+        }
+
+        /// <summary>
+        /// 双子像（TwinStatueRelic）のペアを、鎖が張らない近距離へ寄せて co-location する。
+        /// DistributeClimbCourse でゾーン別に独立配置されると authored 像と runtime クローンが
+        /// 鎖長を遥かに超えて離れ、開幕の張力ダメージで両者が自壊するため、配置確定直後に補正する。
+        /// authored 側（"(Clone)" を含まない）をアンカーにし、もう片方を隣へ接地させる。
+        /// </summary>
+        private void CoLocateTwinStatues()
+        {
+            var twins = FindObjectsByType<TwinStatueRelic>(FindObjectsSortMode.None);
+            if (twins.Length < 2) return;
+
+            var handled = new HashSet<TwinStatueRelic>();
+            foreach (var a in twins)
+            {
+                if (a == null || handled.Contains(a)) continue;
+                var b = a.Partner;
+                if (b == null || handled.Contains(b)) continue;
+                handled.Add(a);
+                handled.Add(b);
+
+                // authored(Zone付き=ルートの正規位置に置かれた側)をアンカーにする。
+                bool aIsClone = a.name.Contains("(Clone)");
+                bool bIsClone = b.name.Contains("(Clone)");
+                TwinStatueRelic anchor   = (aIsClone && !bIsClone) ? b : a;
+                TwinStatueRelic follower = anchor == a ? b : a;
+
+                // 鎖が張らない距離（自然長の 1/3 程度）でアンカー横へ。地表へ接地・静止させる。
+                float offset = Mathf.Max(0.8f, anchor.ChainLength * 0.33f);
+                Vector3 p = anchor.transform.position + new Vector3(offset, 0f, 0f);
+                if (TrySampleGround(p.x, p.z, out float gy))
+                {
+                    follower.transform.position = new Vector3(p.x, gy + climbLift, p.z);
+                    follower.SettleOntoGround(gy); // 接地＋静止（双子像は RestsKinematic=true）で速度0化も行う
+                }
+                else
+                {
+                    follower.transform.position = p;
+                    var rb = follower.GetComponent<Rigidbody>();
+                    if (rb != null && !rb.isKinematic) { rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
+                }
+
+                Debug.Log($"[CombinedTerrainConformer] 双子像 co-location: {follower.name} → {anchor.name} の隣 (offset={offset:F1}m)");
+            }
+        }
+
         private void DistributeClimbCourse()
         {
             // distributeClimbCourse / distributeRelics / distributeShrines のいずれかが ON なら走る（_climbObjects に集めた対象を配る）。
@@ -432,6 +544,12 @@ namespace Sandbox.World.Integration
             Vector2 perp = new Vector2(-dir.y, dir.x);
             int moved = 0, movedShrines = 0;
 
+            // ジップラインのステーションが立つチェックポイント位置（左右スキャッタ込み）。岩/足場がここに
+            // 被るとステーション（支柱・足場）と重なるため、後で半径内のオブジェクトを外側へ退避させる。
+            var cpPositions = (placeZiplineCheckpoints && checkpointClearRadius > 0f)
+                ? EnsureZiplineCheckpointsChosen(summitXZ)
+                : new System.Collections.Generic.List<Vector2>();
+
             foreach (var t in _climbObjects)
             {
                 if (t == null) continue;
@@ -453,15 +571,185 @@ namespace Sandbox.World.Integration
                 float along = ((((h >> 8) & 0xFF) / 255f) * 2f - 1f) * climbAlongSpread   * alongScale;
 
                 Vector2 xz = Vector2.Lerp(Vector2.zero, summitXZ, f) + perp * lat + dir * along;
+
+                // ジップラインのステーション設置点（チェックポイント位置）に被るオブジェクトは外側へ退避させる。
+                for (int ci = 0; ci < cpPositions.Count; ci++)
+                {
+                    Vector2 cpXZ = cpPositions[ci];
+                    Vector2 away = xz - cpXZ;
+                    float d = away.magnitude;
+                    if (d >= checkpointClearRadius) continue;
+                    Vector2 outDir = d > 0.01f ? away / d : perp; // 位置と一致する縮退時は横へ逃がす
+                    xz = cpXZ + outDir * (checkpointClearRadius + 1.5f);
+                }
+
                 if (!TrySampleGround(xz.x, xz.y, out float gy))
                     gy = Mathf.Lerp(summit.y * 0.12f, summit.y, f); // 念のためのルート標高補間
                 t.position = new Vector3(xz.x, gy + climbLift, xz.y);
+                // 遺物はコライダー底面を地表へ正確に接地し、kinematic で静止させる（落下/タンブリングによる
+                // 回収前破壊を防ぐ）。岩棚/足場（非 RelicBase）は従来どおり climbLift 持ち上げで配置。
+                if (t.TryGetComponent<RelicBase>(out var relic)) relic.SettleOntoGround(gy);
                 moved++;
                 if (isShrine) movedShrines++;
             }
 
+            // 双子像ペアの co-location。ゾーン別配置だと authored(Zone付) と runtime(Clone) が
+            // 別ゾーンへ撒かれて鎖長(3m)を遥かに超えて離れ、開幕の張力で自壊する。配置確定後に
+            // 相方を鎖が張らない距離まで寄せて、双子ギミックが正しく成立するようにする。
+            CoLocateTwinStatues();
+
             _climbDistributed = true;
             Debug.Log($"[CombinedTerrainConformer] 登攀コースを手続き山へ再配置: {moved} 個（うち祠 {movedShrines}）(summit={summit}, dist={summitXZ.magnitude:F0}m, baked={baker.BakedCount})");
+        }
+
+        /// <summary>
+        /// 基地→山頂ルート沿いに <see cref="Sandbox.World.Zipline.ZiplineCheckpoint"/> を配置する。各点に到達すると
+        /// 拠点⇄当該地点のジップラインが開通し、以後は拠点から登りをショートカットできる。登攀コースの再配置が
+        /// 確定（＝山頂が安定）してから一度だけ実行する。<see cref="Sandbox.World.Zipline.ZiplineNetwork"/> も
+        /// 拠点中心(pad 天面)で初期化する。
+        /// </summary>
+        private void PlaceZiplineCheckpoints()
+        {
+            if (_ziplineCheckpointsPlaced || !placeZiplineCheckpoints) return;
+            // 登攀コース確定（山頂安定）を待つ。山頂が原点近傍の低ピークの間は置かない。
+            if (!_climbDistributed) return;
+            if (_bootstrap == null || _bootstrap.ColliderBaker == null) return;
+
+            Vector3 summit = _bootstrap.ColliderBaker.GlobalMaxPos;
+            Vector2 summitXZ = new Vector2(summit.x, summit.z);
+            if (summitXZ.magnitude < 50f) return;
+
+            // 拠点アンカー（pad 天面中心）でネットワークを初期化。
+            var net = Sandbox.World.Zipline.ZiplineNetwork.Ensure(
+                new Vector3(probeXZ.x, _padTopY, probeXZ.y), _padTopY);
+
+            // チェックポイント位置（地形を貫通しない探索済み）＋全ライン共通レイズを確定（SetLaneCount/SetSummitDirection/
+            // SetUniformRaise は EnsureZiplineCheckpointsChosen 内で実施済み）。
+            var positions = EnsureZiplineCheckpointsChosen(summitXZ);
+            float[] fractions = ResolveZiplineFractions();
+            int total = fractions.Length;
+            int placed = 0;
+
+            for (int i = 0; i < total; i++)
+            {
+                Vector2 xz = positions[i];
+                float f = Mathf.Clamp01(fractions[i]);
+                // 接地が取れない遠方チャンクは、ルート標高補間で代替して必ず配置する（登攀コース再配置と同方針）。
+                if (!TrySampleGround(xz.x, xz.y, out float gy))
+                    gy = Mathf.Lerp(summit.y * 0.12f, summit.y, f);
+
+                var go = new GameObject($"ZiplineCheckpoint_{i + 1}");
+                go.transform.position = new Vector3(xz.x, gy, xz.y);
+                var cp = go.AddComponent<Sandbox.World.Zipline.ZiplineCheckpoint>();
+                cp.Configure(i, total, Sandbox.World.Zipline.ZiplineNetwork.ColorFor(i), ziplineCheckpointRadius);
+                placed++;
+            }
+
+            _ziplineCheckpointsPlaced = true;
+            Debug.Log($"[CombinedTerrainConformer] ジップライン用チェックポイントを配置: {placed}/{total} 個（各ステージ始端＋左右スキャッタ, base={net.name}）");
+        }
+
+        /// <summary>
+        /// ジップライン用チェックポイントの最終 XZ 位置を「探索」で確定する（一度だけ）。各ステージ(ゾーン)で
+        /// 左右スキャッタ＋前後オフセットの候補を走査し、<see cref="Sandbox.World.Zipline.ZiplineNetwork.EstimateRaiseFor"/>
+        /// で『拠点⇄その地点のケーブルが地形を貫通しないために必要な持ち上げ量』が最小になる位置を選ぶ。
+        /// さらに全ステージの必要レイズの最大値を共通レイズとしてネットワークに設定する。これにより
+        ///   ・全ラインの延長ポール長が同一（共通レイズ）になる
+        ///   ・どのラインも地形を貫通しない（共通レイズ ≧ 各ラインの必要量）
+        ///   ・各ステージ 1 本（ゾーン毎に 1 点）
+        /// を同時に満たす。<see cref="PlaceZiplineCheckpoints"/> と <see cref="DistributeClimbCourse"/> の双方で同結果を使う。
+        /// </summary>
+        private System.Collections.Generic.List<Vector2> EnsureZiplineCheckpointsChosen(Vector2 summitXZ)
+        {
+            if (_ziplineChosen) return _ziplineXZ;
+            if (!placeZiplineCheckpoints) { _ziplineChosen = true; return _ziplineXZ; }
+
+            var net = Sandbox.World.Zipline.ZiplineNetwork.Ensure(
+                new Vector3(probeXZ.x, _padTopY, probeXZ.y), _padTopY);
+
+            float[] fr = ResolveZiplineFractions();
+            int total = fr.Length;
+            net.SetLaneCount(total);
+            // 4隅割り当て順を確定させるため、探索より前に山頂方向を設定する（EstimateRaiseFor が同じコーナーを使う）。
+            net.SetSummitDirection(summitXZ - probeXZ);
+
+            Vector2 baseXZ = probeXZ;
+            Vector2 d = summitXZ - baseXZ;
+            Vector2 dir = d.sqrMagnitude > 0.0001f ? d.normalized : Vector2.up;
+            Vector2 perp = new Vector2(-dir.y, dir.x);
+
+            // 散らし候補：左右オフセット倍率（直線密集を避けつつ、山を回避できる位置を探す）。
+            float[] lateralMul = { 1f, -1f, 0.6f, -0.6f, 1.4f, -1.4f, 0.25f, -0.25f, 0f };
+            // ステージ帯内の前後オフセット（ルート割合）。
+            float[] alongOff = { 0f, 0.05f, -0.04f, 0.09f, -0.07f, 0.13f };
+
+            _ziplineXZ.Clear();
+            float maxRaise = 0f;
+
+            for (int i = 0; i < total; i++)
+            {
+                // 既定（散らしパターン）を初期候補に。探索で貫通しない位置が見つかればそれを優先。
+                float[] pattern = { 1f, -0.7f, 0.65f, -1f, 0.85f, -0.55f };
+                Vector2 bestXZ = Vector2.Lerp(baseXZ, summitXZ, Mathf.Clamp01(fr[i]))
+                                 + perp * (ziplineCheckpointLateralSpread * pattern[i % pattern.Length]);
+                float bestRaise = float.MaxValue;
+
+                for (int li = 0; li < lateralMul.Length && bestRaise > 0.05f; li++)
+                {
+                    for (int ai = 0; ai < alongOff.Length && bestRaise > 0.05f; ai++)
+                    {
+                        float f = Mathf.Clamp01(fr[i] + alongOff[ai]);
+                        float lat = ziplineCheckpointLateralSpread * lateralMul[li];
+                        Vector2 xz = Vector2.Lerp(baseXZ, summitXZ, f) + perp * lat;
+
+                        // 接地が取れない候補はクリアランス判定不能なので採らない。
+                        if (!TrySampleGround(xz.x, xz.y, out float gy)) continue;
+
+                        float raise = net.EstimateRaiseFor(i, new Vector3(xz.x, gy, xz.y));
+                        if (raise < bestRaise)
+                        {
+                            bestRaise = raise;
+                            bestXZ = xz;
+                        }
+                    }
+                }
+
+                if (bestRaise == float.MaxValue) bestRaise = 0f; // 全候補で接地不能 → 後段の標高補間配置に委ねる
+                _ziplineXZ.Add(bestXZ);
+                maxRaise = Mathf.Max(maxRaise, bestRaise);
+            }
+
+            _ziplineUniformRaise = maxRaise;
+            net.SetUniformRaise(maxRaise); // 全ライン共通の持ち上げ量（＝延長ポール長を統一）。
+            _ziplineChosen = true;
+            Debug.Log($"[CombinedTerrainConformer] ジップラインCP選定: {_ziplineXZ.Count} 点 / 共通レイズ {maxRaise:F1}m（全ライン延長ポール統一）");
+            return _ziplineXZ;
+        }
+
+        /// <summary>ゾーン番号(1..6)を、登攀コースと同じ写像でルート上の『始端』割合(0=基地..1=山頂)へ変換する。</summary>
+        private float ZoneStartFraction(int zone)
+        {
+            if (zone >= 6) return 1f;                // Zone6_Summit は山頂
+            if (zone <= 1) return climbStartFraction; // Zone1 は最下段（基地隣接）
+            return Mathf.Lerp(climbStartFraction, climbTopFraction, (zone - 1) / 5f);
+        }
+
+        /// <summary>
+        /// ジップライン用チェックポイントのルート割合を解決する。<see cref="ziplineCheckpointZones"/> が指定されていれば
+        /// 各ゾーンの始端割合（登攀コースの配置と一致）を返し、無ければ <see cref="ziplineCheckpointFractions"/> を使う。
+        /// </summary>
+        private float[] ResolveZiplineFractions()
+        {
+            if (ziplineCheckpointZones != null && ziplineCheckpointZones.Length > 0)
+            {
+                var arr = new float[ziplineCheckpointZones.Length];
+                for (int i = 0; i < arr.Length; i++)
+                    arr[i] = Mathf.Clamp01(ZoneStartFraction(ziplineCheckpointZones[i]));
+                return arr;
+            }
+            return ziplineCheckpointFractions != null && ziplineCheckpointFractions.Length > 0
+                ? ziplineCheckpointFractions
+                : new[] { 0.34f, 0.58f, 0.82f };
         }
 
         private static int ParseZone(string objName)
@@ -656,7 +944,15 @@ namespace Sandbox.World.Integration
                             || (distributeRelics && name == "Relics")
                             || (distributeShrines && name == "ReviveShrines");
                 var dest = isClimb ? _climbObjects : _pending;
-                foreach (Transform c in container.transform) dest.Add(c);
+                foreach (Transform c in container.transform)
+                {
+                    dest.Add(c);
+                    // _climbObjects 側の遺物は DistributeClimbCourse の SettleOntoGround で接地配置するため、
+                    // 自動接地（RelicBase.AutoSettleRoutine）を抑止して二重配置・落下を防ぐ。
+                    // _pending 側（distributeRelics=false 等）は自動接地に委ねる。
+                    if (dest == _climbObjects && c.TryGetComponent<RelicBase>(out var relic))
+                        relic.ExternalManaged();
+                }
             }
         }
 

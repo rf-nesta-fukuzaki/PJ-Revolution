@@ -46,6 +46,9 @@ public class ZoneCheckpoint : MonoBehaviour
         _passed = true;
         ExpeditionManager.Instance?.OnCheckpointReached(_checkpointIndex);
 
+        // 拠点⇄当該チェックポイントのジップラインを開通させ、以後は登りをショートカットできるようにする。
+        Sandbox.World.Zipline.ZiplineNetwork.Ensure().InstallLine(_checkpointIndex, transform.position);
+
         if (_passParticles != null)
             _passParticles.Play();
 

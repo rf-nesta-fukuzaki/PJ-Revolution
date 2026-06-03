@@ -131,10 +131,11 @@ public class PlayerInteraction : MonoBehaviour
         var carrier = FindGrabbableRelic();
         if (carrier == null) return false;
 
-        carrier.PickUp(transform, GetInstanceID());
+        int scoreId = PlayerScoreId.FromMember(this);
+        carrier.PickUp(transform, scoreId);
         _carriedRelic = carrier;
         _balanceIndicator?.Show(carrier);
-        ScoreService?.RecordRelicFound(GetInstanceID());
+        ScoreService?.RecordRelicFound(scoreId);
         // チームスコア／リザルトの遺物価値集計に載せる。従来は NPC 経路でしか
         // RegisterCollectedRelic が呼ばれず、プレイヤーが拾った遺物がチームスコアへ
         // ゼロ反映だった配線漏れを解消する。
@@ -162,7 +163,7 @@ public class PlayerInteraction : MonoBehaviour
         //   - 照準/座標を必要とするアイテム（アンカー/フレア/グラップリング/テント）は空撃ち
         //   - 運搬中の遺物を対象とするアイテム（梱包キット/サーマルケース）は対象不明
         // になるため、ここで正しいパラメータを供給する。
-        int playerId = GetInstanceID();
+        int playerId = PlayerScoreId.FromMember(this);
         foreach (var item in _inventory.Items)
         {
             bool used = item switch

@@ -31,6 +31,10 @@ public class GreatStoneSlabRelic : RelicBase
         }
     }
 
+    // 斜面滑落が本質の遺物。設置後も物理を有効に保つ（kinematic 静止にすると滑落ギミックが死ぬ）。
+    // 極めて壊れにくい（mult 0.3 / threshold 5）ため、静止凍結による保護は不要。
+    protected override bool RestsKinematicUntilHandled => false;
+
     protected override void Awake()
     {
         _relicName        = "儀式用の大石板";

@@ -131,6 +131,16 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
     {
         if (_helicopterCalled.Value) return;
 
+        // 抽出ヘリは登攀フェーズでのみ呼べる。ベースキャンプ（出発前）やリザルト中にフレアを誤射しても
+        // ヘリ演出だけ走って ReturnToBase が ExpeditionManager のフェーズガードに弾かれ、
+        // 「ヘリは来たがゲームが進まない」スタック状態に陥るのを防ぐ。
+        var phase = GameServices.Expedition?.Phase;
+        if (phase.HasValue && phase.Value != ExpeditionPhase.Climbing)
+        {
+            Debug.LogWarning($"[Helicopter] 抽出ヘリは登攀中のみ呼べます（現在: {phase.Value}）。無視します。");
+            return;
+        }
+
         if (IsServer)
             StartHelicopterSequenceServerRpc(flareOrigin);
         else

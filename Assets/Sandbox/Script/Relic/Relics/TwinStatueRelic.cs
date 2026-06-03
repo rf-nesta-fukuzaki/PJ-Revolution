@@ -22,6 +22,10 @@ public class TwinStatueRelic : RelicBase
     private bool  _isChainSnagged;
     private float _snagTimer;
     private const float SNAG_TIMEOUT = 2f;
+    // 鎖長のこの倍率を超える距離は「まだ正規位置に置かれていない（co-location 前）」とみなし、
+    // 破壊的な張力・ダメージを与えずに待つ。地形整合で双子がゾーン別に離れて配置された直後の
+    // 開幕自壊（鎖長3mに対し数十m離れて即時破損）を防ぐ。co-location 後は通常動作に戻る。
+    private const float GROSS_STRETCH_FACTOR = 4f;
 
     protected override void Awake()
     {
@@ -39,6 +43,11 @@ public class TwinStatueRelic : RelicBase
         // 相方が破壊済みの場合も停止する。破壊済みリジッドボディへ力を加え続ける不整合を防ぐ。
         if (_partner == null || _isDestroyed || _partner._isDestroyed) return;
 
+        // 双方が設置（接地静止/拾い上げ）されるまで鎖物理を適用しない。設置前は NetworkRigidbody の
+        // un-freeze で離れて落下/スタックし、鎖張力で開幕自壊しうる。co-location で正規距離へ寄せ
+        // 両者が設置されてから鎖を有効化する。
+        if (!IsPlaced || !_partner.IsPlaced) return;
+
         ApplyChainConstraint();
         UpdateChainVisual();
         CheckChainSnag();
@@ -48,6 +57,9 @@ public class TwinStatueRelic : RelicBase
     {
         Vector3 diff   = _partner.transform.position - transform.position;
         float   dist   = diff.magnitude;
+
+        // 鎖長を大きく超える距離 = 未配置（co-location 前）とみなし、張力・ダメージを与えず待機。
+        if (dist > _chainLength * GROSS_STRETCH_FACTOR) return;
 
         if (dist <= _chainLength) return;
 
@@ -72,7 +84,10 @@ public class TwinStatueRelic : RelicBase
         {
             float stretchDamage = Mathf.Min(excess, _chainLength) * 2f;
             ApplyDamage(stretchDamage);
-            _partner.ApplyDamage(stretchDamage);
+            // ApplyDamage(this) で張力破損が発生すると自身もしくは相方が破壊され、_partner が
+            // 破壊済み参照になりうる。相方へ与える前に再検証して NullReference を防ぐ。
+            if (_partner != null && !_partner._isDestroyed)
+                _partner.ApplyDamage(stretchDamage);
         }
     }
 
@@ -112,6 +127,12 @@ public class TwinStatueRelic : RelicBase
     }
 
     public bool IsChainSnagged => _isChainSnagged;
+
+    /// <summary>ペアの相方（未設定時は null）。配置整合（co-location）等の外部処理が参照する。</summary>
+    public TwinStatueRelic Partner => _partner;
+
+    /// <summary>鎖の自然長（co-location で相方を鎖が張らない距離に寄せる際の基準）。</summary>
+    public float ChainLength => _chainLength;
 
     /// <summary>
     /// SpawnManager.PairTwinStatues() がランタイムで呼び出すペアリング API。

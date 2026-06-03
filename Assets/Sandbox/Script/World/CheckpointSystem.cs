@@ -223,6 +223,9 @@ public class CheckpointTrigger : MonoBehaviour
 
         _triggered = true;
         GameServices.Checkpoints?.RecordCheckpoint(index);
+
+        // 拠点⇄当該チェックポイントのジップラインを開通させ、登りをショートカットできるようにする。
+        Sandbox.World.Zipline.ZiplineNetwork.Ensure().InstallLine(index, transform.position);
     }
 }
 }

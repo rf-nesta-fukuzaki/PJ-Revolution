@@ -159,7 +159,7 @@ public class PinSystem : NetworkBehaviour
 
         // スコア記録（GameServices 経由でシングルトン直結を回避）
         if (_ghost != null && _ghost.IsGhost)
-            GameServices.Score?.RecordGhostPin((int)OwnerClientId);
+            GameServices.Score?.RecordGhostPin(PlayerScoreId.FromMember(this));
 
         Debug.Log($"[PinSystem] ピン設置: {PIN_LABELS[(int)type]} @ {pinPos}");
     }

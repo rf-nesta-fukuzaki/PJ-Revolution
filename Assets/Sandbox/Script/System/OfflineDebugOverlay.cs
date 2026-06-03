@@ -116,6 +116,16 @@ public sealed class OfflineDebugOverlay : MonoBehaviour
 
         GUILayout.Label("ショートカット: F1〜F9 / F10=開閉", _labelStyle);
 
+        GUILayout.Space(6f);
+        GUILayout.Label("== ジップライン（拠点⇄CP）開通 ==", _headerStyle);
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("CP1 開通")) SetStatusMessage(OfflineDebugCommands.OpenZipline(0));
+        if (GUILayout.Button("CP2 開通")) SetStatusMessage(OfflineDebugCommands.OpenZipline(1));
+        if (GUILayout.Button("CP3 開通")) SetStatusMessage(OfflineDebugCommands.OpenZipline(2));
+        if (GUILayout.Button("CP4 開通")) SetStatusMessage(OfflineDebugCommands.OpenZipline(3));
+        GUILayout.EndHorizontal();
+        if (GUILayout.Button("全チェックポイント解放→全開通")) SetStatusMessage(OfflineDebugCommands.OpenAllZiplines());
+
         if (LocalCoopSettings.IsActive && !LocalCoopSettings.IsOnline)
         {
             GUILayout.Space(4f);

@@ -91,6 +91,11 @@ public class ExplorerController : MonoBehaviour
     /// <summary>運搬重量による速度ペナルティを設定する（GDD §3.3）。</summary>
     public void SetCarryPenalty(float penalty)    => _carryPenalty    = Mathf.Clamp01(penalty);
 
+    /// <summary>現在の運搬による速度ペナルティ（0=なし/0.5=-50%）。HUD の重量表示・検証用。</summary>
+    public float CarryPenalty     => _carryPenalty;
+    /// <summary>現在の高山病による速度ペナルティ（0=なし/0.3=-30%）。HUD・検証用。</summary>
+    public float AltitudePenalty  => _altitudePenalty;
+
     /// <summary>現在スプリント（ダッシュ）入力中か（GDD §6.2 カメラモード判定用）。</summary>
     public bool IsSprinting => _isSprinting;
 
@@ -135,6 +140,10 @@ public class ExplorerController : MonoBehaviour
         if (GetComponent<WireRopeActionController>() == null)
             gameObject.AddComponent<WireRopeActionController>();
         _wireRope = GetComponent<WireRopeActionController>();
+
+        // ジップライン搭乗（拠点⇄チェックポイント。非破壊・無ければ生成）
+        if (GetComponent<Sandbox.World.Zipline.ZiplineRider>() == null)
+            gameObject.AddComponent<Sandbox.World.Zipline.ZiplineRider>();
         _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
 
         ResolveGroundMask();

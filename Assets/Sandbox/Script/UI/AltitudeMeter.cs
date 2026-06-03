@@ -21,16 +21,19 @@ public class AltitudeMeter : MonoBehaviour
     [Header("表示オプション")]
     [SerializeField] private float _updateInterval = 0.2f;
 
-    // ── GDD §10.2 ゾーン高度レンジ（メートル）──────────────
-    // インデックス = ゾーン番号（0=ベースキャンプ）
-    private static readonly (float minY, float maxY, string name)[] ZoneRanges = {
-        (   -50f,   100f, "ベースキャンプ"),
-        (   100f,   400f, "森林帯"),
-        (   400f,   800f, "岩場帯"),
-        (   800f,  1250f, "急壁"),
-        (  1250f,  1600f, "神殿遺跡"),
-        (  1600f,  2000f, "氷壁"),
-        (  2000f, 99999f, "山頂遺跡"),
+    // ── GDD §10.2 ゾーン名（山高に対する割合で解決）──────────────
+    // 手続き山の実山高(~460m)に追従させるため、絶対メートルではなく MountainProfile の
+    // 割合(0=基地,1=山頂)でゾーンを区切る。これにより登攀中に 低地→中腹→高地→山頂 の
+    // 全 7 ゾーン名が必ず順に表示される（旧来は絶対値固定で森林帯/岩場帯止まりだった）。
+    // 値 = そのゾーンの上限割合（累積）。
+    private static readonly (float maxFrac, string name)[] ZoneBands = {
+        (0.08f, "ベースキャンプ"),
+        (0.28f, "森林帯"),
+        (0.48f, "岩場帯"),
+        (0.66f, "急壁"),
+        (0.80f, "神殿遺跡"),
+        (0.94f, "氷壁"),
+        (2f,    "山頂遺跡"),
     };
 
     private float _nextUpdateTime;
@@ -78,11 +81,14 @@ public class AltitudeMeter : MonoBehaviour
 
     private static string ResolveZoneName(float y)
     {
-        for (int i = 0; i < ZoneRanges.Length; i++)
-        {
-            if (y >= ZoneRanges[i].minY && y < ZoneRanges[i].maxY)
-                return ZoneRanges[i].name;
-        }
-        return ZoneRanges[0].name; // フォールバック
+        // 山高に対する割合へ変換。MountainProfile 未準備時は実測帯(~50-460m)で概算する。
+        float frac = MountainProfile.IsReady
+            ? MountainProfile.Fraction(y)
+            : Mathf.Clamp01(Mathf.InverseLerp(50f, 460f, y));
+
+        for (int i = 0; i < ZoneBands.Length; i++)
+            if (frac < ZoneBands[i].maxFrac)
+                return ZoneBands[i].name;
+        return ZoneBands[ZoneBands.Length - 1].name;
     }
 }
