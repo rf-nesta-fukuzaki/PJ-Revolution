@@ -9,6 +9,7 @@ public sealed class WireRopeActionControllerTests
     private GameObject _root;
     private Rigidbody _rb;
     private WireRopeActionController _controller;
+    private WireRopeActionConfigSO _config;
 
     [SetUp]
     public void SetUp()
@@ -18,6 +19,11 @@ public sealed class WireRopeActionControllerTests
         _rb.useGravity = false;
         _root.AddComponent<CapsuleCollider>();
         _controller = _root.AddComponent<WireRopeActionController>();
+
+        // チューニング値は ScriptableObject に外部化されたため、テスト用 config を注入する。
+        _config = ScriptableObject.CreateInstance<WireRopeActionConfigSO>();
+        Set("_config", _config);
+
         MoveBody(Vector3.zero);
     }
 
@@ -26,6 +32,8 @@ public sealed class WireRopeActionControllerTests
     {
         if (_root != null)
             Object.DestroyImmediate(_root);
+        if (_config != null)
+            Object.DestroyImmediate(_config);
     }
 
     [Test]
@@ -66,8 +74,8 @@ public sealed class WireRopeActionControllerTests
     {
         ConfigureAnchor(new Vector3(8f, 4f, 0f), isGround: true);
         Set("_targetPullSpeed", 20f);
-        Set("_pullFloorFraction", 0.5f);
-        Set("_tensionFalloffFloor", 0.2f);
+        _config.PullFloorFraction = 0.5f;
+        _config.TensionFalloffFloor = 0.2f;
         _rb.linearVelocity = Vector3.zero;
 
         InvokeVoid("ApplyMinPullSpeed", new Vector3(8f, 4f, 0f).normalized, Vector3.zero, 1f);
@@ -153,7 +161,7 @@ public sealed class WireRopeActionControllerTests
     {
         Set("_anchorPoint", anchor);
         Set("_anchorIsGround", isGround);
-        Set("_groundClimbLiftThreshold", 1.5f);
+        _config.GroundClimbLiftThreshold = 1.5f;
     }
 
     private void MoveBody(Vector3 position)

@@ -37,6 +37,16 @@ namespace Sandbox.World.Config
         [Tooltip("尾根レリーフの基底比率 (0〜1)。山体全体が単一の塊として見えるよう、ドーム標高に対し尾根が乗る割合を決める。")]
         [Range(0f, 1f)] public float mountainReliefBase = 0.55f;
 
+        [Header("Island / Ocean")]
+        [Tooltip("ON のとき、mountainRadius より外側の地形を海面下（海底）へ沈め、島が海に囲まれた形にする。OFF だと旧来どおり外周に無限の丘陵が続く。")]
+        public bool islandMode = true;
+        [Tooltip("海岸線（mountainRadius）より外で地形が沈む深さ [m]。海面(seaLevel)からの最大下降量。")]
+        [Min(0f)] public float seabedDepth = 160f;
+        [Tooltip("海岸線から海底の最深部へ到達するまでの距離 [m]。小さいほど急な岸壁、大きいほど遠浅。")]
+        [Min(1f)] public float seabedFalloffDistance = 240f;
+        [Tooltip("島の縁（海岸付近）で丘陵レリーフを減衰させる強さ。1=海岸でほぼ平坦なビーチ、0=減衰なし。")]
+        [Range(0f, 1f)] public float shoreFlatten = 1f;
+
         [Header("Domain Warp")]
         [Min(0f)] public float domainWarpFreq = 0.002f;
         [Min(0f)] public float domainWarpAmp = 30f;

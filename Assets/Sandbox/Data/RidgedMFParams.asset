@@ -22,10 +22,14 @@ MonoBehaviour:
   mountainMaskThreshold: {x: 0.2, y: 0.7}
   singleMountainMode: 1
   mountainCenter: {x: 128, y: 688}
-  mountainRadius: 750
-  mountainFalloff: 1.5
-  mountainEdgeNoise: 180
+  mountainRadius: 1300
+  mountainFalloff: 2
+  mountainEdgeNoise: 300
   mountainReliefBase: 0.6
+  islandMode: 1
+  seabedDepth: 160
+  seabedFalloffDistance: 240
+  shoreFlatten: 1
   domainWarpFreq: 0.002
   domainWarpAmp: 30
   heightProfileCurve:
@@ -61,7 +65,7 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  peakAltitude: 550
+  peakAltitude: 900
   seaLevel: 0
   microFreq: 0.25
   microAmp: 0.4

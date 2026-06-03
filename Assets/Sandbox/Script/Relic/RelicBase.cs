@@ -179,6 +179,8 @@ public abstract class RelicBase : MonoBehaviour
     public void ApplyDamage(float damage, GameObject source = null)
     {
         if (_isDestroyed) return;
+        // 初期化(Awake)前に衝突が来ると _durability が未生成のことがあるため防御（getter 群と同様 null 安全に）。
+        if (_durability == null) return;
         if (!_durability.TryApplyDamage(damage, out float applied)) return;
 
         OnDamaged?.Invoke(applied, _durability.CurrentHp);

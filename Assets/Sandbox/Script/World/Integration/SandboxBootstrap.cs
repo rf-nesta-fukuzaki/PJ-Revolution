@@ -75,6 +75,7 @@ namespace Sandbox.World.Integration
                 if (GetComponent<ProceduralSky>()               == null) gameObject.AddComponent<ProceduralSky>();
                 if (GetComponent<VolumeProfileSetup>()          == null) gameObject.AddComponent<VolumeProfileSetup>();
                 if (GetComponent<CloudSeaLayer>()               == null) gameObject.AddComponent<CloudSeaLayer>();
+                if (GetComponent<OceanLayer>()                  == null) gameObject.AddComponent<OceanLayer>();
                 if (GetComponent<SummitVisualEffects>()         == null) gameObject.AddComponent<SummitVisualEffects>();
                 if (GetComponent<SummitConfettiCelebration>()   == null) gameObject.AddComponent<SummitConfettiCelebration>();
             }
@@ -84,7 +85,7 @@ namespace Sandbox.World.Integration
 
         private void Update()
         {
-            if (terrainGenerator == null || terrainGenerator.Manager == null) return;
+            if (terrainGenerator == null || terrainGenerator.Manager == null || _colliderBaker == null) return;
             _colliderBaker.UpdateAll(terrainGenerator.Manager);
 
             // 初期ロード完了の計測ログ（全アクティブチャンクが生成＋ベイク完了した最初の瞬間）。

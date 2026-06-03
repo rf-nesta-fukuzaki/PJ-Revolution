@@ -17,6 +17,7 @@ cbuffer RidgedMFConstants
     float4 _ProfileParams;        // x=peakAltitude, y=seaLevel, z=reliefBase
     float4 _MicroParams;          // x=microFreq, y=microAmp
     float4 _MountainParams;       // xy=centerWorldXZ, z=radius, w=falloff
+    float4 _OceanParams;          // x=islandMode(0/1), y=seabedDepth, z=seabedFalloff, w=shoreFlatten
 }
 
 #define CELL_SIZE     (_Misc.x)
@@ -51,6 +52,11 @@ cbuffer RidgedMFConstants
 #define MOUNTAIN_RADIUS  (_MountainParams.z)
 #define MOUNTAIN_FALLOFF (_MountainParams.w)
 
+#define ISLAND_MODE      (_OceanParams.x)
+#define SEABED_DEPTH     (_OceanParams.y)
+#define SEABED_FALLOFF   (_OceanParams.z)
+#define SHORE_FLATTEN    (_OceanParams.w)
+
 Texture2D<float>    _HeightProfileLUT;
 SamplerState sampler_linear_clamp_HeightProfileLUT;
 
@@ -77,6 +83,7 @@ float ComputeWorldHeight(float2 worldXZ)
     // 単一 return・全経路で初期化する（metal の uninitialized 警告回避）。
     float h01       = 0.0;
     float microMask = 1.0;   // micro detail に乗せる重み
+    float seabed    = 0.0;   // 海面下への沈降量 [m]（島の外周のみ）
 
     if (SINGLE_MOUNTAIN > 0.5)
     {
@@ -96,15 +103,34 @@ float ComputeWorldHeight(float2 worldXZ)
 
         // ── 周囲の連続した転がる地形 (フラットな円盤を排除) ──
         // 低周波 FBM の緩やかな丘陵を世界全体に敷き、ドーム下では (1-dome) で
-        // 抑制してヒーロー山の裾野へ自然に溶け込ませる。これで地形が世界の縁まで
-        // 連続し、「山が平らな皿の上に乗っている」破綻が消える。worldXZ 直接参照で
+        // 抑制してヒーロー山の裾野へ自然に溶け込ませる。worldXZ 直接参照で
         // 全チャンク連続 (継ぎ目なし)。
         float3 bp3       = float3(worldXZ.x, 0.0, worldXZ.y) * BASE_FREQ * 0.5;
         float  hills     = FBM3D(bp3, 5, 2.0, 0.5) * 0.5 + 0.5;       // 0..1
-        float  plainsRel = hills * 0.12 * (1.0 - dome);               // 0..0.12 (≈66m)
+        float  plainsRel = hills * 0.12 * (1.0 - dome);               // 0..0.12 (≈丘陵)
 
-        h01       = domeRelief + plainsRel;
-        microMask = max(dome, 0.45);   // 平地にも微細ディテールを残す
+        if (ISLAND_MODE > 0.5)
+        {
+            // ── 島モード: mountainRadius を海岸線とし、外側を海面下へ沈める ──
+            // land: 島の内側で 1、海岸線(radius)で 0。海岸付近では丘陵レリーフを
+            // SHORE_FLATTEN で減衰させ、波打ち際を平坦なビーチにする。
+            float land = saturate(1.0 - dist / MOUNTAIN_RADIUS);
+            float shoreFade = lerp(1.0, land, SHORE_FLATTEN);
+            plainsRel *= shoreFade;
+
+            // 海岸線より外側は連続して海底へ沈降（島が水に囲まれる）。
+            float over = saturate((dist - MOUNTAIN_RADIUS) / SEABED_FALLOFF);
+            // smoothstep で岸壁を滑らかにし、海底でほぼ一定深へ落ち着かせる。
+            seabed = smoothstep(0.0, 1.0, over) * SEABED_DEPTH;
+
+            h01       = domeRelief + plainsRel;
+            microMask = max(dome, 0.25 * land);   // 海面下では微細ディテールを抑える
+        }
+        else
+        {
+            h01       = domeRelief + plainsRel;
+            microMask = max(dome, 0.45);   // 平地にも微細ディテールを残す
+        }
     }
     else
     {
@@ -118,7 +144,7 @@ float ComputeWorldHeight(float2 worldXZ)
 
     float micro = SimplexNoise3D(float3(src.x, 0.0, src.y) * MICRO_FREQ)
                 * MICRO_AMP * microMask;
-    return SEA_LEVEL + h01 * PEAK_ALT + micro;
+    return SEA_LEVEL + h01 * PEAK_ALT + micro - seabed;
 }
 
 [numthreads(8, 8, 1)]

@@ -1,0 +1,99 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 068427d24bd94a0f9181fd708eb147fa, type: 3}
+  m_Name: WireRopeActionConfig
+  m_EditorClassIdentifier:
+  MinThrowRange: 4
+  MaxThrowRange: 28
+  ThrowSpeed: 42
+  GaugeOscillationSpeed: 55
+  SpinVisualSpeed: 620
+  LassoElevationDeg: 80
+  LassoCenterDistance: 1.15
+  LassoChestHeight: 1.05
+  LassoRadius: 0.95
+  LassoHandWidthMul: 1.35
+  RopeStartWidth: 0.09
+  RopeEndWidth: 0.05
+  RopeSag: 0.35
+  RopeColor: {r: 0.92, g: 0.78, b: 0.42, a: 1}
+  PullTensionAccel: 46
+  PullMinSpeed: 14
+  PullMaxSpeed: 38
+  PullSnapImpulse: 17
+  MaxPullElevationDeg: 18
+  MaxPullElevationDegWallUp: 36
+  MaxUpwardSpeedFromTension: 12
+  TargetPullAccel: 65
+  TargetPullMaxSpeed: 24
+  TargetPullMinSpeed: 8
+  TargetPullArrivalDistance: 1.5
+  RopeElasticGain: 0.75
+  RopeElasticPower: 1.35
+  SwingCentripetalGain: 0.2
+  ChargePowerSpread: 0.22
+  GroundSlideAssistAccel: 22
+  GroundImpactBleed: 0.88
+  GroundSlideLateralResist: 14
+  GroundSlideMaxAirGap: 0.55
+  PullSnapTensionBoost: 0.68
+  PullPerpendicularDamp: 0.32
+  RetrieveSteerAccel: 32
+  OvershootMomentumScale: 1.2
+  AnchorArrivalDistance: 1.65
+  ReleaseInertiaScale: 1.15
+  ReleaseInertiaMinSpeed: 9
+  ReleaseInertiaMaxSpeed: 40
+  ReleasePerpendicularRetain: 0.2
+  MaxOvershootDistance: 6.5
+  OvershootEndSpeed: 1.4
+  RetrieveStopDistance: 1.4
+  MaxRetrieveSeconds: 10
+  StandOffFromSurface: 0.75
+  GroundSnapUp: 2.5
+  DepenetrateIterations: 20
+  GaugeLaunchBoost: 8
+  RetrieveTensionRampSeconds: 0.22
+  ReleaseSoftDistance: 2.1
+  RetrieveStartVelocityBlend: 0.58
+  ReleaseVelocityBlend: 0.58
+  PullAxisTurnSpeed: 7.5
+  VisualBlendSpeed: 14
+  MaxSpeedChangePerSecond: 70
+  PullStallReleaseSeconds: 0.45
+  OvershootMaxSeconds: 3.8
+  TensionFalloffFloor: 0.52
+  PullSpeedShort: 16
+  PullFloorFraction: 0.55
+  PullSpeedChargeSpread: 0.35
+  OvershootDistanceFactor: 0.32
+  OvershootMinDistance: 1
+  GroundClimbLiftThreshold: 1.5
+  ImpactSlingshotSpeed: 34
+  ImpactRestitution: 1.1
+  ImpactSlingshotFloorPopUp: 3.5
+  ImpactSlingshotCarryFactor: 0.4
+  ImpactSlingshotMaxSpeed: 52
+  ImpactSlingshotBoostSeconds: 1.2
+  ImpactSlingshotCooldown: 0.14
+  ImpactSlingshotMinIntoSpeed: 2
+  ImpactSlingshotHardImpactSpeed: 5
+  ObstacleNormalMaxY: 0.55
+  FloorSlingshotMinIntoSpeed: 1.2
+  FloorSlingshotMinHorizSpeed: 9
+  SoftGroundPenetrationDepth: 0.35
+  ThrowEasePower: 1.85
+  TensionSoundInterval: 0.38
+  TraumaRetrieveStart: 0.14
+  TraumaRopeHit: 0.22
+  TraumaRopeRelease: 0.2
+  TraumaImpactSlingshot: 0.32

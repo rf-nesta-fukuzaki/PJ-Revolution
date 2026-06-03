@@ -20,176 +20,125 @@ public class WireRopeActionController : MonoBehaviour
         Retrieving,
     }
 
-    private const float GroundNormalThreshold = 0.65f;
+    private const float GroundNormalThreshold = WireRopePhysics.GroundNormalThreshold;
     private const float GroundClearance = 0.12f;
     private const float GroundPenetrationCorrectThreshold = 0.2f;
     // 地表より深く潜った（足元サンプルが届かない）ときの救済用：高所から下キャストして直上の面を探す高さ。
     private const float DeepRecoverySampleUp = 200f;
     // この深さ[m]以上潜ったら速度に関係なく即座に地表へスナップ（地面すり抜け落下の防止）。
     private const float HardSnapPenetrationDepth = 0.6f;
+    // これを超える速度は物理暴走（NaN/発散）のサイン。通常運用は < 52m/s なので十分な余裕。
+    private const float MaxSaneSpeed = 300f;
 
-    [Header("投擲")]
-    [SerializeField] private float _minThrowRange = 4f;
-    [SerializeField] private float _maxThrowRange = 28f;
-    [SerializeField] private float _throwSpeed = 42f;
+    // ── 設定 (ScriptableObject) ──────────────────────────────
+    // 全チューニング値は WireRopeActionConfigSO へ外部化（Co-op で 1 asset を共有）。
+    [Header("設定")]
+    [Tooltip("ロープの全チューニング値。未割り当て時は Resources の WireRopeActionConfig を共有ロード。")]
+    [SerializeField] private WireRopeActionConfigSO _config;
+
+    [Header("参照 (シーン配線)")]
     [SerializeField] private LayerMask _hookableLayers;
-
-    [Header("溜め — 頭上ラッソ（キャラ基準）")]
-    [SerializeField] private float _gaugeOscillationSpeed = 55f;
-    [SerializeField] private float _spinVisualSpeed = 620f;
-    [Tooltip("水平面からの仰角[°]。80°でほぼ真上、やや前。")]
-    [SerializeField, Range(60f, 89f)] private float _lassoElevationDeg = 80f;
-    [Tooltip("胸元からラッソ中心までの距離[m]。")]
-    [SerializeField] private float _lassoCenterDistance = 1.15f;
-    [Tooltip("キャラ足元から胸の高さ[m]。")]
-    [SerializeField] private float _lassoChestHeight = 1.05f;
-    [SerializeField] private float _lassoRadius = 0.95f;
-    [Tooltip("手元から輪への接続を太く見せる。")]
-    [SerializeField] private float _lassoHandWidthMul = 1.35f;
-
-    [Header("ロープ表示")]
-    [SerializeField] private float _ropeStartWidth = 0.09f;
-    [SerializeField] private float _ropeEndWidth = 0.05f;
-    [SerializeField] private float _ropeSag = 0.35f;
-    [SerializeField] private Color _ropeColor = new Color(0.92f, 0.78f, 0.42f, 1f);
-
-    [Header("回収 — 張力（物理）")]
-    [SerializeField] private float _pullTensionAccel = 46f;
-    [Tooltip("引き方向の最低速度。近づいてもここまで落ちない。")]
-    [SerializeField] private float _pullMinSpeed = 14f;
-    [SerializeField] private float _pullMaxSpeed = 38f;
-    [Tooltip("開始時のガキンとした初速（掃除機コンセントを引く反動）。")]
-    [SerializeField] private float _pullSnapImpulse = 17f;
-    [Tooltip("ロープ張力で許容する最大仰角[°]（真上への吹き上がり防止）。")]
-    [SerializeField, Range(5f, 45f)] private float _maxPullElevationDeg = 18f;
-    [Tooltip("アンカーが高い壁フック時に許す最大仰角[°]。")]
-    [SerializeField, Range(10f, 55f)] private float _maxPullElevationDegWallUp = 36f;
-    [Tooltip("張力による上向き速度の上限[m/s]。")]
-    [SerializeField] private float _maxUpwardSpeedFromTension = 12f;
-
-    [Header("回収 — 対象引き寄せ（遺物 / キャラ）")]
-    [Tooltip("ロープ先が遺物・キャラの場合、回収で対象を自分へ引き寄せる加速度。")]
-    [SerializeField] private float _targetPullAccel = 65f;
-    [Tooltip("対象を引き寄せるときの最大速度[m/s]。")]
-    [SerializeField] private float _targetPullMaxSpeed = 24f;
-    [Tooltip("対象を引き寄せるときの最低速度[m/s]（近づいても止まらない下限）。")]
-    [SerializeField] private float _targetPullMinSpeed = 8f;
-    [Tooltip("対象がこの距離[m]まで近づいたら回収完了。")]
-    [SerializeField] private float _targetPullArrivalDistance = 1.5f;
-
-    [Header("バカげ物理 — ロープ弾性（控えめ）")]
-    [Tooltip("ロープが伸びた分だけ張力が増える係数。")]
-    [SerializeField] private float _ropeElasticGain = 0.75f;
-    [SerializeField, Range(1f, 2.5f)] private float _ropeElasticPower = 1.35f;
-    [Tooltip("速度がロープと大きくずれたときだけアンカーへ寄せる。")]
-    [SerializeField] private float _swingCentripetalGain = 0.2f;
-    [Tooltip("溜めゲージによる張力の振れ幅。")]
-    [SerializeField, Range(0f, 0.35f)] private float _chargePowerSpread = 0.22f;
-    [Tooltip("地面をロープ方向へ滑らせる補助（横方向の謎加速はしない）。")]
-    [SerializeField] private float _groundSlideAssistAccel = 22f;
-    [Tooltip("地面へのめり込み速度を減衰する係数（抵抗感）。")]
-    [SerializeField, Range(0.5f, 1f)] private float _groundImpactBleed = 0.88f;
-    [Tooltip("スライドの横ずれを抑える抵抗。")]
-    [SerializeField] private float _groundSlideLateralResist = 14f;
-    [Tooltip("地面からこれ以上離れていたらスライド補正しない[m]。")]
-    [SerializeField] private float _groundSlideMaxAirGap = 0.55f;
-    [Tooltip("近づくほど張力が増す係数（スナップ感）。")]
-    [SerializeField] private float _pullSnapTensionBoost = 0.68f;
-    [SerializeField] private float _pullPerpendicularDamp = 0.32f;
-    [Tooltip("回収中の WASD 追加加速度（Explorer と併用）。")]
-    [SerializeField] private float _retrieveSteerAccel = 32f;
-    [Tooltip("ロープ離脱後に保つ速度の倍率（オーバーシュート）。")]
-    [SerializeField, Range(0.8f, 1.3f)] private float _overshootMomentumScale = 1.2f;
-
-    [Header("先端到達 — ロープ回収と慣性吹っ飛び")]
-    [Tooltip("アンカー（ロープ先端）までの到達判定距離[m]。")]
-    [SerializeField] private float _anchorArrivalDistance = 1.65f;
-    [Tooltip("張力速度に掛ける慣性倍率。")]
-    [SerializeField] private float _releaseInertiaScale = 1.15f;
-    [Tooltip("離脱時の最低吹っ飛び速度[m/s]。")]
-    [SerializeField] private float _releaseInertiaMinSpeed = 9f;
-    [Tooltip("離脱時の最高吹っ飛び速度[m/s]。")]
-    [SerializeField] private float _releaseInertiaMaxSpeed = 40f;
-    [SerializeField, Range(0f, 1f)] private float _releasePerpendicularRetain = 0.2f;
-    [Tooltip("離脱後、この距離[m]滑ったら回収終了（入力があれば即終了）。")]
-    [SerializeField] private float _maxOvershootDistance = 6.5f;
-    [Tooltip("離脱後、この速度未満で入力なしのとき回収終了。")]
-    [SerializeField] private float _overshootEndSpeed = 1.4f;
-    [SerializeField] private float _retrieveStopDistance = 1.4f;
-    [SerializeField] private float _maxRetrieveSeconds = 10f;
-    [SerializeField] private float _standOffFromSurface = 0.75f;
-    [SerializeField] private float _groundSnapUp = 2.5f;
-    [Tooltip("めり込み解消の反復回数。")]
-    [SerializeField] private int _depenetrateIterations = 20;
-    [Tooltip("ゲージが高いほど初動の反動が強い。")]
-    [SerializeField] private float _gaugeLaunchBoost = 8f;
-
-    [Header("遷移の滑らかさ")]
-    [SerializeField] private float _retrieveTensionRampSeconds = 0.22f;
-    [Tooltip("停止点手前で張力を弱め始める距離[m]。")]
-    [SerializeField] private float _releaseSoftDistance = 2.1f;
-    [SerializeField, Range(0f, 1f)] private float _retrieveStartVelocityBlend = 0.58f;
-    [SerializeField] private float _releaseVelocityBlend = 0.58f;
-    [SerializeField] private float _pullAxisTurnSpeed = 7.5f;
-    [SerializeField] private float _visualBlendSpeed = 14f;
-    [SerializeField] private float _maxSpeedChangePerSecond = 70f;
-    [Tooltip("先端付近で速度が落ちたとき、到達扱いで離脱するまでの時間[s]。")]
-    [SerializeField] private float _pullStallReleaseSeconds = 0.45f;
-    [Tooltip("オーバーシュートが止まったときの強制終了[s]。")]
-    [SerializeField] private float _overshootMaxSeconds = 3.8f;
-    [Tooltip("張力減衰の下限（0にすると停止点手前で完全停止しやすい）。")]
-    [SerializeField, Range(0.2f, 1f)] private float _tensionFalloffFloor = 0.52f;
-
-    [Header("回収速度 — 射程・ゲージ連動スケール")]
-    [Tooltip("最小射程付近での目標引き速度[m/s]。近距離はここまで穏やかに引く。")]
-    [SerializeField] private float _pullSpeedShort = 16f;
-    [Tooltip("目標速度に対する最低維持速度の割合（近づいても止まらない下限）。")]
-    [SerializeField, Range(0.3f, 0.9f)] private float _pullFloorFraction = 0.55f;
-    [Tooltip("溜めゲージによる引き速度の振れ幅（±割合）。0.35 = 弱溜め×0.65 / 強溜め×1.35。")]
-    [SerializeField, Range(0f, 0.6f)] private float _pullSpeedChargeSpread = 0.35f;
-    [Tooltip("オーバーシュート距離 = 開始時ロープ長 × この係数（上限は _maxOvershootDistance）。")]
-    [SerializeField] private float _overshootDistanceFactor = 0.32f;
-    [Tooltip("オーバーシュート距離の下限[m]。")]
-    [SerializeField] private float _overshootMinDistance = 1f;
-    [Tooltip("地面アンカーがこの高さ[m]以上上方なら登攀とみなし 3D 距離で到達判定し、坂を登り切る。")]
-    [SerializeField] private float _groundClimbLiftThreshold = 1.5f;
-
-    [Header("衝突 — アンカー方向スリングショット")]
-    [Tooltip("障害物に当たったとき、アンカー（ロープ先端）へ向かう初速[m/s]。")]
-    [SerializeField] private float _impactSlingshotSpeed = 34f;
-    [Tooltip("衝突後の速度倍率（1超えでバカげ反発）。")]
-    [SerializeField, Range(1f, 1.35f)] private float _impactRestitution = 1.1f;
-    [Tooltip("床へ強くめり込んだときだけ付与する小さな跳ね上げ。")]
-    [SerializeField] private float _impactSlingshotFloorPopUp = 3.5f;
-    [Tooltip("衝突直前の速度をどれだけ加算するか。")]
-    [SerializeField, Range(0f, 1f)] private float _impactSlingshotCarryFactor = 0.4f;
-    [SerializeField] private float _impactSlingshotMaxSpeed = 52f;
-    [SerializeField] private float _impactSlingshotBoostSeconds = 1.2f;
-    [SerializeField] private float _impactSlingshotCooldown = 0.14f;
-    [Tooltip("接触面へのめり込み速度がこの値以上ならスリングショット発動。")]
-    [SerializeField] private float _impactSlingshotMinIntoSpeed = 2f;
-    [Tooltip("強い衝突とみなすめり込み速度。")]
-    [SerializeField] private float _impactSlingshotHardImpactSpeed = 5f;
-    [Tooltip("壁・岩など（法線の Y がこれ未満）への接触で発動。")]
-    [SerializeField, Range(0.2f, 0.8f)] private float _obstacleNormalMaxY = 0.55f;
-    [Tooltip("床へのめり込み速度がこれ以上ならアンカー方向へ弾く。")]
-    [SerializeField] private float _floorSlingshotMinIntoSpeed = 1.2f;
-    [Tooltip("床を速く滑っているときもスリングショットする水平速度（高め＝誤発動しにくい）。")]
-    [SerializeField] private float _floorSlingshotMinHorizSpeed = 9f;
-    [Tooltip("めり込みがこれ未満なら位置スナップせず速度だけ整える。")]
-    [SerializeField] private float _softGroundPenetrationDepth = 0.35f;
-
-    [Header("フィール / 演出")]
-    [SerializeField] private float _throwEasePower = 1.85f;
-    [SerializeField] private float _tensionSoundInterval = 0.38f;
-    [SerializeField] private float _traumaRetrieveStart = 0.14f;
-    [SerializeField] private float _traumaRopeHit = 0.22f;
-    [SerializeField] private float _traumaRopeRelease = 0.2f;
-    [SerializeField] private float _traumaImpactSlingshot = 0.32f;
-
-    [Header("参照")]
     [SerializeField] private Transform _aimTransform;
     [SerializeField] private Transform _handOrigin;
+
+    // 設定の遅延解決: 実行時 AddComponent や EditMode テスト（Awake 非呼出）でも null にならない。
+    private WireRopeActionConfigSO _resolvedConfig;
+    private WireRopeActionConfigSO Cfg
+    {
+        get
+        {
+            if (_resolvedConfig == null)
+                _resolvedConfig = _config != null ? _config : WireRopeActionConfigSO.LoadDefault();
+            return _resolvedConfig;
+        }
+    }
+
+    // ── 設定値 forwarding（呼び出し側は従来のフィールド名 _xxx のまま）──
+    private float _minThrowRange => Cfg.MinThrowRange;
+    private float _maxThrowRange => Cfg.MaxThrowRange;
+    private float _throwSpeed => Cfg.ThrowSpeed;
+    private float _gaugeOscillationSpeed => Cfg.GaugeOscillationSpeed;
+    private float _spinVisualSpeed => Cfg.SpinVisualSpeed;
+    private float _lassoElevationDeg => Cfg.LassoElevationDeg;
+    private float _lassoCenterDistance => Cfg.LassoCenterDistance;
+    private float _lassoChestHeight => Cfg.LassoChestHeight;
+    private float _lassoRadius => Cfg.LassoRadius;
+    private float _lassoHandWidthMul => Cfg.LassoHandWidthMul;
+    private float _ropeStartWidth => Cfg.RopeStartWidth;
+    private float _ropeEndWidth => Cfg.RopeEndWidth;
+    private float _ropeSag => Cfg.RopeSag;
+    private Color _ropeColor => Cfg.RopeColor;
+    private float _pullTensionAccel => Cfg.PullTensionAccel;
+    private float _pullMinSpeed => Cfg.PullMinSpeed;
+    private float _pullMaxSpeed => Cfg.PullMaxSpeed;
+    private float _pullSnapImpulse => Cfg.PullSnapImpulse;
+    private float _maxPullElevationDeg => Cfg.MaxPullElevationDeg;
+    private float _maxPullElevationDegWallUp => Cfg.MaxPullElevationDegWallUp;
+    private float _maxUpwardSpeedFromTension => Cfg.MaxUpwardSpeedFromTension;
+    private float _targetPullAccel => Cfg.TargetPullAccel;
+    private float _targetPullMaxSpeed => Cfg.TargetPullMaxSpeed;
+    private float _targetPullMinSpeed => Cfg.TargetPullMinSpeed;
+    private float _targetPullArrivalDistance => Cfg.TargetPullArrivalDistance;
+    private float _ropeElasticGain => Cfg.RopeElasticGain;
+    private float _ropeElasticPower => Cfg.RopeElasticPower;
+    private float _swingCentripetalGain => Cfg.SwingCentripetalGain;
+    private float _chargePowerSpread => Cfg.ChargePowerSpread;
+    private float _groundSlideAssistAccel => Cfg.GroundSlideAssistAccel;
+    private float _groundImpactBleed => Cfg.GroundImpactBleed;
+    private float _groundSlideLateralResist => Cfg.GroundSlideLateralResist;
+    private float _groundSlideMaxAirGap => Cfg.GroundSlideMaxAirGap;
+    private float _pullSnapTensionBoost => Cfg.PullSnapTensionBoost;
+    private float _pullPerpendicularDamp => Cfg.PullPerpendicularDamp;
+    private float _retrieveSteerAccel => Cfg.RetrieveSteerAccel;
+    private float _overshootMomentumScale => Cfg.OvershootMomentumScale;
+    private float _anchorArrivalDistance => Cfg.AnchorArrivalDistance;
+    private float _releaseInertiaScale => Cfg.ReleaseInertiaScale;
+    private float _releaseInertiaMinSpeed => Cfg.ReleaseInertiaMinSpeed;
+    private float _releaseInertiaMaxSpeed => Cfg.ReleaseInertiaMaxSpeed;
+    private float _releasePerpendicularRetain => Cfg.ReleasePerpendicularRetain;
+    private float _maxOvershootDistance => Cfg.MaxOvershootDistance;
+    private float _overshootEndSpeed => Cfg.OvershootEndSpeed;
+    private float _retrieveStopDistance => Cfg.RetrieveStopDistance;
+    private float _maxRetrieveSeconds => Cfg.MaxRetrieveSeconds;
+    private float _standOffFromSurface => Cfg.StandOffFromSurface;
+    private float _groundSnapUp => Cfg.GroundSnapUp;
+    private int _depenetrateIterations => Cfg.DepenetrateIterations;
+    private float _gaugeLaunchBoost => Cfg.GaugeLaunchBoost;
+    private float _retrieveTensionRampSeconds => Cfg.RetrieveTensionRampSeconds;
+    private float _releaseSoftDistance => Cfg.ReleaseSoftDistance;
+    private float _retrieveStartVelocityBlend => Cfg.RetrieveStartVelocityBlend;
+    private float _releaseVelocityBlend => Cfg.ReleaseVelocityBlend;
+    private float _pullAxisTurnSpeed => Cfg.PullAxisTurnSpeed;
+    private float _visualBlendSpeed => Cfg.VisualBlendSpeed;
+    private float _maxSpeedChangePerSecond => Cfg.MaxSpeedChangePerSecond;
+    private float _pullStallReleaseSeconds => Cfg.PullStallReleaseSeconds;
+    private float _overshootMaxSeconds => Cfg.OvershootMaxSeconds;
+    private float _tensionFalloffFloor => Cfg.TensionFalloffFloor;
+    private float _pullSpeedShort => Cfg.PullSpeedShort;
+    private float _pullFloorFraction => Cfg.PullFloorFraction;
+    private float _pullSpeedChargeSpread => Cfg.PullSpeedChargeSpread;
+    private float _overshootDistanceFactor => Cfg.OvershootDistanceFactor;
+    private float _overshootMinDistance => Cfg.OvershootMinDistance;
+    private float _groundClimbLiftThreshold => Cfg.GroundClimbLiftThreshold;
+    private float _impactSlingshotSpeed => Cfg.ImpactSlingshotSpeed;
+    private float _impactRestitution => Cfg.ImpactRestitution;
+    private float _impactSlingshotFloorPopUp => Cfg.ImpactSlingshotFloorPopUp;
+    private float _impactSlingshotCarryFactor => Cfg.ImpactSlingshotCarryFactor;
+    private float _impactSlingshotMaxSpeed => Cfg.ImpactSlingshotMaxSpeed;
+    private float _impactSlingshotBoostSeconds => Cfg.ImpactSlingshotBoostSeconds;
+    private float _impactSlingshotCooldown => Cfg.ImpactSlingshotCooldown;
+    private float _impactSlingshotMinIntoSpeed => Cfg.ImpactSlingshotMinIntoSpeed;
+    private float _impactSlingshotHardImpactSpeed => Cfg.ImpactSlingshotHardImpactSpeed;
+    private float _obstacleNormalMaxY => Cfg.ObstacleNormalMaxY;
+    private float _floorSlingshotMinIntoSpeed => Cfg.FloorSlingshotMinIntoSpeed;
+    private float _floorSlingshotMinHorizSpeed => Cfg.FloorSlingshotMinHorizSpeed;
+    private float _softGroundPenetrationDepth => Cfg.SoftGroundPenetrationDepth;
+    private float _throwEasePower => Cfg.ThrowEasePower;
+    private float _tensionSoundInterval => Cfg.TensionSoundInterval;
+    private float _traumaRetrieveStart => Cfg.TraumaRetrieveStart;
+    private float _traumaRopeHit => Cfg.TraumaRopeHit;
+    private float _traumaRopeRelease => Cfg.TraumaRopeRelease;
+    private float _traumaImpactSlingshot => Cfg.TraumaImpactSlingshot;
 
     private Rigidbody _rb;
     private ExplorerController _explorer;
@@ -264,6 +213,8 @@ public class WireRopeActionController : MonoBehaviour
 
     private void Awake()
     {
+        Cfg.Validate();   // 起動時 fail-fast: 設定値の不正な組み合わせをここで検出する（DbC）
+
         _rb = GetComponent<Rigidbody>();
         _explorer = GetComponent<ExplorerController>();
         _bodyCapsule = GetComponent<CapsuleCollider>();
@@ -312,11 +263,26 @@ public class WireRopeActionController : MonoBehaviour
         _savedMotorState = false;
     }
 
+    // ── 物理不変条件（DbC: 「静かな失敗」を開発ビルドで顕在化）────────
+    // UNITY_ASSERTIONS 無効（リリース）時は呼び出しごと除去される。
+    [System.Diagnostics.Conditional("UNITY_ASSERTIONS")]
+    private void AssertVelocitySane(Vector3 v, string where)
+    {
+        Contract.Invariant(WireRopePhysics.IsFinite(v), $"WireRope: 速度が NaN/Inf @ {where} (phase={_phase})");
+        Contract.Invariant(v.sqrMagnitude <= MaxSaneSpeed * MaxSaneSpeed,
+            $"WireRope: 速度暴走 {v.magnitude:F1}m/s @ {where} (phase={_phase})");
+    }
+
+    [System.Diagnostics.Conditional("UNITY_ASSERTIONS")]
+    private void AssertFinite(Vector3 v, string where)
+        => Contract.Invariant(WireRopePhysics.IsFinite(v), $"WireRope: 値が NaN/Inf @ {where} (phase={_phase})");
+
     private void SetBodyLinearVelocity(Vector3 velocity)
     {
         if (!CanDriveRigidbody)
             return;
         _rb.linearVelocity = velocity;
+        AssertVelocitySane(_rb.linearVelocity, nameof(SetBodyLinearVelocity));
     }
 
     private void AddBodyLinearVelocity(Vector3 delta)
@@ -324,6 +290,7 @@ public class WireRopeActionController : MonoBehaviour
         if (!CanDriveRigidbody)
             return;
         _rb.linearVelocity += delta;
+        AssertVelocitySane(_rb.linearVelocity, nameof(AddBodyLinearVelocity));
     }
 
     private void SetBodyAngularVelocity(Vector3 velocity)
@@ -331,12 +298,14 @@ public class WireRopeActionController : MonoBehaviour
         if (!CanDriveRigidbody)
             return;
         _rb.angularVelocity = velocity;
+        AssertFinite(_rb.angularVelocity, nameof(SetBodyAngularVelocity));
     }
 
     private void AddBodyForce(Vector3 force, ForceMode mode)
     {
         if (!CanDriveRigidbody)
             return;
+        AssertFinite(force, nameof(AddBodyForce));
         _rb.AddForce(force, mode);
     }
 
@@ -494,10 +463,40 @@ public class WireRopeActionController : MonoBehaviour
             UpdateRetrievePhysics();
     }
 
+    // ── フェーズ遷移（宣言的 FSM）────────────────────────────
+    // 不正な遷移を構造的に禁止する。新しい遷移が必要なときは下表に1行追加するだけ。
+    // 設計は PlayerStateMachine.IsValidTransition と同型。
+    public static bool IsValidWireRopeTransition(WireRopePhase from, WireRopePhase to) => (from, to) switch
+    {
+        (WireRopePhase.Ready,    WireRopePhase.Charging)   => true,
+        (WireRopePhase.Charging, WireRopePhase.Throwing)   => true,
+        (WireRopePhase.Throwing, WireRopePhase.Attached)   => true,
+        (WireRopePhase.Attached, WireRopePhase.Retrieving) => true,
+        // 任意の状態 → Ready は完了 / 中断 / 空振りとして常に合法（ResetToReady の普遍リセット）。
+        (_,                      WireRopePhase.Ready)      => true,
+        _ => false,
+    };
+
+    /// <summary>
+    /// フェーズ遷移を要求する。無効な遷移はエラーログ後に無視される（フェイルファスト）。
+    /// 全ての _phase 書き込みはこのメソッド経由で行う。
+    /// </summary>
+    private void SetPhase(WireRopePhase next)
+    {
+        if (_phase == next) return;
+        if (!IsValidWireRopeTransition(_phase, next))
+        {
+            Contract.TryRequires(false,
+                $"WireRope: 不正なフェーズ遷移 {_phase} → {next} (object: {name})");
+            return;
+        }
+        _phase = next;
+    }
+
     // ── 頭上カウボーイラッソ（水平輪＋手元テザー） ───────────
     private void BeginCharging()
     {
-        _phase = WireRopePhase.Charging;
+        SetPhase(WireRopePhase.Charging);
         _chargeStartTime = Time.time;
         _forceGauge = 0f;
         _spinAngle = 0f;
@@ -558,7 +557,7 @@ public class WireRopeActionController : MonoBehaviour
 
     private IEnumerator ThrowRoutine(Vector3 aimOrigin, Vector3 visualOrigin, Vector3 direction)
     {
-        _phase = WireRopePhase.Throwing;
+        SetPhase(WireRopePhase.Throwing);
         _renderer.SetVisible(true);
         _renderer.SetWidths(_ropeStartWidth, _ropeEndWidth);
 
@@ -592,7 +591,7 @@ public class WireRopeActionController : MonoBehaviour
         if (hit)
         {
             _anchorPoint = targetPoint;
-            _phase = WireRopePhase.Attached;
+            SetPhase(WireRopePhase.Attached);
             _visualSagBlend = _ropeSag * 0.5f;
             UpdateRetrieveRopeVisual();
             GameServices.Audio?.PlaySE(SoundId.GrapplingHit, _anchorPoint);
@@ -680,7 +679,7 @@ public class WireRopeActionController : MonoBehaviour
     // ── 回収（AddForce 慣性・重力残し） ─────────────────────
     private void BeginRetrieve()
     {
-        _phase = WireRopePhase.Retrieving;
+        SetPhase(WireRopePhase.Retrieving);
         _retrieveTimer = 0f;
         _ropeReleased = false;
         _retrieveTensionBlend = 0f;
@@ -940,21 +939,9 @@ public class WireRopeActionController : MonoBehaviour
         return ClampPullElevation(toAnchor.normalized);
     }
 
-    private Vector3 ClampPullElevation(Vector3 dir)
+    /// <summary>仰角クランプの上限[°]。アンカー幾何（高さ）に依存するためインスタンス側で計算。</summary>
+    private float ComputeClampMaxElevationDeg()
     {
-        if (dir.sqrMagnitude < 0.0001f)
-            return GetFlatForward();
-
-        dir.Normalize();
-        Vector3 flat = Flatten(dir);
-        if (flat.sqrMagnitude < 0.0001f)
-        {
-            flat = Flatten(_retrieveRunDirectionXZ);
-            if (flat.sqrMagnitude < 0.0001f)
-                flat = GetFlatForward();
-        }
-
-        flat.Normalize();
         float maxDeg = _maxPullElevationDeg;
         if (!IsGroundAnchor() || ShouldUseRaisedGroundPull())
         {
@@ -962,11 +949,11 @@ public class WireRopeActionController : MonoBehaviour
             maxDeg = Mathf.Lerp(_maxPullElevationDeg, _maxPullElevationDegWallUp,
                 Mathf.Clamp01(Mathf.InverseLerp(1.5f, 14f, anchorAbove)));
         }
-
-        float maxUp = Mathf.Tan(maxDeg * Mathf.Deg2Rad);
-        float up = Mathf.Clamp(dir.y, -maxUp * 0.25f, maxUp);
-        return new Vector3(flat.x, up, flat.z).normalized;
+        return maxDeg;
     }
+
+    private Vector3 ClampPullElevation(Vector3 dir)
+        => WireRopePhysics.ClampElevation(dir, ComputeClampMaxElevationDeg(), _retrieveRunDirectionXZ, GetFlatForward());
 
     /// <summary>ロープがどれだけ「伸びている」か 0〜1（弾性張力用）。</summary>
     private float GetRopeStretch01()
@@ -1614,44 +1601,10 @@ public class WireRopeActionController : MonoBehaviour
     }
 
     private Vector3 ComputeImpactLaunchVelocity(Vector3 incomingVel, Vector3 surfaceNormal)
-    {
-        Vector3 alongRope = GetPhysicsPullDirection();
-        Vector3 launchDir = alongRope;
-
-        if (incomingVel.sqrMagnitude > 0.25f && surfaceNormal.sqrMagnitude > 0.01f)
-        {
-            Vector3 reflected = Vector3.Reflect(incomingVel, surfaceNormal.normalized);
-            if (reflected.sqrMagnitude > 0.01f)
-                launchDir = Vector3.Slerp(alongRope, reflected.normalized, 0.4f).normalized;
-        }
-
-        if (surfaceNormal.y >= GroundNormalThreshold)
-        {
-            launchDir = Flatten(launchDir);
-            if (launchDir.sqrMagnitude < 0.01f)
-                launchDir = Flatten(alongRope);
-            if (launchDir.sqrMagnitude < 0.01f)
-                launchDir = GetFlatForward();
-
-            launchDir = launchDir.normalized;
-            if (incomingVel.y < -2f)
-                launchDir = (launchDir + Vector3.up * 0.2f).normalized;
-        }
-        else
-        {
-            launchDir = ClampPullElevation(launchDir);
-        }
-
-        float carry = incomingVel.magnitude * _impactSlingshotCarryFactor;
-        float launchSpeed = Mathf.Max(_impactSlingshotSpeed, carry + _impactSlingshotSpeed * 0.5f);
-        launchSpeed *= _impactRestitution * Mathf.Lerp(1f, 1.06f, _retrieveChargeFactor - 1f);
-        Vector3 result = launchDir * launchSpeed;
-
-        if (surfaceNormal.y >= GroundNormalThreshold && incomingVel.y < -3f)
-            result += Vector3.up * _impactSlingshotFloorPopUp;
-
-        return ClampPullElevation(result.normalized) * result.magnitude;
-    }
+        => WireRopePhysics.ComputeImpactLaunch(
+            GetPhysicsPullDirection(), incomingVel, surfaceNormal,
+            ComputeClampMaxElevationDeg(), _retrieveRunDirectionXZ, GetFlatForward(),
+            _retrieveChargeFactor, Cfg);
 
     private float GetRetrieveMomentumSpeed(Vector3 vel)
     {
@@ -1748,66 +1701,15 @@ public class WireRopeActionController : MonoBehaviour
         return false;
     }
 
+    // スリングショット接触判定は純関数 WireRopePhysics へ委譲（テスト可能・薄いラッパ）。
     private bool ShouldTriggerSlingshotFromContact(Vector3 normal, Vector3 approachVelocity)
-    {
-        if (normal.sqrMagnitude > 0.01f)
-            normal.Normalize();
-
-        if (IsGroundAnchor() && normal.y >= GroundNormalThreshold)
-            return false;
-
-        if (IsObstacleContactNormal(normal, approachVelocity))
-            return true;
-
-        return IsFloorSlingshotContact(normal, approachVelocity);
-    }
+        => WireRopePhysics.ShouldTriggerSlingshot(normal, approachVelocity, IsGroundAnchor(), Cfg);
 
     private bool IsFloorSlingshotContact(Vector3 normal, Vector3 approachVelocity)
-    {
-        if (normal.sqrMagnitude < 0.01f)
-            return false;
-
-        normal.Normalize();
-        if (normal.y < GroundNormalThreshold)
-            return false;
-
-        float into = SurfaceApproachSpeed(normal, approachVelocity);
-        if (into >= _floorSlingshotMinIntoSpeed)
-            return true;
-
-        if (IsGroundAnchor())
-            return false;
-
-        return Flatten(approachVelocity).magnitude >= _floorSlingshotMinHorizSpeed;
-    }
+        => WireRopePhysics.IsFloorSlingshotContact(normal, approachVelocity, IsGroundAnchor(), Cfg);
 
     private bool IsObstacleContactNormal(Vector3 normal, Vector3 approachVelocity)
-    {
-        if (normal.sqrMagnitude < 0.01f)
-            return false;
-
-        normal.Normalize();
-        float into = SurfaceApproachSpeed(normal, approachVelocity);
-        if (normal.y < _obstacleNormalMaxY)
-            return into >= _impactSlingshotMinIntoSpeed;
-
-        if (into >= _impactSlingshotHardImpactSpeed)
-            return true;
-
-        if (normal.y < 0.72f && into >= _impactSlingshotMinIntoSpeed)
-            return true;
-
-        return false;
-    }
-
-    private static float SurfaceApproachSpeed(Vector3 normal, Vector3 velocity)
-    {
-        if (normal.sqrMagnitude < 0.01f)
-            return 0f;
-
-        normal.Normalize();
-        return Mathf.Max(0f, -Vector3.Dot(velocity, normal));
-    }
+        => WireRopePhysics.IsObstacleContactNormal(normal, approachVelocity, Cfg);
 
     private bool HasMoveInput()
     {
@@ -2148,7 +2050,7 @@ public class WireRopeActionController : MonoBehaviour
 
     private void ResetToReady()
     {
-        _phase = WireRopePhase.Ready;
+        SetPhase(WireRopePhase.Ready);
         _forceGauge = 0f;
         _retrieveTimer = 0f;
         _ropeReleased = false;

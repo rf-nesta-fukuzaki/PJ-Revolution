@@ -25,6 +25,7 @@ namespace Sandbox.World.Generation.Base
         private static readonly int IdProfileParams  = Shader.PropertyToID("_ProfileParams");
         private static readonly int IdMicroParams    = Shader.PropertyToID("_MicroParams");
         private static readonly int IdMountainParams = Shader.PropertyToID("_MountainParams");
+        private static readonly int IdOceanParams    = Shader.PropertyToID("_OceanParams");
 
         private readonly ComputeShader _shader;
         private readonly RidgedMFParams _params;
@@ -86,6 +87,13 @@ namespace Sandbox.World.Generation.Base
             cmd.SetComputeVectorParam(_shader, IdMountainParams,
                 new Vector4(_params.mountainCenter.x, _params.mountainCenter.y,
                             Mathf.Max(1f, _params.mountainRadius), _params.mountainFalloff));
+
+            // 島/海底: x=有効(0/1), y=海底深さ[m], z=海岸からの沈降距離[m], w=海岸レリーフ減衰(0..1)
+            cmd.SetComputeVectorParam(_shader, IdOceanParams,
+                new Vector4(_params.islandMode ? 1f : 0f,
+                            Mathf.Max(0f, _params.seabedDepth),
+                            Mathf.Max(1f, _params.seabedFalloffDistance),
+                            Mathf.Clamp01(_params.shoreFlatten)));
 
             // Domain warp amplitude: apron 0.3 制約 (Step 2)
             float warpAmpMax = ctx.Apron * ctx.CellSize * 0.3f;

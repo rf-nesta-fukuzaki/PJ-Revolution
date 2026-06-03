@@ -170,6 +170,9 @@ namespace Sandbox.World.Integration
         private readonly Dictionary<int, AgentTrack> _tracks = new Dictionary<int, AgentTrack>();
         private bool _padBuilt;
         private bool _fogTuned;
+        // 標高バンドを最後に適用したときの観測山頂[m]。-1=未適用。山頂が後から伸びる（遠い
+        // 高所チャンクが後着でベイク）たびに再適用するため、一度きりではなくこの値で差分判定する。
+        private float _lastBandSummitY = -1f;
         private bool _mountainSoftened;
         private bool _legacyClimbPlaceholdersRemoved;
         private bool _fogCamLinked;
@@ -291,6 +294,7 @@ namespace Sandbox.World.Integration
             DistributeClimbCourse();   // 山頂ベイク確定後、登攀コースを手続き山へ標高順に再配置（一度成功で固定）
             PlaceZiplineCheckpoints(); // 登攀コース確定後、ルート沿いにジップライン用チェックポイントを設置（一度成功で固定）
             PublishAltitudeProfile();  // 実山高(基地→山頂)を MountainProfile へ公開（天候/凍傷/高山病/高度計が連動）
+            TuneElevationBands();      // 観測山頂が確定したら地形の標高バンド(草/岩/雪線)を実山高へ比例追従（一度成功で固定）
 
             if (!_initialDone)
             {
@@ -765,6 +769,30 @@ namespace Sandbox.World.Integration
             int h = 17;
             foreach (var c in s) h = unchecked(h * 31 + c);
             return h & 0x7FFFFFFF;
+        }
+
+        /// <summary>
+        /// 地形の標高バンド（草地/岩肌/冠雪線）を、観測された実山高へ比例追従させる。
+        /// バンドは元々「山頂 ~485m」前提の固定メートルで tuning されていたため、島リスケールで
+        /// 山頂が高くなると中腹〜上部がほぼ雪・岩に潰れ「白い山」に見えていた。MountainProfile が
+        /// 実測山頂を得たら（IsReady）、海面0→山頂の割合で grass/rock/snow 線を置き直し、
+        /// どの手続き山高でも tiered な配色（緑の裾野→灰の岩→冠雪）を保つ。一度成功で固定。
+        /// </summary>
+        private void TuneElevationBands()
+        {
+            if (!MountainProfile.IsReady) return; // 実測山頂が確定するまで待つ（既定の絶対バンドのまま）
+            float summitY = MountainProfile.SummitY;
+            // 遠い高所チャンクは後着でベイクされ GlobalMaxY＝山頂が徐々に伸びる。最初の IsReady で
+            // 一度だけ固定すると、暫定の低い山頂(例:561m)で雪/岩線が決まり、最終山頂(例:867m)では
+            // 雪が下がりすぎる。山頂が一定以上伸びるたびに再適用して tiered 配色を最終山高へ収束させる。
+            if (_lastBandSummitY > 0f && summitY - _lastBandSummitY < 15f) return;
+            var atmos = GetComponent<AtmosphericProfileController>();
+            if (atmos == null) atmos = FindFirstObjectByType<AtmosphericProfileController>();
+            if (atmos == null) return;
+            // バンドの基準は「海面(0)→山頂」。裾野の緑/岩/雪が海抜割合で並ぶようにする。
+            atmos.ApplyBandsForElevation(0f, summitY);
+            _lastBandSummitY = summitY;
+            Debug.Log($"[CombinedTerrainConformer] 標高バンドを実山高へ追従: summitY={summitY:F0}m");
         }
 
         private void TuneFog()

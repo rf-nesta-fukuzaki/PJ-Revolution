@@ -438,7 +438,7 @@ MonoBehaviour:
   fogEndOverride: 6000
   fogStartHigh: 500
   fogEndHigh: 4500
-  fogAltitudeForFullClear: 480
+  fogAltitudeForFullClear: 720
   fogLowOverride: {r: 0.56, g: 0.69, b: 0.86, a: 1}
   fogHighOverride: {r: 0.5, g: 0.66, b: 0.92, a: 1}
   resolveDuplicateCameras: 1
@@ -446,6 +446,7 @@ MonoBehaviour:
   enablePostProcessing: 1
   distributeClimbCourse: 1
   distributeRelics: 1
+  disableSpawnPointRelicSupply: 1
   distributeShrines: 1
   climbDistributeMinChunks: 16
   climbSummitStableSeconds: 1.5
@@ -454,6 +455,15 @@ MonoBehaviour:
   climbLateralSpread: 24
   climbAlongSpread: 18
   climbLift: 0.5
+  placeZiplineCheckpoints: 1
+  ziplineCheckpointZones: 02000000030000000400000005000000
+  ziplineCheckpointFractions:
+  - 0.34
+  - 0.58
+  - 0.82
+  ziplineCheckpointRadius: 5
+  checkpointClearRadius: 7
+  ziplineCheckpointLateralSpread: 26
   containerNames:
   - Basecamp
   - Mountain
@@ -12451,8 +12461,10 @@ Material:
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: Opaque
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -12549,7 +12561,7 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.9, g: 0.9, b: 0.95, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 0.9, g: 0.9, b: 0.95, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
   m_BuildTextureStacks: []
@@ -29287,14 +29299,10 @@ MonoBehaviour:
   _timerLabel: {fileID: 481279348}
   _checkpointLabel: {fileID: 973131435}
   _staminaBar: {fileID: 1134460910}
-  _staminaFill: {fileID: 2031095546}
-  _staminaFullColor: {r: 0, g: 1, b: 0, a: 1}
-  _staminaLowColor: {r: 1, g: 0, b: 0, a: 1}
-  _useCenterStaminaRing: 1
-  _staminaRing: {fileID: 0}
-  _ringFullColor: {r: 0.56, g: 0.82, b: 0.46, a: 0.92}
-  _ringLowColor: {r: 0.94, g: 0.44, b: 0.3, a: 0.98}
-  _ringOutlineColor: {r: 0, g: 0, b: 0, a: 0.85}
+  _healthFullColor: {r: 0.42, g: 0.84, b: 0.4, a: 1}
+  _healthLowColor: {r: 0.93, g: 0.27, b: 0.24, a: 1}
+  _staminaBarFullColor: {r: 0.98, g: 0.8, b: 0.32, a: 1}
+  _staminaBarLowColor: {r: 0.95, g: 0.45, b: 0.22, a: 1}
   _ropeIndicator: {fileID: 1968964160}
   _ropeLabel: {fileID: 0}
   _ropeConnectedColor: {r: 1, g: 0.5, b: 0, a: 1}
@@ -29304,7 +29312,9 @@ MonoBehaviour:
   _warningLabel: {fileID: 605576019}
   _warningDisplayTime: 3
   _localPlayerStamina: {fileID: 0}
+  _localPlayerHealth: {fileID: 0}
   _hudCanvasGroup: {fileID: 0}
+  _hudSortingOrder: 100
 --- !u!21 &2091085188
 Material:
   serializedVersion: 8
