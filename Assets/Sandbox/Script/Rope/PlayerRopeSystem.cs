@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System;
 using UnityEngine;
 using PeakPlunder.Audio;
 
@@ -29,7 +29,9 @@ public class PlayerRopeSystem : MonoBehaviour
     private float WindStrength      => _config != null ? _config.WindStrength     : 0.04f;
     private int   ConstraintIter    => _config != null ? _config.ConstraintIter   : CONSTRAINT_ITERATIONS;
     private float MaxRopeLength     => _config != null ? _config.MaxRopeLength    : 20f;
-    private float BreakForce        => _config != null ? _config.BreakForce       : 800f;
+    private float BreakForce        => _breakForceOverride > 0f
+        ? _breakForceOverride
+        : (_config != null ? _config.BreakForce : 800f);
     private float TensionForceScale => _config != null ? _config.TensionForceScale: 300f;
 
     [Header("プレイヤー参照")]
@@ -45,10 +47,14 @@ public class PlayerRopeSystem : MonoBehaviour
     private bool         _isConnected;
     private float        _currentLength;
     private float        _windPhase;
+    private float        _breakForceOverride = -1f;
     // GDD §15.2 — 張力警告 SE を高張力エッジで一度だけ鳴らすためのヒステリシス
     private bool         _wasUnderTensionWarning;
+    private ItemBase     _durabilitySource;
+    private const float  WALL_SCRAPE_RAY_DIST = 0.3f;
 
     public bool IsConnected => _isConnected;
+    public event Action<bool> OnDisconnected;
 
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
@@ -59,6 +65,9 @@ public class PlayerRopeSystem : MonoBehaviour
 
     private void InitNodes()
     {
+        if (_lineRenderer == null)
+            _lineRenderer = GetComponent<LineRenderer>();
+
         int n = NodeCount;
         _positions     = new Vector3[n];
         _prevPositions = new Vector3[n];
@@ -74,18 +83,24 @@ public class PlayerRopeSystem : MonoBehaviour
         _lineRenderer.positionCount = n;
     }
 
+    public void SetDurabilitySource(ItemBase item) => _durabilitySource = item;
+
     // ── 接続 API ─────────────────────────────────────────────
     /// <summary>2人のプレイヤーを繋ぐ。</summary>
-    public void Connect(Rigidbody playerA, Rigidbody playerB, float ropeLength = -1)
+    public void Connect(Rigidbody playerA, Rigidbody playerB, float ropeLength = -1, float breakForce = -1f)
     {
         if (!Contract.TryRequires(playerA != null, "PlayerRopeSystem.Connect: playerA が null です")) return;
         if (!Contract.TryRequires(playerB != null, "PlayerRopeSystem.Connect: playerB が null です")) return;
         if (!Contract.TryRequires(playerA != playerB, "PlayerRopeSystem.Connect: 同一 Rigidbody への接続は不可です")) return;
 
+        if (_positions == null || _positions.Length == 0)
+            InitNodes();
+
         _playerA   = playerA;
         _playerB   = playerB;
         _isConnected = true;
         _currentLength = ropeLength > 0f ? ropeLength : MaxRopeLength;
+        _breakForceOverride = breakForce;
 
         Contract.Invariant(_currentLength > 0f, "Connect 後の _currentLength は正の値でなければならない");
 
@@ -116,8 +131,11 @@ public class PlayerRopeSystem : MonoBehaviour
         _isConnected = false;
         _playerA     = null;
         _playerB     = null;
+        _breakForceOverride = -1f;
+        _durabilitySource   = null;
         _lineRenderer.enabled = false;
         _wasUnderTensionWarning = false;
+        OnDisconnected?.Invoke(broken);
         Debug.Log(broken ? "[PlayerRope] ロープ切断（張力超過）！" : "[PlayerRope] ロープ切断！");
     }
 
@@ -140,6 +158,7 @@ public class PlayerRopeSystem : MonoBehaviour
         SimulateRope();
         SolveConstraints();
         ApplyPlayerForces();
+        ApplyWallScrapeDurability();
         UpdateLineRenderer();
         CheckBreak();
     }
@@ -245,6 +264,32 @@ public class PlayerRopeSystem : MonoBehaviour
             Debug.Log("[PlayerRope] 過負荷でロープ切断！");
             DisconnectInternal(broken: true);
         }
+    }
+
+    private void ApplyWallScrapeDurability()
+    {
+        if (_durabilitySource == null || _durabilitySource.IsBroken) return;
+
+        int   n     = _positions.Length;
+        float drain = 0f;
+
+        for (int i = 1; i < n - 1; i++)
+        {
+            Vector3 vel = (_positions[i] - _prevPositions[i]) / Mathf.Max(Time.fixedDeltaTime, 0.001f);
+            if (vel.sqrMagnitude < 0.25f) continue;
+
+            if (!Physics.Raycast(_positions[i], vel.normalized, out var hit, WALL_SCRAPE_RAY_DIST))
+                continue;
+
+            if (hit.rigidbody != null && (hit.rigidbody == _playerA || hit.rigidbody == _playerB))
+                continue;
+
+            float contactForce = vel.magnitude * 40f;
+            drain += (contactForce / ShopRopeConstants.WallScrapeForceDivisor) * Time.fixedDeltaTime;
+        }
+
+        if (drain > 0f)
+            _durabilitySource.ConsumeDurability(drain);
     }
 
     private void UpdateLineRenderer()

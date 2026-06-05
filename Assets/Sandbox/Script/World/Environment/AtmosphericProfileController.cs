@@ -52,17 +52,22 @@ namespace Sandbox.World.Environment
         // やや黄緑寄り・彩度控えめの自然な高山草地へ（スタイライズドの鮮やかさは残しつつ毒々しさを除く）。
         [SerializeField] private Color colGrass = new Color(0.34f, 0.52f, 0.22f, 1f); // 自然な高山草地
         [SerializeField] private Color colRock  = new Color(0.48f, 0.47f, 0.43f, 1f); // 寒色グレーの岩肌
-        [SerializeField] private Color colSnow  = new Color(0.97f, 0.98f, 1.00f, 1f); // 雪白
+        // 純白 (0.97,0.98,1.0) を強いキーライトで照らすと輝度が 1.0 を大きく超え、細い冠雪が
+        // ブルームで発光する『幽霊シャード』になる。アルベドを僅かに落として立体的な雪に（陰影が残る）。
+        [SerializeField] private Color colSnow  = new Color(0.88f, 0.91f, 0.97f, 1f); // 雪白（やや減光）
 
         // ───── Fog ─────
         [Header("URP Fog")]
         [SerializeField] private bool enableFog = true;
         [SerializeField] private FogMode fogMode = FogMode.Linear;
-        [SerializeField] private float fogStart = 320f;
-        [SerializeField] private float fogEnd = 2800f;
-        [SerializeField] private Color fogColorLow  = new Color(0.76f, 0.81f, 0.89f, 1f);
-        [SerializeField] private Color fogColorHigh = new Color(0.58f, 0.71f, 0.91f, 1f);
-        [SerializeField] private Color fogColorDusk = new Color(0.78f, 0.62f, 0.52f, 1f);
+        // 空気遠近（aerial perspective）を効かせて山岳のスケール感を出す。距離を近めに引き、
+        // 遠景の尾根が大気色へ層状に溶ける（AAA オープンワールドの奥行き表現）。combined では
+        // CombinedTerrainConformer.OverrideFogAltitudeAware が高度連動値で上書きする。
+        [SerializeField] private float fogStart = 280f;
+        [SerializeField] private float fogEnd = 2200f;
+        [SerializeField] private Color fogColorLow  = new Color(0.70f, 0.78f, 0.88f, 1f);
+        [SerializeField] private Color fogColorHigh = new Color(0.64f, 0.74f, 0.90f, 1f);
+        [SerializeField] private Color fogColorDusk = new Color(0.82f, 0.60f, 0.46f, 1f);
         [SerializeField] private float fogAltitudeMax = 120f;
 
         // ───── Sun（時刻別キーカラー） ─────
@@ -74,25 +79,31 @@ namespace Sandbox.World.Environment
         [SerializeField] private Color sunDusk    = new Color(1.00f, 0.70f, 0.45f, 1f); // 0.75
         [SerializeField] private Color sunNight   = new Color(0.20f, 0.25f, 0.40f, 1f); // 1.00
         [SerializeField] private Vector3 sunEulerDawn    = new Vector3(  2f, 30f, 0f);
-        [SerializeField] private Vector3 sunEulerMorning = new Vector3( 30f, 30f, 0f);
-        [SerializeField] private Vector3 sunEulerNoon    = new Vector3( 75f, 30f, 0f);
+        [SerializeField] private Vector3 sunEulerMorning = new Vector3( 34f, 35f, 0f);
+        // 正午のピッチを 75°(ほぼ真上=平面的) から 54° のレイキングに下げ、稜線に長い陰影を落とす。
+        // DayNightCycle の往復帯(0.30〜0.62)が常にこのレイキング光に収まり、山が立体的に読める。
+        [SerializeField] private Vector3 sunEulerNoon    = new Vector3( 54f, 38f, 0f);
         [SerializeField] private Vector3 sunEulerDusk    = new Vector3( 30f,210f, 0f);
         [SerializeField] private Vector3 sunEulerNight   = new Vector3(  2f,210f, 0f);
         [Range(0f, 1f)] [SerializeField] private float timeOfDay = 0.40f; // 0=夜明け 0.5=正午 1=夜
-        [SerializeField] private float sunIntensityDay = 1.20f;
+        [SerializeField] private float sunIntensityDay = 1.32f;
         [SerializeField] private float sunIntensityNight = 0.05f;
         [Tooltip("やわらかいスタイライズド影。ハード影 + strength=1 だと明るい基地台座に真っ黒な紺色の塊が出る。")]
         [SerializeField] private bool softShadows = true;
-        [Tooltip("影の濃さ。1.0 は黒すぎるため 0.6 前後でやわらかい陰影にする。")]
-        [Range(0f, 1f)] [SerializeField] private float shadowStrength = 0.6f;
+        [Tooltip("影の濃さ。稜線の立体感を強めるため 0.75 へ（やわらか影なので黒潰れしない）。")]
+        [Range(0f, 1f)] [SerializeField] private float shadowStrength = 0.75f;
 
         // ───── Ambient ─────
         [Header("Ambient")]
         // 旧 0.88 は青いフィルライトが強すぎて陰影が消え一様にくすんでいた。
         // 0.60 に下げて主光源（太陽）でコントラストと彩度を出す。
-        [SerializeField] private Color ambientColorDay   = new Color(0.50f, 0.55f, 0.63f, 1f);
+        [SerializeField] private Color ambientColorDay   = new Color(0.52f, 0.57f, 0.66f, 1f);
         [SerializeField] private Color ambientColorNight = new Color(0.10f, 0.12f, 0.20f, 1f);
-        [SerializeField] private float ambientIntensity = 0.60f;
+        [SerializeField] private float ambientIntensity = 0.58f;
+        // 自然なアルパインのバウンス: 空光は冷たい青、地面反射は暖色（岩肌の照り返し）。
+        // 一様な単色アンビエントよりオブジェクトの接地感と立体感が増す。
+        [SerializeField] private Color ambientSkyTint    = new Color(0.90f, 0.98f, 1.14f, 1f);
+        [SerializeField] private Color ambientGroundTint = new Color(1.18f, 1.00f, 0.74f, 1f);
 
         // ───── Reflection（環境鏡面の時刻追従） ─────
         [Header("Reflection")]
@@ -330,9 +341,11 @@ namespace Sandbox.World.Environment
             var ambient = Color.Lerp(ambientColorDay, ambientColorNight, nightT) * ambientIntensity;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
             RenderSettings.ambientLight = ambient;
-            RenderSettings.ambientSkyColor = ambient * 1.1f;
+            // 空＝冷色、地面＝暖色の三色アンビエントで接地感を出す（夜は tint を弱める）。
+            float dayW = 1f - nightT * 0.7f;
+            RenderSettings.ambientSkyColor     = ambient * Color.Lerp(Color.white, ambientSkyTint,    dayW) * 1.12f;
             RenderSettings.ambientEquatorColor = ambient;
-            RenderSettings.ambientGroundColor = ambient * 0.6f;
+            RenderSettings.ambientGroundColor  = ambient * Color.Lerp(Color.white, ambientGroundTint, dayW) * 0.62f;
         }
 
         private void ApplySkyGlobals()

@@ -175,7 +175,8 @@ public class ClimbingController : MonoBehaviour
 
         if (_stamina != null)
         {
-            _stamina.Consume(_currentGrabPoint.StaminaDrain * Time.fixedDeltaTime, isExertion: true);
+            float drain = _currentGrabPoint.StaminaDrain * GetSecureBeltClimbStaminaMultiplier();
+            _stamina.Consume(drain * Time.fixedDeltaTime, isExertion: true);
             if (_stamina.IsEmpty)
             {
                 ReleaseGrab();
@@ -208,6 +209,20 @@ public class ClimbingController : MonoBehaviour
         if (_inventory == null) return false;
         var axe = _inventory.GetItem(IceAxeItem.ItemNameKey) as IceAxeItem;
         return axe != null && axe.TryUse();
+    }
+
+    /// <summary>GDD §8.3 — 固定ベルトで遺物を背中固定中は登攀スタミナ +50%。</summary>
+    private float GetSecureBeltClimbStaminaMultiplier()
+    {
+        if (_inventory == null) return 1f;
+
+        foreach (var item in _inventory.Items)
+        {
+            if (item is SecureBeltItem belt && belt.IsStrapped)
+                return 1.5f;
+        }
+
+        return 1f;
     }
 
     private void OnDrawGizmosSelected()

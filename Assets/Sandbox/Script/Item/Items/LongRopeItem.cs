@@ -1,18 +1,27 @@
 using UnityEngine;
+using PeakPlunder.Audio;
 
 /// <summary>
-/// GDD §5.2 — アイテム「ロングロープ（25m）」
-/// 広範囲連結。チームの展開幅が広がる。
-/// コスト 10pt / 重量 2 / スロット 2 / 耐久 70
+/// GDD §5.2 / §4.6 / §5.1 — アイテム「ロングロープ（25m）」
 /// </summary>
-public class LongRopeItem : ItemBase
+public class LongRopeItem : ItemBase, IShopRopeItem
 {
+    public const float RelicAttachRange = 2f;
+
     [Header("ロープ設定")]
     [SerializeField] private float _ropeLength = 25f;
 
-    private int  _connectedPlayerIdA = -1;
-    private int  _connectedPlayerIdB = -1;
-    private bool _isConnected;
+    private int       _connectedPlayerIdA = -1;
+    private int       _connectedPlayerIdB = -1;
+    private RelicBase _connectedRelic;
+    private bool      _isConnected;
+    private bool      _isRelicMode;
+
+    public bool IsConnected  => _isConnected;
+    public bool IsRelicMode  => _isRelicMode;
+    public float RopeLength  => _ropeLength;
+    public float BreakForce  => ShopRopeConstants.LongRopeBreakForce;
+    public RelicBase ConnectedRelic => _connectedRelic;
 
     protected override void Awake()
     {
@@ -26,35 +35,171 @@ public class LongRopeItem : ItemBase
         _impactDmgScale    = 0.5f;
     }
 
-    /// <summary>2人のプレイヤーをロープで繋ぐ。</summary>
-    public bool TryConnect(int playerIdA, int playerIdB)
+    public bool TryConnectToPlayer(int playerIdA, int playerIdB)
     {
         if (_isBroken || _isConnected) return false;
 
-        bool ok = GameServices.Ropes != null &&
-                  GameServices.Ropes.ConnectRope(playerIdA, playerIdB, _ropeLength);
+        var bridge = FindOwnerBridge();
+        if (bridge != null)
+            return bridge.RequestConnectToPlayer(this, playerIdA, playerIdB, _ropeLength, BreakForce);
 
-        if (ok)
-        {
-            _isConnected        = true;
-            _connectedPlayerIdA = playerIdA;
-            _connectedPlayerIdB = playerIdB;
-            Debug.Log($"[LongRope] プレイヤー {playerIdA} と {playerIdB} を {_ropeLength}m で接続");
-        }
-        return ok;
+        return ApplyConnectLocal(playerIdA, playerIdB);
     }
 
-    /// <summary>ロープを切断する。</summary>
+    public bool TryAttachToRelic(RelicBase relic, int playerId, Vector3 fromPosition)
+    {
+        if (_isBroken || _isConnected || relic == null) return false;
+
+        var bridge = FindOwnerBridge();
+        if (bridge != null)
+            return bridge.RequestAttachToRelic(this, relic, _ropeLength, fromPosition);
+
+        return TryAttachToRelicLocal(relic, playerId, fromPosition, _ropeLength, BreakForce);
+    }
+
+    public bool TryConnectToAnchor(Transform anchor, int playerId, Vector3 fromPosition)
+    {
+        if (_isBroken || _isConnected || anchor == null) return false;
+        if (Vector3.Distance(fromPosition, anchor.position) > ShopRopeConstants.AnchorConnectRange)
+            return false;
+
+        bool ok = GameServices.Ropes != null &&
+                  GameServices.Ropes.ConnectPlayerToAnchor(playerId, anchor, _ropeLength, BreakForce, this);
+
+        if (!ok) return false;
+
+        _isConnected        = true;
+        _isRelicMode        = false;
+        _connectedPlayerIdA = playerId;
+        _connectedPlayerIdB = -1;
+        Debug.Log($"[LongRope] アンカー {anchor.name} に固定");
+        return true;
+    }
+
+    private bool ApplyConnectLocal(int playerIdA, int playerIdB)
+    {
+        bool ok = GameServices.Ropes != null &&
+                  GameServices.Ropes.ConnectRope(playerIdA, playerIdB, _ropeLength, BreakForce, this);
+
+        if (!ok) return false;
+
+        ApplyPlayerConnectState(playerIdA, playerIdB);
+        return true;
+    }
+
+    public bool TryAttachToRelicLocal(
+        RelicBase relic,
+        int playerId,
+        Vector3 fromPosition,
+        float length,
+        float breakForce)
+    {
+        if (_isBroken || _isConnected || relic == null) return false;
+
+        var grab = relic.GetComponent<RelicGrabPoint>();
+        if (grab != null && !grab.IsWithinAttachRange(fromPosition))
+            return false;
+        if (grab == null && Vector3.Distance(fromPosition, relic.transform.position) > RelicAttachRange)
+            return false;
+
+        var carrier = relic.GetComponent<RelicCarrier>();
+        if (carrier != null && carrier.IsBeingCarried)
+            return false;
+
+        var relicRb = relic.GetComponent<Rigidbody>();
+        if (relicRb == null) return false;
+
+        if (relicRb.isKinematic)
+            relicRb.isKinematic = false;
+
+        bool ok = GameServices.Ropes != null &&
+                  GameServices.Ropes.ConnectPlayerToRelic(playerId, relicRb, length, breakForce, this);
+
+        if (!ok) return false;
+
+        ApplyRelicAttachState(relic, playerId);
+        GameServices.Audio?.PlaySE(SoundId.RopeConnect, relic.transform.position);
+        Debug.Log($"[LongRope] 遺物 {relic.RelicName} に括り付け");
+        return true;
+    }
+
+    public void ApplyPlayerConnectState(int playerIdA, int playerIdB)
+    {
+        _isConnected        = true;
+        _isRelicMode        = false;
+        _connectedPlayerIdA = playerIdA;
+        _connectedPlayerIdB = playerIdB;
+        _connectedRelic     = null;
+        Debug.Log($"[LongRope] プレイヤー {playerIdA} と {playerIdB} を {_ropeLength}m で接続");
+    }
+
+    public void ApplyRelicAttachState(RelicBase relic, int playerId)
+    {
+        _isConnected        = true;
+        _isRelicMode        = true;
+        _connectedPlayerIdA = playerId;
+        _connectedPlayerIdB = -1;
+        _connectedRelic     = relic;
+    }
+
     public void CutRope()
     {
         if (!_isConnected) return;
 
-        GameServices.Ropes?.DisconnectRope(_connectedPlayerIdA, _connectedPlayerIdB);
-        _isConnected = false;
+        var bridge = FindOwnerBridge();
+        if (bridge != null)
+        {
+            bridge.RequestDisconnectShopRope(this);
+            return;
+        }
+
+        DisconnectLocal();
+    }
+
+    public void CutRopeLocalOnly()
+    {
+        if (!_isConnected) return;
+        DisconnectLocal();
+    }
+
+    private void DisconnectLocal()
+    {
+        if (_isRelicMode)
+            GameServices.Ropes?.DisconnectPlayerRelic(_connectedPlayerIdA);
+        else if (_connectedPlayerIdB >= 0)
+            GameServices.Ropes?.DisconnectRope(_connectedPlayerIdA, _connectedPlayerIdB);
+        else
+            GameServices.Ropes?.DisconnectPlayerAnchor(_connectedPlayerIdA);
+
+        ResetConnectionState();
         Debug.Log("[LongRope] ロープを切断");
     }
 
-    protected override float GetUseDurabilityDrain() => 2f;
+    private void ResetConnectionState()
+    {
+        _isConnected        = false;
+        _isRelicMode        = false;
+        _connectedRelic     = null;
+        _connectedPlayerIdA = -1;
+        _connectedPlayerIdB = -1;
+    }
+
+    private PlayerShopRopeNetworkBridge FindOwnerBridge()
+    {
+        var inv = GetComponentInParent<PlayerInventory>();
+        if (inv != null)
+            return inv.GetComponent<PlayerShopRopeNetworkBridge>();
+
+        foreach (var registered in PlayerInventory.RegisteredInventories)
+        {
+            if (registered != null && registered.HandItem == this)
+                return registered.GetComponent<PlayerShopRopeNetworkBridge>();
+        }
+
+        return null;
+    }
+
+    protected override float GetUseDurabilityDrain() => 0f;
 
     protected override void OnItemBroken()
     {

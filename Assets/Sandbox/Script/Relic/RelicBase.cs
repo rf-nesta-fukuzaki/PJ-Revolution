@@ -3,6 +3,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using PeakPlunder.Audio;
 
+public enum RelicSizeCategory
+{
+    Small,
+    Medium,
+    Large
+}
+
 /// <summary>
 /// GDD §6.1 — 全遺物の基底クラス。
 /// 耐久: <see cref="RelicDurabilityModel"/> / ビジュアル: <see cref="RelicVisualizer"/>
@@ -70,6 +77,11 @@ public abstract class RelicBase : MonoBehaviour
 
     public int CurrentValue => Mathf.RoundToInt(_baseValue * RewardMultiplier);
 
+    /// <summary>GDD §8.4 — 固定ベルト / サーマルケース対象判定。</summary>
+    public virtual RelicSizeCategory SizeCategory => RelicSizeCategory.Medium;
+
+    public bool CanSecureBeltStrap => SizeCategory == RelicSizeCategory.Small;
+
     /// <summary>
     /// 設置されたら接地して静止（kinematic）し、最初に拾われるまで動かないか。
     /// 既定 true（脆い遺物を回収前の落下/タンブリング破壊から守る）。浮遊・滑落など
@@ -126,6 +138,9 @@ public abstract class RelicBase : MonoBehaviour
         // 一切記録されていなかった配線漏れを解消する。RelicCarrier の後に付けて _carrier 取得を保証する。
         if (GetComponent<RelicDamageTracker>() == null)
             gameObject.AddComponent<RelicDamageTracker>();
+
+        if (GetComponent<RelicGrabPoint>() == null)
+            gameObject.AddComponent<RelicGrabPoint>();
 
         // 仲介コンポーネントを付与し終えてからビジュアルを構築する。
         RebuildVisual();

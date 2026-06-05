@@ -65,7 +65,6 @@ public class HudManager : MonoBehaviour
     private int _totalCheckpoints;
     private float _lastPublishedAltitude = float.MinValue;
     private bool _forcePublish;
-    private bool _forceGaugeGrowLayoutApplied;
     private static Sprite s_uiWhiteSprite;
     private static Sprite s_dotSprite;
 
@@ -91,7 +90,6 @@ public class HudManager : MonoBehaviour
 
         EnsureCanvas();
         CreateUIIfMissing();
-        _forceGaugeGrowLayoutApplied = false;
         EnsureForceGaugeGrowLayout();
 
         if (summitPanel != null) summitPanel.SetActive(false);
@@ -340,8 +338,6 @@ public class HudManager : MonoBehaviour
 
         if (forceGaugeFill.transform.GetSiblingIndex() < forceGaugeBackground.transform.GetSiblingIndex())
             forceGaugeFill.transform.SetAsLastSibling();
-
-        _forceGaugeGrowLayoutApplied = true;
     }
 
     // ─── 公開 API ───
@@ -546,8 +542,6 @@ public class HudManager : MonoBehaviour
         AssignGaugeImageSprite(forceGaugeBackground);
         AssignGaugeImageSprite(forceGaugeFill);
         ApplyForceGaugeFillWidth(0f);
-
-        _forceGaugeGrowLayoutApplied = true;
     }
 
     private void CreateSummitPanel(Transform parent)

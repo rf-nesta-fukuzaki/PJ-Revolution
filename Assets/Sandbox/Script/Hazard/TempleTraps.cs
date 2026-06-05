@@ -90,7 +90,7 @@ public class PressurePlateArrow : MonoBehaviour
         arrow.AddComponent<ArrowProjectile>().Init(dir, ARROW_SPEED, ARROW_DAMAGE, ARROW_LIFETIME);
 
         // GDD §15.2 — trap_arrow（矢の射出音）
-        PPAudioManager.Instance?.PlaySE(SoundId.TrapArrow, spawn.position);
+        GameServices.Audio?.PlaySE(SoundId.TrapArrow, spawn.position);
     }
 
     private IEnumerator ResetAfter(float delay)
@@ -187,7 +187,7 @@ public class PendulumLog : MonoBehaviour
         }
 
         // GDD §15.2 — trap_pendulum（丸太がプレイヤーに命中した瞬間のウッドヒット音）
-        PPAudioManager.Instance?.PlaySE(SoundId.TrapPendulum, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.TrapPendulum, transform.position);
 
         Debug.Log("[PendulumLog] プレイヤーに命中！30 ダメージ + 吹き飛ばし");
     }

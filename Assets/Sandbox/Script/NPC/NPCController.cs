@@ -17,6 +17,9 @@ public class NPCController : MonoBehaviour
     [SerializeField] private float _waypointTolerance = 1.35f;
     [SerializeField] private float _exploreRadius = 22f;
     [SerializeField] private float _retargetDistance = 2.2f;
+    [Tooltip("他エージェント(NPC/最寄りプレイヤー)とこの距離[m]以内で反発し間隔を空ける（拠点等で重ならない）。")]
+    [SerializeField] private float _separationRadius = 2.0f;
+    [SerializeField] private float _separationStrength = 1.1f;
 
     [Header("メタAI")]
     [SerializeField] private float _thinkIntervalMin = 0.35f;
@@ -80,6 +83,12 @@ public class NPCController : MonoBehaviour
     private RelicCarrier _targetRelic;
     private RelicCarrier _carriedRelic;
     private RelicBase _targetRelicBase;
+    private Transform _nearestAllyTf; // 分離ステアリング用にキャッシュした最寄りプレイヤー
+
+    // 全 NPC の登録簿（分離ステアリングで互いの位置を参照。FindObjectsByType の毎フレーム呼び出しを避ける）。
+    private static readonly List<NPCController> s_all = new List<NPCController>();
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetRegistry() => s_all.Clear();
 
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
     private static readonly int SpeedBlendHash = Animator.StringToHash("SpeedBlend");
@@ -95,6 +104,9 @@ public class NPCController : MonoBehaviour
         _stuckSampleTimer = 1f;
         ResolveGroundMask();
     }
+
+    private void OnEnable()  { if (!s_all.Contains(this)) s_all.Add(this); }
+    private void OnDisable() { s_all.Remove(this); }
 
     private void Start()
     {
@@ -165,11 +177,16 @@ public class NPCController : MonoBehaviour
             return;
         }
 
+        Vector3 sep = ComputeSeparationPush();
+
         Vector3 toGoal = _goalPosition - _rb.position;
         toGoal.y = 0f;
         float distance = toGoal.magnitude;
         if (distance <= _waypointTolerance)
         {
+            // ゴール到達。近接する他エージェントがあれば押し合って間隔を空ける（拠点等での重なり防止）。
+            if (sep.sqrMagnitude > 0.0001f)
+                _rb.MovePosition(_rb.position + sep.normalized * (_moveSpeed * 0.5f * Time.fixedDeltaTime));
             _isMoving = false;
             OnGoalReached();
             return;
@@ -178,6 +195,8 @@ public class NPCController : MonoBehaviour
         Vector3 dir = toGoal / Mathf.Max(distance, 0.0001f);
         dir = ApplyHazardAvoidance(dir);
         dir = ApplyObstacleAvoidance(dir);
+        if (sep.sqrMagnitude > 0.0001f)
+            dir = (dir + sep * _separationStrength).normalized;
 
         if (IsCliffAhead(dir))
         {
@@ -201,12 +220,43 @@ public class NPCController : MonoBehaviour
         _isMoving = true;
     }
 
+    /// <summary>
+    /// 近接する他エージェント(他NPC＋最寄りプレイヤー)から離れる XZ 反発ベクトルを返す（重なり防止のステアリング）。
+    /// _separationRadius 以内の相手ごとに「離れる向き×近さ」を加算。0=近接相手なし。
+    /// 共有ゴール（拠点/ReturnZone 等）に集まっても _waypointTolerance の範囲で互いを押し離し、団子状の重なりを防ぐ。
+    /// </summary>
+    private Vector3 ComputeSeparationPush()
+    {
+        Vector3 me = _rb.position;
+        float r = Mathf.Max(0.1f, _separationRadius);
+        Vector3 push = Vector3.zero;
+
+        for (int i = 0; i < s_all.Count; i++)
+        {
+            var o = s_all[i];
+            if (o == null || o == this) continue;
+            Vector3 d = me - o.transform.position; d.y = 0f;
+            float dist = d.magnitude;
+            if (dist > 0.001f && dist < r)
+                push += d / dist * (1f - dist / r);
+        }
+        if (_nearestAllyTf != null)
+        {
+            Vector3 d = me - _nearestAllyTf.position; d.y = 0f;
+            float dist = d.magnitude;
+            if (dist > 0.001f && dist < r)
+                push += d / dist * (1f - dist / r);
+        }
+        return push;
+    }
+
     private void ThinkAndSetGoal(bool force)
     {
         RelicCarrier nearestRelic = FindNearestRelicCandidate();
         RelicBase nearestRelicBase = FindNearestRelicBaseCandidate();
         ShelterZone nearestShelter = FindNearestShelter();
         PlayerHealthSystem nearestAlly = FindNearestAlivePlayer();
+        _nearestAllyTf = nearestAlly != null ? nearestAlly.transform : null; // 分離用にキャッシュ
         bool allyInDanger = nearestAlly != null && nearestAlly.HpPercent <= 0.45f;
 
         float nearestCarrierDistance = nearestRelic != null ? Vector3.Distance(transform.position, nearestRelic.transform.position) : Mathf.Infinity;

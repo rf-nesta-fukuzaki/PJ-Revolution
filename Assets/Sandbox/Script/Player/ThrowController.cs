@@ -118,7 +118,10 @@ public class ThrowController : MonoBehaviour
 
     private ItemBase FindFirstThrowable()
     {
-        var items = _inventory.Items;
+        if (_inventory.HasHandItem && !_inventory.HandItem.IsBroken)
+            return _inventory.HandItem;
+
+        var items = _inventory.BackpackItems;
         for (int i = 0; i < items.Count; i++)
         {
             var it = items[i];

@@ -22,6 +22,7 @@ namespace Sandbox.World.Generation.Placement
         private static readonly int IdTreeParams   = Shader.PropertyToID("_TreeParams");
         private static readonly int IdRockParams   = Shader.PropertyToID("_RockParams");
         private static readonly int IdExcludeXZR   = Shader.PropertyToID("_ExcludeXZR");
+        private static readonly int IdPlaceFilter  = Shader.PropertyToID("_PlaceFilter");
         private static readonly int IdPSeed        = Shader.PropertyToID("_PSeed");
 
         /// <summary>
@@ -71,6 +72,8 @@ namespace Sandbox.World.Generation.Placement
             cmd.SetComputeVectorParam(_shader, IdRockParams,
                 new Vector4(_params.rockDensity, _params.rockScaleMin, _params.rockScaleMax, 0f));
             cmd.SetComputeVectorParam(_shader, IdExcludeXZR, ExcludeXZRadius);
+            cmd.SetComputeVectorParam(_shader, IdPlaceFilter,
+                new Vector4(_params.minPlacementAltitude, 0f, 0f, 0f));
             cmd.SetComputeIntParams(_shader, IdPSeed, unchecked((int)ctx.Seed), 0, 0, 0);
 
             cmd.SetComputeTextureParam(_shader, _kernel, IdHeightTex,      target.HeightTex);

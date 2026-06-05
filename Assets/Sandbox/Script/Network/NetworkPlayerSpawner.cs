@@ -67,6 +67,8 @@ public class NetworkPlayerSpawner : NetworkBehaviour
 
     private void HandleClientDisconnected(ulong clientId)
     {
+        NetworkRuntimeItemDisconnectHandler.NotifyClientDisconnected(clientId);
+
         if (!_spawnedPlayers.TryGetValue(clientId, out var netObj)) return;
 
         // シャットダウン中は NetworkManager が既にオブジェクトをデスポーン済みのため、
@@ -152,6 +154,13 @@ public class NetworkPlayerSpawner : NetworkBehaviour
 
     /// <summary>ローカル Co-op 用: プレイヤープレハブ参照。</summary>
     public GameObject PlayerPrefab => _playerPrefab;
+
+    /// <summary>実行時ブートストラップ用: プレハブとスポーン位置を設定する。</summary>
+    public void ConfigureForRuntime(GameObject playerPrefab, Transform[] spawnPoints)
+    {
+        _playerPrefab = playerPrefab;
+        _spawnPoints  = spawnPoints;
+    }
 
     private Vector3 GetSpawnPosition(int index)
     {

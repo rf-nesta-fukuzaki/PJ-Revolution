@@ -7,6 +7,8 @@ using UnityEngine;
 /// </summary>
 public class CrystalCupRelic : RelicBase
 {
+    public override RelicSizeCategory SizeCategory => RelicSizeCategory.Small;
+
     [Header("クリスタル設定")]
     [SerializeField] private float _windKnockForce = 0.8f;   // 風で手から飛びそうになる力
 

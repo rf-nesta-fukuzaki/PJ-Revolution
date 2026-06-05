@@ -9,6 +9,8 @@ using PeakPlunder.Audio;
 /// </summary>
 public class TwinStatueRelic : RelicBase
 {
+    public override RelicSizeCategory SizeCategory => RelicSizeCategory.Small;
+
     [Header("双子像設定")]
     [SerializeField] private TwinStatueRelic _partner;       // もう片方の像
     [SerializeField] private float           _chainLength  = 3f;

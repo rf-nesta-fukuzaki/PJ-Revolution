@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine.TestTools;
 
 public sealed class ExpeditionTimerTests
 {
@@ -44,6 +45,8 @@ public sealed class ExpeditionPhaseStateMachineTests
     [Test]
     public void TryTransition_RejectsInvalidTransition()
     {
+        LogAssert.Expect(UnityEngine.LogType.Error, "[Contract] ExpeditionPhaseStateMachine: 不正な遷移 Basecamp → Result");
+
         var sm = new ExpeditionPhaseStateMachine();
 
         Assert.That(sm.TryTransition(ExpeditionPhase.Result), Is.False);

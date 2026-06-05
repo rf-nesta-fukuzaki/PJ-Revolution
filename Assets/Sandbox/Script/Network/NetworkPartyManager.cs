@@ -158,8 +158,13 @@ public sealed class NetworkPartyManager : NetworkBehaviour
     {
         if (!IsServer || !_partyReady) return;
         var nm = NetworkManager.Singleton;
-        if (nm != null && clientId == nm.LocalClientId) return;
+        if (nm != null && clientId == nm.LocalClientId)
+        {
+            NetworkRuntimeItemDisconnectHandler.NotifyClientDisconnected(clientId);
+            return;
+        }
 
+        NetworkRuntimeItemDisconnectHandler.NotifyClientDisconnected(clientId);
         ServerDemoteClientFromParty(clientId);
     }
 

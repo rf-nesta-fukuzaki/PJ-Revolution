@@ -71,8 +71,35 @@ public class BasecampShop : MonoBehaviour
             _shopPanel.SetActive(false);
     }
 
+    /// <summary>Inspector 未配線シーン向け: 実行時に最小ショップ UI を生成して自身へバインドする。</summary>
+    public void EnsureRuntimeUiIfMissing()
+    {
+        if (_shopPanel != null && _itemListParent != null) return;
+
+        var refs = BasecampShopRuntimeUi.Build();
+        BindRuntimeUi(refs);
+        Debug.Log("[Shop] 実行時ショップ UI を生成しました（B キーで開閉）。");
+    }
+
+    public void BindRuntimeUi(BasecampShopRuntimeUi.UiRefs refs)
+    {
+        if (refs == null) return;
+        _shopPanel         = refs.ShopPanel;
+        _budgetLabel       = refs.BudgetLabel;
+        _itemListParent    = refs.ItemListParent;
+        _weatherLabel      = refs.WeatherLabel;
+        _routeStatusLabel  = refs.RouteStatusLabel;
+        _departButton      = refs.DepartButton;
+        _errorLabel        = refs.ErrorLabel;
+
+        if (_shopPanel != null && !_openOnStart)
+            _shopPanel.SetActive(false);
+    }
+
     private void Start()
     {
+        EnsureRuntimeUiIfMissing();
+
         _departButton?.onClick.AddListener(OnDepart);
         ConfigureItemListContainer();
         BuildItemList();
@@ -195,6 +222,7 @@ public class BasecampShop : MonoBehaviour
 
         RefreshBudgetLabel();
         RefreshAllRows();
+        SpawnPurchasedItemToLocker(item);
         Debug.Log($"[Shop] 購入: {item.DisplayName}  残り予算: {GetCurrentBudget()}pt");
         return true;
     }
@@ -213,6 +241,8 @@ public class BasecampShop : MonoBehaviour
 
             RefreshBudgetLabel();
             RefreshAllRows();
+            if (_catalogById.TryGetValue(itemId, out var purchased))
+                SpawnPurchasedItemToLocker(purchased);
             Debug.Log($"[Shop] 購入承認: {itemId}");
         }
         else
@@ -407,13 +437,32 @@ public class BasecampShop : MonoBehaviour
             return;
         }
 
-        GrantItemsToLocalPlayer();
-
         SetShopPanelVisible(false);
 
         GameServices.Expedition?.StartExpedition();
 
         Debug.Log($"[Shop] 出発！購入: {GetTotalPurchasedCount()}個  使用予算: {TEAM_BUDGET_MAX - GetCurrentBudget()}pt");
+    }
+
+    private static void SpawnPurchasedItemToLocker(BasecampShopItemDefinition definition)
+    {
+        if (definition == null) return;
+        var locker = BasecampItemLocker.Instance;
+        if (locker != null)
+        {
+            locker.SpawnPurchasedItem(definition);
+            return;
+        }
+
+        // ロッカー未配置時のフォールバック
+        var inventory = FindLocalPlayerInventory();
+        if (inventory == null) return;
+        var go = CreateItemObject(definition);
+        if (go == null) return;
+        var item = go.GetComponent<ItemBase>();
+        if (item == null) { Destroy(go); return; }
+        if (!inventory.TryAdd(item))
+            go.transform.position = inventory.transform.position + Vector3.up * 0.5f;
     }
 
     private int GetTotalPurchasedCount()
@@ -422,47 +471,6 @@ public class BasecampShop : MonoBehaviour
         foreach (var count in _session.PurchasedCounts.Values)
             total += count;
         return total;
-    }
-
-    private void GrantItemsToLocalPlayer()
-    {
-        var inventory = FindLocalPlayerInventory();
-        if (inventory == null)
-        {
-            Debug.LogWarning("[Shop] ローカルプレイヤーのインベントリが見つかりません");
-            return;
-        }
-
-        int grantedCount = 0;
-        var basePos = inventory.transform.position;
-
-        foreach (var kvp in _session.PurchasedCounts)
-        {
-            if (kvp.Value <= 0) continue;
-            if (!_catalogById.TryGetValue(kvp.Key, out var definition))
-            {
-                Debug.LogError($"[Shop] カタログに存在しないIDです: {kvp.Key}");
-                continue;
-            }
-
-            for (int i = 0; i < kvp.Value; i++)
-            {
-                var go = CreateItemObject(definition);
-                if (go == null) continue;
-
-                var item = go.GetComponent<ItemBase>();
-                if (item == null) { Destroy(go); continue; }
-
-                // インベントリに追加。満杯なら足元にドロップ
-                bool added = inventory.TryAdd(item);
-                if (!added)
-                    go.transform.position = basePos + UnityEngine.Random.insideUnitSphere * 0.6f + Vector3.up * 0.5f;
-
-                grantedCount++;
-            }
-        }
-
-        Debug.Log($"[Shop] {grantedCount} 個のアイテムを付与しました");
     }
 
     private static PlayerInventory FindLocalPlayerInventory()

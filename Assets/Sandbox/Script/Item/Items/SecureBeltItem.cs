@@ -34,8 +34,12 @@ public class SecureBeltItem : ItemBase
     public bool TryStrap(RelicBase relic, Transform playerBack)
     {
         if (_isBroken || _isStrapped || relic == null) return false;
+        if (!relic.CanSecureBeltStrap)
+        {
+            Debug.Log($"[SecureBelt] {relic.RelicName} は固定ベルト対象外（サイズ）");
+            return false;
+        }
 
-        // 重量チェック（Rigidbody.mass で判定）
         var relicRb = relic.GetComponent<Rigidbody>();
         if (relicRb != null && relicRb.mass > _maxRelicWeight)
         {
@@ -43,10 +47,11 @@ public class SecureBeltItem : ItemBase
             return false;
         }
 
+        relic.GetComponent<RelicCarrier>()?.DetachCarrierState();
+
         _strappedRelic = relic;
         _isStrapped    = true;
 
-        // 遺物をプレイヤーの背中に追従させる
         var relicRigidbody = relic.GetComponent<Rigidbody>();
         if (relicRigidbody != null)
             relicRigidbody.isKinematic = true;

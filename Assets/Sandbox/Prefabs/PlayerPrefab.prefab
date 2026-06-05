@@ -1481,6 +1481,8 @@ GameObject:
   - component: {fileID: 734045607101580782}
   - component: {fileID: 8927202349596267162}
   - component: {fileID: 4053111732647355377}
+  - component: {fileID: 834729384729384729}
+  - component: {fileID: 928374928374928374}
   - component: {fileID: 7246976554021801234}
   - component: {fileID: 159643610277619976}
   - component: {fileID: 4830932203262622806}
@@ -1978,6 +1980,31 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerInteraction
   _interactRange: 2.5
   _cameraTransform: {fileID: 0}
+--- !u!114 &834729384729384729
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7854537658936286442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 967f33f612f63488dad5e7934b025650, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ItemUseController
+  _cameraTransform: {fileID: 0}
+--- !u!114 &928374928374928374
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7854537658936286442}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a1590079954f45fd8251c70cfa89c80, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ItemHandController
 --- !u!114 &7246976554021801234
 MonoBehaviour:
   m_ObjectHideFlags: 0

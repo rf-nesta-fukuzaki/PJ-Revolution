@@ -38,8 +38,9 @@
   - HUD, result screen, shops, pause/menu, accessibility indicators.
 - `Assets/Sandbox/Script/Audio/`
   - `SoundId`, sound libraries, BGM/SE manager.
-- `Assets/Sandbox/Script/Editor/`
-  - Stage01 scene builder, validator, placement tools.
+- `Assets/Sandbox/Editor/`
+  - Unity Editor tools (Stage01, Items, Network, Bootstrap, Offline, Build, Terrain).
+  - Menu root: `Peak Plunder/` (see `PeakPlunderEditorMenus.cs`).
 
 ## Important Existing Systems
 
@@ -131,7 +132,7 @@ The current environment may not have Unity installed. If Unity cannot run, make 
 - Use Unity Editor scripts for generated scenes and large placement work.
 - Do not hand-edit large `.unity` YAML sections.
 - Runtime scripts must not reference `UnityEditor`.
-- Editor scripts belong under `Assets/Sandbox/Script/Editor/` or must be wrapped with `#if UNITY_EDITOR`.
+- Editor scripts belong under `Assets/Sandbox/Editor/` or must be wrapped with `#if UNITY_EDITOR`.
 - Keep tags, layers, and exact names aligned with docs and validator.
 - Use primitives and generated URP/Lit materials when real art assets are missing.
 - For `Grappable` objects, ensure tag/layer, collider, and kinematic rigidbody where appropriate.

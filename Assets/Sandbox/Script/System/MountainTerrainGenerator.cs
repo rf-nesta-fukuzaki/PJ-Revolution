@@ -13,6 +13,7 @@ using UnityEditor.SceneManagement;
 ///
 /// 使い方:
 ///   Inspector の [Generate Mountain Terrain] ContextMenu を実行する。
+///   または Peak Plunder → Terrain → Generate Mountain Terrain。
 ///   または MCP RunCommand から Generate() を呼び出す。
 /// </summary>
 public class MountainTerrainGenerator : MonoBehaviour
@@ -505,23 +506,6 @@ public class MountainTerrainGenerator : MonoBehaviour
     // ──────────────────────────────────────────────────────────
 
 #if UNITY_EDITOR
-    // ──────────────────────────────────────────────────────────
-    //  Editor メニュー項目（Peak Plunder > Generate Mountain Terrain）
-    // ──────────────────────────────────────────────────────────
-
-    [MenuItem("Peak Plunder/Generate Mountain Terrain")]
-    private static void GenerateFromMenu()
-    {
-        var gen = Object.FindFirstObjectByType<MountainTerrainGenerator>();
-        if (gen == null)
-        {
-            Debug.LogWarning("[MountainTerrain] シーンに MountainTerrainGenerator が見つかりません。"
-                + "World/MountainTerrainGenerator に追加してから実行してください。");
-            return;
-        }
-        gen.Generate();
-    }
-
     private void PersistTerrainData(TerrainData data)
     {
         const string dir  = "Assets/Sandbox/Terrain";

@@ -31,13 +31,13 @@ public class SummitGoalTrigger : MonoBehaviour
         if (_celebrationParticles != null)
             _celebrationParticles.Play();
 
-        PPAudioManager.Instance?.PlaySE(SoundId.Summit, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.Summit, transform.position);
         Invoke(nameof(TriggerReturn), _activationDelay);
     }
 
     private void TriggerReturn()
     {
-        ExpeditionManager.Instance?.ReturnToBase(allSurvived: true);
+        GameServices.Expedition?.ReturnToBase(allSurvived: true);
     }
 
     private void EnsureTriggerCollider()

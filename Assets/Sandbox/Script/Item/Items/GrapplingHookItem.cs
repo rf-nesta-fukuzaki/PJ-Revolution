@@ -12,7 +12,7 @@ using PeakPlunder.Audio;
 public class GrapplingHookItem : ItemBase
 {
     [Header("グラップリング設定")]
-    [SerializeField] private float   _maxRange       = 25f;
+    [SerializeField] private float   _maxRange       = 15f;
     [SerializeField] private float   _pullForce      = 600f;
     [Tooltip("発射後、フックが標的に到達するまでの飛翔速度 (m/s)。視覚演出用。")]
     [SerializeField] private float   _hookFlySpeed   = 40f;
@@ -24,7 +24,10 @@ public class GrapplingHookItem : ItemBase
     private Rigidbody  _playerRb;
     private float      _lineLength;
 
+    public const float RecoverDistance = 2.5f;
+
     public bool IsGrappling => _isGrappling;
+    public Vector3 AnchorPoint => _anchorPoint;
 
     protected override void Awake()
     {
@@ -62,7 +65,11 @@ public class GrapplingHookItem : ItemBase
         _isGrappling = true;
         _lineLength  = Vector3.Distance(origin, _anchorPoint);
 
-        _playerRb = GetComponentInParent<Rigidbody>();
+        ClimbingPointFactory.CreateGrapplePoint(hit.point, hit.normal);
+
+        _playerRb = _owner != null ? _owner.GetComponent<Rigidbody>() : null;
+        if (_playerRb == null)
+            _playerRb = GetComponentInParent<Rigidbody>();
         if (_playerRb == null)
             _playerRb = FindFirstObjectByType<ExplorerController>()?.GetComponent<Rigidbody>();
 
@@ -115,6 +122,16 @@ public class GrapplingHookItem : ItemBase
             // GDD §15.2 — grappling_hit（着弾音はフック到達と同期）
             GameServices.Audio?.PlaySE(SoundId.GrapplingHit, target);
         }
+    }
+
+    /// <summary>GDD §8.3 — アンカー付近で E により回収。</summary>
+    public bool TryRecover(Vector3 playerPosition)
+    {
+        if (!_isGrappling) return false;
+        if (Vector3.Distance(playerPosition, _anchorPoint) > RecoverDistance) return false;
+
+        Release();
+        return true;
     }
 
     /// <summary>グラップリングを解除する。</summary>

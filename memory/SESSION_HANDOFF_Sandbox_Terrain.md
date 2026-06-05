@@ -85,7 +85,7 @@ A: ゲームフィール仕上げ / B: プロシージャルアート向上 / C:
 **C 新規**:
 - `Assets/Sandbox/Script/UI/SandboxStartMenu.cs`（UGS 非依存の単機メニュー。PLAY→Sandbox / QUIT。UI runtime 生成 + EventSystem）。
 - `Assets/Sandbox/Scene/StartMenu.unity`（新規シーン。MenuCamera + StartMenu）。
-- `Assets/Sandbox/Script/Editor/SandboxBuild.cs`（メニュー Peak Idiots/Build macOS・Build Windows x64）。
+- `Assets/Sandbox/Editor/Build/SandboxBuild.cs`（メニュー Peak Plunder/Build/Build macOS・Build Windows x64）。
 - `README.md`（操作/ゴール/シーン構成/ビルド方法）。
 - **Build Settings**: [0]StartMenu [1]Sandbox を enabled、他は無効で温存。
 

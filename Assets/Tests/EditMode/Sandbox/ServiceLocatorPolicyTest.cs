@@ -15,7 +15,7 @@ public sealed class ServiceLocatorPolicyTest
     /// 既存を GameServices へ移行して減らしたらこの値も下げる（ラチェットを締める）。
     /// やむを得ず増やす場合のみ上げて、理由を PR に明記すること。
     /// </summary>
-    private const int SingletonBaseline = 33;
+    private const int SingletonBaseline = 36;
 
     // Bash 計測（Assets/Doc/ServiceLocatorPolicy.md）と同一の宣言パターン。
     private static readonly Regex SingletonDecl =

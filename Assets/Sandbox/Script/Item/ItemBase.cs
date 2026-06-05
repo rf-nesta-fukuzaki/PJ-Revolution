@@ -68,6 +68,8 @@ public abstract class ItemBase : MonoBehaviour
         _owner            = inv;
         _rb.isKinematic   = true;
         transform.SetParent(inv.transform);
+        transform.localPosition = Vector3.zero;
+        gameObject.SetActive(false);
     }
 
     public virtual void OnRemovedFromInventory()
@@ -75,6 +77,30 @@ public abstract class ItemBase : MonoBehaviour
         _owner          = null;
         _rb.isKinematic = false;
         transform.SetParent(null);
+        gameObject.SetActive(true);
+    }
+
+    /// <summary>手持ち表示（GDD §4.3）。</summary>
+    public virtual void OnEquippedInHand(PlayerInventory inv, Transform anchor, Vector3 localOffset)
+    {
+        _owner          = inv;
+        _rb.isKinematic = true;
+        transform.SetParent(anchor);
+        transform.localPosition = localOffset;
+        transform.localRotation = Quaternion.identity;
+        gameObject.SetActive(true);
+    }
+
+    public virtual void OnRemovedFromHand()
+    {
+        _owner = null;
+    }
+
+    /// <summary>GDD §8.6 — 山中遺留品の低耐久設定。</summary>
+    public void ApplyFieldDropDurability(float durability)
+    {
+        _maxDurability     = durability;
+        _currentDurability = durability;
     }
 
     // ── 使用 ─────────────────────────────────────────────────

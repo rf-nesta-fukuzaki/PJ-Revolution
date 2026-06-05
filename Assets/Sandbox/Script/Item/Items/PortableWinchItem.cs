@@ -1,39 +1,36 @@
-using System.Collections;
 using UnityEngine;
 using PeakPlunder.Audio;
 
 /// <summary>
-/// GDD §5.2 — アイテム「ポータブルウインチ」
-/// 機械的引き上げ。急斜面で威力を発揮。ケーブル切断リスク。
-/// コスト 20pt / 重量 3 / スロット 2 / 耐久 50
+/// GDD §5.2 / §8.3 — ポータブルウインチ（7ステップ操作フロー）。
 /// </summary>
 [RequireComponent(typeof(LineRenderer))]
 public class PortableWinchItem : ItemBase
 {
-    // ── 定数 ────────────────────────────────────────────────
-    private const float CABLE_BREAK_TENSION  = 900f;
-    private const float CABLE_BREAK_CHANCE_PER_SEC = 0.02f;  // 過負荷時の毎秒切断確率（初期値）
-    // GDD §5.2: 過負荷継続時間に応じた切断確率ランプ。短時間なら耐えるが、
-    // 長時間過負荷を続けるとほぼ確実に切れる設計。
-    private const float OVERLOAD_RAMP_PER_SEC      = 0.05f;   // 1 秒経過毎に追加される確率/秒
-    private const float OVERLOAD_RAMP_MAX          = 0.5f;    // 最大の追加確率/秒（無限には上がらない）
+    public const float OperateRange = 3f;
+    private const float MaxSlopeDeg = 30f;
+    private const float CableBreakTension = 5000f;
+    private const float OverloadThreshold = 700f;
+    private const float OverloadBreakChancePerSec = 0.02f;
 
     [Header("ウインチ設定")]
-    [SerializeField] private float _liftForce        = 600f;   // 引き上げ力（N）
-    [SerializeField] private float _maxCableLength   = 15f;
-    [SerializeField] private float _reelSpeed        = 2f;     // 巻き取り速度（m/s）
-    [SerializeField] private float _overloadThreshold = 700f;  // 過負荷開始しきい値（N）
+    [SerializeField] private float _maxCableLength = 20f;
+    [SerializeField] private float _reelSpeed      = 1.5f;
 
-    private LineRenderer _lineRenderer;
-    private bool         _isDeployed;
-    private Vector3      _anchorPoint;
-    private Rigidbody    _attachedRb;  // 引き上げ対象
-    private float        _cableLength;
-    private float        _overloadTimer;
-    private bool         _isCableBroken;
+    private LineRenderer          _lineRenderer;
+    private IWinchCableDriver     _cable;
+    private Transform             _cableAnchor;
+    private NetworkPortableWinchSync _netSync;
+    private bool                  _isDeployed;
+    private bool                  _isReeling;
+    private float                 _overloadTimer;
 
-    public bool IsDeployed    => _isDeployed;
-    public bool IsCableBroken => _isCableBroken;
+    public bool IsDeployedInWorld => _isDeployed;
+    public bool IsReeling         => _isReeling;
+    public bool HasCableHook      => _cable != null && _cable.HasHook;
+    public bool IsCableAttached   => _cable != null && _cable.IsAttached;
+    public bool IsCableBroken     => _cable != null && _cable.IsBroken;
+    public Rigidbody CableAttachedBody => _cable?.AttachedBody;
 
     protected override void Awake()
     {
@@ -47,98 +44,308 @@ public class PortableWinchItem : ItemBase
         _impactDmgScale    = 1.5f;
 
         _lineRenderer = GetComponent<LineRenderer>();
+        _netSync      = GetComponent<NetworkPortableWinchSync>();
+        EnsureLineRendererDefaults();
+        ResolveCableDriver();
+        EnsureCableAnchor();
     }
 
-    /// <summary>地形または岩にウインチをアンカー設置する。</summary>
-    public bool TryDeploy(Vector3 anchorWorldPos)
+    private void ResolveCableDriver()
     {
-        if (_isBroken || _isDeployed || _isCableBroken) return false;
+        var chain = GetComponent<WinchCableChain>();
+        if (chain == null)
+            chain = gameObject.AddComponent<WinchCableChain>();
 
-        _anchorPoint  = anchorWorldPos;
-        _cableLength  = _maxCableLength;
-        _isDeployed   = true;
-        _isCableBroken = false;
+        var legacy = GetComponent<WinchCableSystem>();
+        if (legacy != null)
+            legacy.enabled = false;
 
-        if (_lineRenderer != null)
+        _cable = chain;
+    }
+
+    private void EnsureCableAnchor()
+    {
+        if (_cableAnchor != null) return;
+        var go = transform.Find("CableAnchor");
+        if (go == null)
         {
-            _lineRenderer.positionCount = 2;
-            _lineRenderer.enabled       = true;
+            go = new GameObject("CableAnchor").transform;
+            go.SetParent(transform, false);
+            go.localPosition = new Vector3(0f, 0.15f, 0f);
         }
-
-        // GDD §15.2 — winch_start（ウインチ設置でモーター起動音）
-        GameServices.Audio?.PlaySE(SoundId.WinchStart, anchorWorldPos);
-
-        Debug.Log($"[Winch] アンカー設置: {anchorWorldPos}");
-        return true;
+        _cableAnchor = go;
     }
 
-    /// <summary>引き上げ対象の Rigidbody を接続する。</summary>
-    public bool TryAttach(Rigidbody target)
+    private void EnsureLineRendererDefaults()
     {
-        if (!_isDeployed || target == null) return false;
-
-        _attachedRb = target;
-        Debug.Log($"[Winch] {target.name} を接続");
-        return true;
+        if (_lineRenderer == null) return;
+        _lineRenderer.startWidth = 0.03f;
+        _lineRenderer.endWidth   = 0.015f;
+        _lineRenderer.enabled    = false;
+        _lineRenderer.positionCount = 2;
     }
 
-    /// <summary>ケーブルを巻き取る（呼び出し側が FixedUpdate で呼ぶこと）。</summary>
-    public void Reel(float deltaTime)
+    public bool ShouldRunCableSimulation()
     {
-        if (!_isDeployed || _isCableBroken || _attachedRb == null) return;
+        if (_netSync == null || !_netSync.IsNetworkActive) return true;
+        return _netSync.IsServer;
+    }
 
-        _cableLength = Mathf.Max(0f, _cableLength - _reelSpeed * deltaTime);
+    public void RefreshCableSimulationMode()
+    {
+        if (_cable is WinchCableChain chain)
+            chain.SetSimulatePhysics(ShouldRunCableSimulation());
+    }
+
+    public Vector3 GetCableHookWorldPosition()
+    {
+        if (_cable == null || !_cable.HasHook) return _cableAnchor != null ? _cableAnchor.position : transform.position;
+        var body = _cable.AttachedBody ?? _cable.HookBody;
+        return body != null ? body.position : transform.position;
+    }
+
+    public void ApplyClientCableHookPosition(Vector3 hookPosition)
+    {
+        if (_cable is WinchCableChain chain)
+            chain.ApplyClientHookPosition(hookPosition);
     }
 
     private void FixedUpdate()
     {
-        if (!_isDeployed || _isCableBroken || _attachedRb == null) return;
+        if (!ShouldRunCableSimulation()) return;
+        if (!_isDeployed || _cable == null || _cable.IsBroken) return;
 
-        ApplyLiftForce();
+        if (_isReeling)
+        {
+            _cable.Reel(Time.fixedDeltaTime);
+            ConsumeDurability(5f * Time.fixedDeltaTime);
+        }
+
         CheckCableBreak();
-        UpdateLineRenderer();
-        ConsumeDurability(0.02f * Time.fixedDeltaTime);
     }
 
-    private void ApplyLiftForce()
+    // ── 公開 API（ネットワーク経由） ─────────────────────────────
+    public bool TryDeployFromHand(PlayerInventory inventory, Transform player)
     {
-        Vector3 toAnchor = _anchorPoint - _attachedRb.position;
-        float   dist     = toAnchor.magnitude;
+        if (_netSync != null && _netSync.IsNetworkActive)
+            return _netSync.RequestDeploy(inventory, player);
+        return DeployFromHandLocal(inventory, player);
+    }
 
-        if (dist > _cableLength + 0.1f)
+    public bool TryDeployCable()
+    {
+        if (_netSync != null && _netSync.IsNetworkActive)
+            return _netSync.RequestDeployCable();
+        return DeployCableLocal();
+    }
+
+    public bool TryAttachCableTo(Rigidbody target)
+    {
+        target = ResolveCableTarget(target);
+        if (target == null) return false;
+
+        if (_netSync != null && _netSync.IsNetworkActive)
+            return _netSync.RequestAttachCable(target);
+        return AttachCableLocal(target);
+    }
+
+    public bool TryToggleReel(Transform operatorTransform)
+    {
+        if (_netSync != null && _netSync.IsNetworkActive)
+            return _netSync.RequestToggleReel(operatorTransform);
+        return ToggleReelLocal(operatorTransform);
+    }
+
+    public void StopReel() => StopReelLocal();
+
+    public void UpdateOperatorDistance(Transform operatorTransform)
+    {
+        if (!_isReeling || operatorTransform == null) return;
+        if (Vector3.Distance(operatorTransform.position, transform.position) > OperateRange)
+            StopReelLocal();
+    }
+
+    public bool TryRetrieve(PlayerInventory inventory)
+    {
+        if (_netSync != null && _netSync.IsNetworkActive)
+            return _netSync.RequestRetrieve(inventory);
+        return RetrieveLocal(inventory);
+    }
+
+    public void CutCable()
+    {
+        if (_netSync != null && _netSync.IsNetworkActive)
+            _netSync.RequestCutCable();
+        else
+            CutCableLocal();
+    }
+
+    // ── ローカル/サーバー適用 ───────────────────────────────────
+    public bool DeployFromHandLocal(PlayerInventory inventory, Transform player)
+    {
+        if (_isBroken || _isDeployed || inventory == null || player == null) return false;
+        if (inventory.HandItem != this) return false;
+
+        if (!TryFindDeployPoint(player, out var point, out var normal))
         {
-            // ケーブルが張っている → 力を加える
-            _attachedRb.AddForce(toAnchor.normalized * _liftForce, ForceMode.Force);
+            Debug.Log("[Winch] 設置できません（傾斜30°超 or 地面なし）");
+            return false;
         }
+
+        inventory.Remove(this);
+        ApplyDeployAt(point, Quaternion.FromToRotation(Vector3.up, normal));
+        return true;
+    }
+
+    public void ApplyDeployAt(Vector3 point, Quaternion rotation)
+    {
+        transform.SetParent(null);
+        transform.SetPositionAndRotation(point, rotation);
+        gameObject.SetActive(true);
+
+        _rb.isKinematic = true;
+        _rb.useGravity  = false;
+        _isDeployed     = true;
+
+        _cable.Configure(_cableAnchor, _lineRenderer, _maxCableLength, _reelSpeed);
+        GameServices.Audio?.PlaySE(SoundId.WinchStart, point);
+        Debug.Log($"[Winch] 設置完了: {point}");
+    }
+
+    public bool DeployCableLocal()
+    {
+        if (!_isDeployed || _cable == null || _cable.HasHook || _cable.IsBroken) return false;
+
+        Vector3 spawn = _cableAnchor.position + _cableAnchor.forward * 0.5f + Vector3.up * 0.2f;
+        if (!_cable.DeployHook(spawn)) return false;
+
+        RefreshCableSimulationMode();
+        Debug.Log("[Winch] ケーブル展開");
+        return true;
+    }
+
+    public bool AttachCableLocal(Rigidbody target)
+    {
+        if (!_isDeployed || _cable == null || target == null) return false;
+        if (!_cable.HasHook || _cable.IsAttached) return false;
+        if (!_cable.TryAttachHookTo(target)) return false;
+
+        GameServices.Audio?.PlaySE(SoundId.WinchStart, target.position);
+        Debug.Log($"[Winch] ケーブル接続: {target.name}");
+        return true;
+    }
+
+    public bool ToggleReelLocal(Transform operatorTransform)
+    {
+        if (!_isDeployed || _cable == null || _cable.IsBroken) return false;
+        if (operatorTransform != null
+            && Vector3.Distance(operatorTransform.position, transform.position) > OperateRange)
+        {
+            StopReelLocal();
+            return false;
+        }
+
+        if (!_cable.HasHook && !_cable.IsAttached) return false;
+
+        _isReeling = !_isReeling;
+        if (_isReeling)
+            GameServices.Audio?.PlaySE2D(SoundId.WinchLoop);
+        else
+            GameServices.Audio?.StopLoop(SoundId.WinchLoop);
+
+        Debug.Log(_isReeling ? "[Winch] 巻き上げ開始" : "[Winch] 巻き上げ停止");
+        return true;
+    }
+
+    public void StopReelLocal()
+    {
+        if (!_isReeling) return;
+        _isReeling = false;
+        GameServices.Audio?.StopLoop(SoundId.WinchLoop);
+    }
+
+    public bool RetrieveLocal(PlayerInventory inventory)
+    {
+        if (!_isDeployed || inventory == null) return false;
+        if (_cable != null && (_cable.IsAttached || (_cable.HasHook && !_cable.IsBroken))) return false;
+
+        _cable?.RetractAndDestroy();
+        _isDeployed = false;
+        _isReeling  = false;
+        _rb.isKinematic = true;
+
+        if (inventory.TryEquipHand(this))
+        {
+            Debug.Log("[Winch] 回収して手持ちに");
+            return true;
+        }
+
+        _rb.isKinematic = false;
+        return false;
+    }
+
+    public void CutCableLocal()
+    {
+        if (_cable == null || (!_cable.HasHook && !_cable.IsAttached)) return;
+
+        _cable.BreakCable();
+        _isReeling = false;
+        GameServices.Audio?.StopLoop(SoundId.WinchLoop);
+        GameServices.Audio?.PlaySE(SoundId.WinchCableSnap, transform.position);
+        ConsumeDurability(30f);
+        Debug.Log("[Winch] ケーブル切断");
+    }
+
+    public void ApplyBrokenCableVisual()
+    {
+        if (_cable == null || _cable.IsBroken) return;
+        _cable.BreakCable();
+        _isReeling = false;
+    }
+
+    public static bool TryFindDeployPoint(Transform player, out Vector3 point, out Vector3 normal)
+    {
+        point  = player.position;
+        normal = Vector3.up;
+
+        if (!Physics.Raycast(player.position + Vector3.up * 0.5f, Vector3.down, out var hit, 4f))
+            return false;
+
+        if (Vector3.Angle(hit.normal, Vector3.up) > MaxSlopeDeg)
+            return false;
+
+        point  = hit.point + hit.normal * 0.05f;
+        normal = hit.normal;
+        return true;
+    }
+
+    private static Rigidbody ResolveCableTarget(Rigidbody target)
+    {
+        if (target == null) return null;
+
+        var grab = target.GetComponentInParent<RelicGrabPoint>();
+        if (grab != null)
+            return grab.AttachBody;
+
+        return target;
     }
 
     private void CheckCableBreak()
     {
-        if (_attachedRb == null) return;
+        if (_cable == null) return;
 
-        Vector3 toAnchor  = _anchorPoint - _attachedRb.position;
-        float   tension   = toAnchor.magnitude * _attachedRb.mass * 9.81f;
-
-        if (tension > CABLE_BREAK_TENSION)
+        float tension = _cable.EstimateTension();
+        if (tension > CableBreakTension)
         {
-            Debug.Log($"[Winch] 過負荷！張力 {tension:F0}N");
-            BreakCable();
+            CutCable();
             return;
         }
 
-        // 過負荷ゾーンでのランダム切断（経過時間に応じて確率がランプアップ）
-        if (tension > _overloadThreshold)
+        if (tension > OverloadThreshold)
         {
             _overloadTimer += Time.fixedDeltaTime;
-
-            float rampBonus       = Mathf.Min(_overloadTimer * OVERLOAD_RAMP_PER_SEC, OVERLOAD_RAMP_MAX);
-            float breakChancePerS = CABLE_BREAK_CHANCE_PER_SEC + rampBonus;
-
-            if (Random.value < breakChancePerS * Time.fixedDeltaTime)
-            {
-                Debug.Log($"[Winch] ランダム切断発生！過負荷継続 {_overloadTimer:F1}s, 確率 {breakChancePerS:F2}/s");
-                BreakCable();
-            }
+            if (Random.value < OverloadBreakChancePerSec * Time.fixedDeltaTime)
+                CutCable();
         }
         else
         {
@@ -146,45 +353,29 @@ public class PortableWinchItem : ItemBase
         }
     }
 
-    private void BreakCable()
+    public static PortableWinchItem FindDeployedNear(Vector3 position, float range)
     {
-        _isCableBroken = true;
-        _isDeployed    = false;
-        _attachedRb    = null;
+        var all = Object.FindObjectsByType<PortableWinchItem>(FindObjectsSortMode.None);
+        PortableWinchItem nearest = null;
+        float best = range;
 
-        if (_lineRenderer != null)
-            _lineRenderer.enabled = false;
+        foreach (var winch in all)
+        {
+            if (winch == null || !winch._isDeployed) continue;
+            float d = Vector3.Distance(position, winch.transform.position);
+            if (d <= best)
+            {
+                best = d;
+                nearest = winch;
+            }
+        }
 
-        ConsumeDurability(30f);
-
-        // GDD §15.2 — winch_cable_snap（ケーブル切断の破断音）
-        GameServices.Audio?.PlaySE(SoundId.WinchCableSnap, _anchorPoint);
-
-        Debug.Log("[Winch] ケーブル切断！！");
-    }
-
-    public void Retract()
-    {
-        _isDeployed = false;
-        _attachedRb = null;
-
-        if (_lineRenderer != null)
-            _lineRenderer.enabled = false;
-
-        Debug.Log("[Winch] ウインチ格納");
-    }
-
-    private void UpdateLineRenderer()
-    {
-        if (_lineRenderer == null || _attachedRb == null) return;
-
-        _lineRenderer.SetPosition(0, _anchorPoint);
-        _lineRenderer.SetPosition(1, _attachedRb.position);
+        return nearest;
     }
 
     protected override void OnItemBroken()
     {
-        BreakCable();
+        CutCable();
         base.OnItemBroken();
     }
 }

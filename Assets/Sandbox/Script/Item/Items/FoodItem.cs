@@ -8,7 +8,7 @@ using PeakPlunder.Audio;
 /// </summary>
 public class FoodItem : ItemBase
 {
-    [SerializeField] private float _staminaRecover = 40f;
+    [SerializeField] private float _staminaRecover = 50f;
     [SerializeField] private int   _uses           = 3;
 
     private int _usesLeft;
@@ -51,6 +51,16 @@ public class FoodItem : ItemBase
             Break();
 
         return true;
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (_owner != null) return;
+        if (collision.relativeVelocity.magnitude < 2f) return;
+
+        var health = collision.collider.GetComponentInParent<PlayerHealthSystem>();
+        if (health != null && !health.IsDead)
+            health.TakeDamage(5f);
     }
 
     private GameObject FindNearestPlayer()

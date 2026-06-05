@@ -64,6 +64,8 @@ namespace Sandbox.World.Integration
             }
             if (ensureHud && Object.FindFirstObjectByType<HudManager>() == null)
                 new GameObject("HudManager").AddComponent<HudManager>();
+            if (Object.FindFirstObjectByType<InventoryHud>() == null)
+                new GameObject("InventoryHud").AddComponent<InventoryHud>();
             if (ensureEventSystem) EnsureEventSystem();
 
             if (addCameraShake)

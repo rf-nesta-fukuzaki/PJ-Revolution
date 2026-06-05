@@ -27,7 +27,13 @@ namespace Sandbox.World.Integration
     public sealed class CombinedTerrainConformer : MonoBehaviour
     {
         [Header("Sampling")]
-        [SerializeField] private Vector2 probeXZ = new Vector2(0f, 0f);
+        // 拠点（リスポーン/出撃地点）の中心 XZ。山(center=(128,688))の麓を、山頂から放射状に最も外側＝
+        // 海際の低い渚(y≈10-30m)へ置く。これにより『海辺の遠征基地から、緩やかな裾野を経て徐々に勾配が
+        // 上がる自然な山を登り、山頂(≈y760)を目指す』開始構図になる。山頂とは反対側(−Z 方向)の海岸線
+        // 直前に固定（決定論的地形のため安全。pad スカートが周囲地形へ滑らかに接続。Awake の植生除外円も
+        // この XZ を使うので pad/植生/ジップライン/登攀コースが一貫追従）。海を見下ろす乾いた見晴らしベンチへ微調整
+        // （Z=-540≒海抜24m。waterline は Z≈-723、手前に砂浜＋緩斜面を約180m挟み、台座は海に入らず海を一望）。
+        [SerializeField] private Vector2 probeXZ = new Vector2(128f, -540f);
         [SerializeField] private float rayFromAltitude = 1200f;
         [SerializeField] private int minBakedChunks = 4;
 
@@ -48,6 +54,8 @@ namespace Sandbox.World.Integration
 
         [Header("Placement")]
         [SerializeField] private float playerLift = 1.2f;
+        [Tooltip("スポーン時に各エージェント（プレイヤー/NPC）を重ねないための最小間隔[m]。拠点まわりの同心リング上の空きスロットへ1人ずつ割り当てる。")]
+        [SerializeField] private float partySpawnSpacing = 3f;
         [SerializeField] private float objectLift = 0f;
         [SerializeField] private float buriedThreshold = 1.5f;
         [SerializeField] private float maxConformSeconds = 12f;
@@ -63,20 +71,40 @@ namespace Sandbox.World.Integration
         [Tooltip("前方・近傍に脱出先が無いときだけ基地中心方向へ引き戻す割合（最終手段）。")]
         [Range(0.05f, 1f)] [SerializeField] private float escapeFallbackPull = 0.4f;
 
+        [Header("Agent Containment（海・島外への徘徊脱出を防ぐ）")]
+        [Tooltip("ON で、海上（baked 島の外）や渚に踏み出した NPC/敵を拠点へ引き戻し、AI ホームも拠点へ付け替える。プレイヤーは対象外。")]
+        [SerializeField] private bool containAgents = true;
+        [Tooltip("接地高度がこの値[m]未満（＝海面プレーン y≈4 付近の渚）に出た NPC/敵を拠点へ引き戻す。海岸は島で最も低い land なので、内陸の高所追跡中の敵には誤発火しない。")]
+        [SerializeField] private float agentSeaContainY = 8f;
+
+        [Header("Sea Barrier（海への侵入を防ぐ見えない壁）")]
+        [Tooltip("ON で、山頂中心の円筒メッシュコライダー（不可視）を海岸線手前に設置し、プレイヤー/NPC が海へ歩いて出られないようにする。")]
+        [SerializeField] private bool seaBarrier = true;
+        [Tooltip("山頂から海側へ進んで接地高度がこの値[m]を下回った地点を海岸線とみなし、その半径に壁を立てる（放射状なので湾の曲がりに追従）。")]
+        [SerializeField] private float seaBarrierGroundY = 8f;
+        [Tooltip("壁の下端 Y[m]（海底まで覆う）。")]
+        [SerializeField] private float seaBarrierBottomY = -40f;
+        [Tooltip("壁の上端 Y[m]（渚の低地より十分高く＝飛び越え不可。内陸では地中に埋まり無害）。")]
+        [SerializeField] private float seaBarrierTopY = 50f;
+        [Tooltip("円筒の分割数（多いほど海岸線に滑らかに追従）。")]
+        [SerializeField] private int seaBarrierSegments = 128;
+
         [Header("Atmosphere Fog（低高度の白飛び緩和・高度連動）")]
         [SerializeField] private bool tuneFog = true;
+        // 空気遠近を効かせて山岳のスケールを出す。谷は白飛び回避で距離を保ちつつ、登るほど
+        // フォグが近づき遠景の尾根が層状に大気へ溶ける（高所ほど叙景的に）。
         [Tooltip("谷（低高度）のフォグ開始距離。白飛びを抑えるため遠ざける。")]
-        [SerializeField] private float fogStartOverride = 700f;  // = low start
+        [SerializeField] private float fogStartOverride = 420f;  // = low start
         [Tooltip("谷（低高度）のフォグ終了距離。")]
-        [SerializeField] private float fogEndOverride = 6000f;    // = low end
+        [SerializeField] private float fogEndOverride = 3400f;    // = low end
         [Tooltip("高所のフォグ開始距離。空気遠近の奥行きを出すため近づける。")]
-        [SerializeField] private float fogStartHigh = 500f;
-        [Tooltip("高所のフォグ終了距離。")]
-        [SerializeField] private float fogEndHigh = 4500f;
+        [SerializeField] private float fogStartHigh = 260f;
+        [Tooltip("高所のフォグ終了距離。遠景の尾根を大気色へ層状に溶かす。")]
+        [SerializeField] private float fogEndHigh = 2050f;
         [Tooltip("距離/色の補間が high 側へ到達する基準カメラ高度（山頂相当 ≈485m）。")]
-        [SerializeField] private float fogAltitudeForFullClear = 480f;
-        [SerializeField] private Color fogLowOverride = new Color(0.56f, 0.69f, 0.86f, 1f);
-        [SerializeField] private Color fogHighOverride = new Color(0.50f, 0.66f, 0.92f, 1f);
+        [SerializeField] private float fogAltitudeForFullClear = 460f;
+        [SerializeField] private Color fogLowOverride = new Color(0.70f, 0.78f, 0.88f, 1f);
+        [SerializeField] private Color fogHighOverride = new Color(0.64f, 0.74f, 0.90f, 1f);
 
         [Header("Duplicate Camera（残置 MainCamera の整理）")]
         [Tooltip("実行時にプレイヤー追従カメラ以外の残置 MainCamera を無効化し、追従カメラを唯一の MainCamera にする。")]
@@ -178,6 +206,10 @@ namespace Sandbox.World.Integration
         private bool _fogCamLinked;
         private bool _camerasResolved;
         private bool _playerPlaced;
+        private bool _partyPlaced;
+        private bool _seaBarrierBuilt;
+        // スポーン済みエージェント(プレイヤー+NPC)の XZ。次のスポーンが重ならない空きスロットを選ぶのに使う。
+        private readonly List<Vector2> _spawnOccupied = new List<Vector2>();
         private bool _initialDone;
         private float _startTime;
         private float _maintTimer;
@@ -199,6 +231,14 @@ namespace Sandbox.World.Integration
 
         private void Awake()
         {
+            // 既存の SandboxOfflineCombined シーンには probeXZ=(0,0)（島中央＝中腹 y≈290）が直列化されており、
+            // これが「スタート地点が高すぎる」原因。(0,0) と旧自動既定 (-52,-173)（まだ中腹寄りで背後に急斜面が
+            // 迫る）はいずれも「未設定＝自動」とみなし、海際の低い渚へ移行する（シーンアセットを編集せずコードで
+            // 一貫させる。Inspector で別値を明示設定済みならそれを尊重）。
+            var coastalDefault = new Vector2(128f, -540f);
+            if (probeXZ == Vector2.zero || probeXZ == new Vector2(-52f, -173f))
+                probeXZ = coastalDefault;
+
             // 生成（TerrainGenerator.Start → 各チャンクの scatter dispatch は Update 以降）より前に
             // 拠点の植生除外円を設定する。Awake は全 Start/Update より先に走るため確実に間に合う。
             ScatterPlacementGPU.ExcludeXZRadius = new Vector4(probeXZ.x, probeXZ.y, scatterExcludeRadius, 0f);
@@ -295,12 +335,15 @@ namespace Sandbox.World.Integration
             PlaceZiplineCheckpoints(); // 登攀コース確定後、ルート沿いにジップライン用チェックポイントを設置（一度成功で固定）
             PublishAltitudeProfile();  // 実山高(基地→山頂)を MountainProfile へ公開（天候/凍傷/高山病/高度計が連動）
             TuneElevationBands();      // 観測山頂が確定したら地形の標高バンド(草/岩/雪線)を実山高へ比例追従（一度成功で固定）
+            BuildSeaBarrier();         // 海岸線手前に不可視の円筒壁を設置し、海への侵入を防ぐ（一度成功で固定）
 
             if (!_initialDone)
             {
                 SnapPending();
                 if (!_playerPlaced) _playerPlaced = PlacePlayers();
+                if (!_partyPlaced)  _partyPlaced  = PlaceParty();
                 RescueBuriedBodies();
+                ContainStrayAgents();
                 if (Time.time - _startTime > maxConformSeconds)
                 {
                     if (_safetyFloor != null) Destroy(_safetyFloor);
@@ -316,6 +359,7 @@ namespace Sandbox.World.Integration
                 _maintTimer = maintenanceInterval;
                 RescueBuriedBodies();
                 StuckWatchdog();
+                ContainStrayAgents();
             }
         }
 
@@ -544,7 +588,12 @@ namespace Sandbox.World.Integration
             Vector2 summitXZ = new Vector2(summit.x, summit.z);
             if (summitXZ.magnitude < 50f) return; // まだ原点近傍の低ピークしか観測できていない
 
-            Vector2 dir = summitXZ.normalized;
+            // ルートは「拠点(probeXZ) → 観測山頂(summitXZ)」を基準にする。以前は世界原点(0,0)起点で
+            // lerp していたため、拠点を海際へ大きく動かすと登攀コース/遺物/祠が拠点から外れてしまった。
+            // 拠点起点にすることで、どの拠点位置でも『麓→山頂』の一直線にコースが並ぶ。
+            Vector2 routeBase = probeXZ;
+            Vector2 toSummit = summitXZ - routeBase;
+            Vector2 dir = toSummit.sqrMagnitude > 1e-4f ? toSummit.normalized : Vector2.up;
             Vector2 perp = new Vector2(-dir.y, dir.x);
             int moved = 0, movedShrines = 0;
 
@@ -574,7 +623,7 @@ namespace Sandbox.World.Integration
                 float lat   = (((h        & 0xFF) / 255f) * 2f - 1f) * climbLateralSpread * latScale;
                 float along = ((((h >> 8) & 0xFF) / 255f) * 2f - 1f) * climbAlongSpread   * alongScale;
 
-                Vector2 xz = Vector2.Lerp(Vector2.zero, summitXZ, f) + perp * lat + dir * along;
+                Vector2 xz = Vector2.Lerp(routeBase, summitXZ, f) + perp * lat + dir * along;
 
                 // ジップラインのステーション設置点（チェックポイント位置）に被るオブジェクトは外側へ退避させる。
                 for (int ci = 0; ci < cpPositions.Count; ci++)
@@ -1005,17 +1054,135 @@ namespace Sandbox.World.Integration
             int placed = 0;
             foreach (var pc in players)
             {
-                var t = pc.transform;
-                var pos = t.position;
-                if (!TrySampleGround(pos.x, pos.z, out float gy)) continue;
-                pos.y = gy + playerLift;
+                // 出現位置を NGO 初期スポーン地点(≈原点・中腹)ではなく拠点へ。既に置いた他プレイヤー/NPC や
+                // 中央の焚き火と重ならない、拠点まわりの空きスロットを割り当てる（非重複スポーン）。
+                if (!AllocateSpawnPoint(out var pos)) continue;
                 var rb = pc.GetComponent<Rigidbody>();
                 if (rb != null) { rb.position = pos; rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
-                t.position = pos;
+                pc.transform.position = pos;
                 placed++;
             }
             if (placed > 0) Physics.SyncTransforms();
             return placed > 0;
+        }
+
+        /// <summary>パーティ NPC を拠点(probeXZ)まわりの小さなリングへ配置し、プレイヤーと一緒に麓から出撃させる。</summary>
+        private bool PlaceParty()
+        {
+            var npcs = FindObjectsByType<NPCController>(FindObjectsSortMode.None);
+            if (npcs == null || npcs.Length == 0) return false;
+            int placed = 0;
+            for (int i = 0; i < npcs.Length; i++)
+            {
+                var n = npcs[i];
+                if (n == null) continue;
+                // プレイヤー含む既配置エージェントと重ならない拠点まわりの空きスロットへ（非重複スポーン）。
+                if (!AllocateSpawnPoint(out var pos)) continue;
+                var rb = n.GetComponent<Rigidbody>();
+                if (rb != null) { rb.position = pos; rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
+                n.transform.position = pos;
+                TryReanchorAgentOnce(n.gameObject, pos);  // AI のホーム/アンカーを拠点へ
+                placed++;
+            }
+            if (placed > 0) Physics.SyncTransforms();
+            return placed >= npcs.Length;
+        }
+
+        /// <summary>
+        /// 拠点まわりの「同心リング上の空きスロット」から、既配置エージェント(_spawnOccupied)と
+        /// partySpawnSpacing 以上離れ、かつ接地している最初の地点を割り当てる（重複スポーン防止）。
+        /// プレイヤーと NPC で _spawnOccupied を共有するため、両者・全員が互いに重ならない。
+        /// 中央(スロット無し)は焚き火等の中心物を避けてリング1から始める。
+        /// </summary>
+        private bool AllocateSpawnPoint(out Vector3 dest)
+        {
+            float minSqr = partySpawnSpacing * partySpawnSpacing * 0.81f; // 0.9×間隔を許容下限に
+            for (int slot = 0; slot < 120; slot++)
+            {
+                Vector2 xz = probeXZ + RingSlotOffset(slot);
+                bool clear = true;
+                for (int i = 0; i < _spawnOccupied.Count; i++)
+                    if ((_spawnOccupied[i] - xz).sqrMagnitude < minSqr) { clear = false; break; }
+                if (!clear) continue;
+                if (!TrySampleGround(xz.x, xz.y, out float gy)) continue;
+                _spawnOccupied.Add(xz);
+                dest = new Vector3(xz.x, gy + playerLift, xz.y);
+                return true;
+            }
+            // 全スロット埋まり/接地不能の保険（通常到達しない）。
+            dest = new Vector3(probeXZ.x, _padTopY + playerLift, probeXZ.y);
+            return true;
+        }
+
+        /// <summary>拠点中心まわりの同心リング上の固定スロット位置（slot 番号→拠点相対 XZ）。総数に依存しないため順序/タイミングに非依存。</summary>
+        private Vector2 RingSlotOffset(int slot)
+        {
+            int s = Mathf.Max(0, slot), ring = 1, cap = 6;
+            while (s >= cap) { s -= cap; ring++; cap = 6 * ring; }
+            float ang = ((s + 0.5f) / cap) * Mathf.PI * 2f + ring * 0.7f; // リングごとに角度をずらして千鳥に
+            float radius = ring * partySpawnSpacing;
+            return new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * radius;
+        }
+
+        /// <summary>
+        /// 海への侵入を防ぐ見えない円筒壁を、山頂(GlobalMaxPos)中心の放射状に設置する。山頂から海側
+        /// (拠点方向)へ進んで接地高度が seaBarrierGroundY を下回る地点＝海岸線の半径に壁を立てるため、
+        /// 放射状の海岸線（湾の曲がり）に追従して内側(島)に閉じ込める。上端は渚の低地より高く飛び越え不可、
+        /// 内陸側では地中に埋まり無害（登坂は壁から内側へ向かうので干渉しない）。一度成功で固定。
+        /// </summary>
+        private void BuildSeaBarrier()
+        {
+            if (_seaBarrierBuilt || !seaBarrier) return;
+            if (_bootstrap == null || _bootstrap.ColliderBaker == null) return;
+            if (_bootstrap.ColliderBaker.BakedCount < climbDistributeMinChunks) return;
+            // 山頂(GlobalMaxPos)が安定＝登攀コース確定後に建てる。早期の低ピーク誤認で壁が誤った中心/半径に
+            // できるのを防ぐ（DistributeClimbCourse と同じ summit-stable ゲートを共有）。
+            if (!_climbDistributed) return;
+
+            Vector3 summit = _bootstrap.ColliderBaker.GlobalMaxPos;
+            Vector2 summitXZ = new Vector2(summit.x, summit.z);
+            if (summitXZ.magnitude < 50f) return; // まだ原点近傍の低ピークしか観測できていない
+
+            Vector2 seaward = probeXZ - summitXZ; // 山頂→拠点＝海側
+            if (seaward.sqrMagnitude < 1f) return;
+            seaward.Normalize();
+
+            // 山頂から海側へ前進し、接地が無い（海上）か渚高度を下回った最初の距離＝海岸線半径。
+            float radius = -1f;
+            for (float d = 100f; d <= 2400f; d += 8f)
+            {
+                Vector2 p = summitXZ + seaward * d;
+                bool hasGround = TrySampleGround(p.x, p.y, out float gy);
+                if (!hasGround || gy < seaBarrierGroundY) { radius = d; break; }
+            }
+            if (radius < 50f) return; // 海岸チャンクがまだ焼けていない → 次フレーム再試行
+
+            // 厚い凸ボックスコライダのリングで壁を構成する。ゼロ厚のコンケーブ trimesh は高速侵入で
+            // トンネル抜けする（実測で 12m/s の剛体が貫通）ため、放射方向に厚み(6m)を持つ凸ボックスを
+            // 円周に沿って隣接重ねで並べる。凸ボックスは CCD と相性が良く、内外どちらからも確実に弾く。
+            int segs = Mathf.Clamp(seaBarrierSegments, 48, 256);
+            var go = new GameObject("SeaBarrier");
+            go.transform.position = new Vector3(summitXZ.x, 0f, summitXZ.y);
+
+            float midY    = (seaBarrierBottomY + seaBarrierTopY) * 0.5f;
+            float height  = Mathf.Max(1f, seaBarrierTopY - seaBarrierBottomY);
+            float chord   = 2f * radius * Mathf.Sin(Mathf.PI / segs);
+            float width   = chord * 1.4f;   // 隣接ボックスと十分に重ねて継ぎ目の隙間をゼロにする
+            const float thickness = 6f;      // 放射方向の厚み（高速侵入でもトンネルしない）
+
+            for (int i = 0; i < segs; i++)
+            {
+                float a = i / (float)segs * Mathf.PI * 2f;
+                Vector3 radial = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+                var seg = new GameObject("SeaBarrierSeg");
+                seg.transform.SetParent(go.transform, false);
+                seg.transform.localPosition = radial * radius + Vector3.up * midY;
+                seg.transform.localRotation = Quaternion.LookRotation(radial, Vector3.up); // +Z=放射方向(厚み)
+                var bc = seg.AddComponent<BoxCollider>();
+                bc.size = new Vector3(width, height, thickness);
+            }
+            _seaBarrierBuilt = true;
+            Debug.Log($"[CombinedTerrainConformer] 海バリア（不可視の凸ボックス壁 x{segs}）を設置: center={summitXZ} radius={radius:F0}m");
         }
 
         // 維持フェーズの重い全シーン走査をまとめてキャッシュ更新する（間隔内は再利用）。
@@ -1048,6 +1215,44 @@ namespace Sandbox.World.Integration
                 _rescuedCount++;
                 TryReanchorAgentOnce(rb.gameObject, pos);
             }
+        }
+
+        /// <summary>
+        /// 海・島外へ徘徊脱出（または物理で吹き飛ばされた）NPC/敵を拠点へ引き戻す封じ込め。
+        /// 接地面が無い（baked 島の外＝海/虚空）か、渚高度(agentSeaContainY)未満に踏み出した個体を拠点まわりの
+        /// 安全地点へ戻し、AI ホーム(_homePos)も拠点へ付け替えて再び海へ向かわないようにする。地表下への落下は
+        /// RescueBuriedBodies が担当（接地ありの埋没）。プレイヤーは EnumerateAgents の対象外なので動かさない。
+        /// 海岸は島で最も低い land なので、高所をプレイヤー追跡中の敵には誤発火しない（距離リーシュは使わない）。
+        /// </summary>
+        private void ContainStrayAgents()
+        {
+            if (!containAgents) return;
+            bool any = false;
+            foreach (var go in EnumerateAgents())
+            {
+                var pos = go.transform.position;
+                bool hasGround = TrySampleGround(pos.x, pos.z, out float gy);
+                bool offIsland = !hasGround;                          // baked 島の外（海上/虚空）
+                bool atShore   = hasGround && gy < agentSeaContainY;  // 渚（海面 y≈4）へ踏み出した
+                if (!(offIsland || atShore)) continue;
+
+                // 拠点まわりの安全地点へ戻す（PlaceParty と同じ要領。footprint 内は _padTopY が返る）。
+                Vector2 xz = probeXZ + Random.insideUnitCircle * 4f;
+                if (!TrySampleGround(xz.x, xz.y, out float sy)) { xz = probeXZ; sy = _padTopY; }
+                var dest = new Vector3(xz.x, sy + playerLift, xz.y);
+
+                var rb = go.GetComponent<Rigidbody>();
+                if (rb != null) { rb.position = dest; rb.linearVelocity = Vector3.zero; rb.angularVelocity = Vector3.zero; }
+                go.transform.position = dest;
+
+                // ホームを拠点へ付け替え（_anchored を無視して毎回更新）、徘徊先を内陸に固定する。
+                var npc = go.GetComponent<NPCController>();
+                if (npc != null) npc.ReanchorHome(dest);
+                var enemy = go.GetComponent<EnemyController>();
+                if (enemy != null) enemy.ReanchorHome(dest);
+                any = true;
+            }
+            if (any) Physics.SyncTransforms();
         }
 
         /// <summary>長時間静止した NPC/敵を、進行方向優先の到達可能な近傍へ退避させて詰まりを解消する。</summary>

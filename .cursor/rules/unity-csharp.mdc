@@ -6,7 +6,8 @@ alwaysApply: false
 
 # Unity C# Rules
 
-- Runtime code must not depend on `UnityEditor`. Put editor-only tools under `Assets/Sandbox/Script/Editor/` or guard them with `#if UNITY_EDITOR`.
+- Runtime code must not depend on `UnityEditor`. Put editor-only tools under `Assets/Sandbox/Editor/` or guard them with `#if UNITY_EDITOR`.
+- Register editor menu items via `PeakPlunderEditorMenus` constants under the `Peak Plunder/` root.
 - Prefer serialized private fields for Inspector tuning: `[SerializeField] private ...`.
 - Keep MonoBehaviour lifecycle predictable: cache components in `Awake`, cross-object lookups in `Start` when needed, physics in `FixedUpdate`, visual camera work in `LateUpdate`.
 - Use Unity 6 APIs consistently, including `Rigidbody.linearVelocity` where this project already uses it.

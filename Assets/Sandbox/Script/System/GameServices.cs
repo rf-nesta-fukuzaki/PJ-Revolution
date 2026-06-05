@@ -55,7 +55,20 @@ public static class GameServices
     public static IExpeditionService         Expedition     => _expedition     ??= Object.FindFirstObjectByType<ExpeditionManager>();
     public static IHintService               Hints          => _hints          ??= Object.FindFirstObjectByType<HintManager>();
     public static IHelicopterService         Helicopter     => _helicopter     ??= Object.FindFirstObjectByType<HelicopterController>();
-    public static RopeManager                 Ropes          => _ropes          ??= Object.FindFirstObjectByType<RopeManager>();
+    public static RopeManager Ropes
+    {
+        get
+        {
+            if (_ropes != null)
+            {
+                if (_ropes)
+                    return _ropes;
+                _ropes = null;
+            }
+
+            return Object.FindFirstObjectByType<RopeManager>();
+        }
+    }
     public static SpawnManager                Spawner        => _spawner        ??= Object.FindFirstObjectByType<SpawnManager>();
     public static CosmeticManager            Cosmetics      => _cosmetics      ??= Object.FindFirstObjectByType<CosmeticManager>();
     public static ProximityVoiceChat         VoiceChat      => _voiceChat      ??= Object.FindFirstObjectByType<ProximityVoiceChat>();
@@ -94,6 +107,16 @@ public static class GameServices
     public static void Register(IRelicDiscoveryNotifier relicDiscovery) => _relicDiscovery = relicDiscovery;
     public static void Register(IAudioService audio) => _audio = audio;
     public static void Register(RopeManager ropes) => _ropes = ropes;
+
+    /// <summary>破棄時にスタale参照を外す（EditMode テストの連続実行でも安全）。</summary>
+    public static void ClearRopeIf(RopeManager manager)
+    {
+        if (ReferenceEquals(_ropes, manager))
+            _ropes = null;
+    }
+
+    /// <summary>EditMode テスト用 — ロープサービス登録を解除する。</summary>
+    public static void ClearRopes() => _ropes = null;
     public static void Register(SpawnManager spawner) => _spawner = spawner;
     public static void Register(CosmeticManager cosmetics) => _cosmetics = cosmetics;
 }

@@ -68,6 +68,7 @@ public class MiniCompass : MonoBehaviour
         UpdateNeedle(playerYaw);
         UpdateHeadingLabel(playerYaw);
         UpdatePinArrows();
+        UpdateFlareMarkers();
     }
 
     // ── カメラ解決 ───────────────────────────────────────────
@@ -180,6 +181,40 @@ public class MiniCompass : MonoBehaviour
             _arrowPool.Add(img);
         }
         return _arrowPool[index];
+    }
+
+    private void UpdateFlareMarkers()
+    {
+        if (_pinArrowParent == null || _playerCamera == null) return;
+
+        const int flareBase = 100;
+        int shown = 0;
+        Vector3 playerPos = _playerCamera.position;
+
+        foreach (var flare in FlareBehavior.GetVisibleFlaresFrom(playerPos))
+        {
+            if (flare == null) continue;
+
+            Vector3 delta = flare.transform.position - playerPos;
+            float pinYaw = Mathf.Atan2(delta.x, delta.z) * Mathf.Rad2Deg;
+
+            var arrow = GetOrCreateArrow(flareBase + shown);
+            arrow.color = new Color(1f, 0.45f, 0f, 1f);
+
+            var rt = arrow.rectTransform;
+            float rad = pinYaw * Mathf.Deg2Rad;
+            rt.anchoredPosition = new Vector2(Mathf.Sin(rad) * _arrowRadius, Mathf.Cos(rad) * _arrowRadius);
+            rt.localRotation = Quaternion.Euler(0f, 0f, -pinYaw);
+            rt.gameObject.SetActive(true);
+            shown++;
+        }
+
+        for (int i = shown; i < 24; i++)
+        {
+            int idx = flareBase + i;
+            if (idx < _arrowPool.Count && _arrowPool[idx] != null)
+                _arrowPool[idx].gameObject.SetActive(false);
+        }
     }
 
     // ── コンパス面の整備（実行時・冪等）──────────────────────

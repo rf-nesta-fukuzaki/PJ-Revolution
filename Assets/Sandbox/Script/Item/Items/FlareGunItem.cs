@@ -16,7 +16,7 @@ public class FlareGunItem : ItemBase
     [Header("フレア設定")]
     [SerializeField] private int   _maxFlares    = 3;
     [SerializeField] private float _flareSpeed   = 15f;
-    [SerializeField] private float _flareBurnTime = 8f;   // 地面で燃え続ける時間（秒）
+    [SerializeField] private float _flareBurnTime = 60f;   // 地面マーキング（GDD §8.3）
     [Tooltip("着弾後のフレアが視認される最大距離 (m)。この距離を超えた観測者、または LoS が遮られた観測者からは視認不可。")]
     [SerializeField] private float _visibleRange = 100f;
 

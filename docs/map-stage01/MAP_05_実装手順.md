@@ -57,7 +57,7 @@ User Layer 10: Hazard
 
 ### 2-C: GrappableRockPlacer.cs（Editor用）
 ```
-作成先: Assets/Sandbox/Script/Editor/GrappableRockPlacer.cs
+作成先: Assets/Sandbox/Editor/Stage01/GrappableRockPlacer.cs
 内容: MAP_02_シーン構成.md の「6. 岩の作成仕様」のEditorスクリプトセクションを参照
 ```
 

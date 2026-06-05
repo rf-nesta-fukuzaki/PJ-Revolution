@@ -61,6 +61,13 @@ public class GrabPoint : MonoBehaviour
         SetHighlight(false);
     }
 
+    /// <summary>ランタイム生成 GrabPoint 用の設定。</summary>
+    public void Configure(bool requireIceAxe, float staminaDrain)
+    {
+        _requireIceAxe = requireIceAxe;
+        _staminaDrain  = staminaDrain;
+    }
+
     // ── ギズモ ────────────────────────────────────────────────
     private void OnDrawGizmos()
     {

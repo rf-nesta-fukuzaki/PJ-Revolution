@@ -23,5 +23,10 @@ namespace Sandbox.World.Config
         [Range(0f, 1f)] public float rockDensity = 0.25f;
         [Min(0.01f)] public float rockScaleMin = 0.5f;
         [Min(0.01f)] public float rockScaleMax = 1.8f;
+
+        [Header("Sea-level cutoff")]
+        [Tooltip("このワールドY[m]未満には木/岩を配置しない。海面プレーンは seaLevel(0)+waterLevelOffset(4)=y4 に描画されるため、" +
+                 "それより十分上(=14m)を既定にして、緩い海岸の浅瀬に植生が立つのを防ぎ自然な砂浜＋草地の渚を残す。")]
+        public float minPlacementAltitude = 14f;
     }
 }

@@ -343,7 +343,7 @@ MonoBehaviour:
   chunkResolution: 129
   apron: 2
   cellSize: 2
-  loadRadius: 2
+  loadRadius: 3
   lod1Distance: 950
   lod2Distance: 2200
   perFrameDispatchBudget: 32
@@ -4336,6 +4336,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::IcePatch
   _frictionOverride: 0.02
   _normalFriction: 0.6
+  _upgradeVisual: 1
+  _iceColor: {r: 0.66, g: 0.82, b: 0.93, a: 1}
+  _iceEmission: {r: 0.05, g: 0.1, b: 0.16, a: 1}
+  _iceSmoothness: 0.93
 --- !u!23 &242221061
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -9047,6 +9051,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::IcePatch
   _frictionOverride: 0.02
   _normalFriction: 0.6
+  _upgradeVisual: 1
+  _iceColor: {r: 0.66, g: 0.82, b: 0.93, a: 1}
+  _iceEmission: {r: 0.05, g: 0.1, b: 0.16, a: 1}
+  _iceSmoothness: 0.93
 --- !u!23 &522305326
 MeshRenderer:
   m_ObjectHideFlags: 0

@@ -1,56 +1,59 @@
+using Unity.Netcode;
 using UnityEngine;
 
 /// <summary>
 /// GDD §3.2 — プレイヤーのインタラクション入力処理。
-/// カメラ前方を Raycast で走査し、E / F / G で操作する。
-///   E: 遺物を拾う / 置く。担架への乗り込み / 離脱。ヘリ搭乗。
-///   F: 持っているアイテムを使用
-///   G: 保持中の遺物を前方に投げる（ドロップ）
-/// 死亡時には保持遺物を自動ドロップし担架から離脱する（GDD §4.1）。
+///   E: 拾う / 置く / 担架 / ウインチ / ヘリ / 返品
+///   R/F: アイテム使用（ItemUseController）
+///   G: 遺物ドロップ / 手持ちアイテムを丁寧に置く / ウインチ回収
+///   X: ショップロープ切断 / ウインチケーブル切断
 /// </summary>
 [RequireComponent(typeof(PlayerInventory))]
 [RequireComponent(typeof(PlayerHealthSystem))]
+[RequireComponent(typeof(ItemUseController))]
 public class PlayerInteraction : MonoBehaviour
 {
-    private const float INTERACT_RANGE      = 2.5f;   // インタラクト可能距離
-    private const float DROP_IMPULSE        = 4f;     // ドロップ時の初速 (m/s)
-    private const float STRETCHER_RANGE     = 2.0f;   // 担架に乗り込める距離
-    private const float HELICOPTER_RANGE    = 8f;     // ヘリ搭乗可能距離（m）
-
-    // 遺物の掴み判定（単発 Raycast より緩く）。
-    private const float RELIC_GRAB_CAST_RADIUS = 0.6f;   // SphereCast の太さ（照準ブレ許容）
-    private const float RELIC_GRAB_RANGE_MULT  = 1.2f;   // 掴みは通常インタラクトより少し遠くまで
-    private const float RELIC_GRAB_MIN_DOT      = 0.3f;  // 近接フォールバックの前方コーン（約72°）
+    private const float INTERACT_RANGE      = 2.5f;
+    private const float DROP_IMPULSE        = 4f;
+    private const float STRETCHER_RANGE     = 2.0f;
+    private const float HELICOPTER_RANGE    = 8f;
+    private const float RELIC_GRAB_CAST_RADIUS = 0.6f;
+    private const float RELIC_GRAB_RANGE_MULT  = 1.2f;
+    private const float RELIC_GRAB_MIN_DOT      = 0.3f;
 
     [Header("インタラクション設定")]
     [SerializeField] private float     _interactRange  = INTERACT_RANGE;
     [SerializeField] private Transform _cameraTransform;
 
-    // ── 依存コンポーネント ────────────────────────────────────
     private PlayerInventory    _inventory;
     private PlayerHealthSystem _health;
+    private ItemUseController  _itemUse;
     private RelicCarrier       _carriedRelic;
     private StretcherItem      _attachedStretcher;
     private BalanceIndicator   _balanceIndicator;
     private int                _inputSlot;
 
-    // ── スコアサービス（Singleton 直結を排除） ────────────────
     private IScoreService ScoreService => GameServices.Score;
 
-    /// <summary>
-    /// 現在遺物を持ち運んでいるか（GDD §6.2 カメラモード「運搬」判定用）。
-    /// </summary>
     public bool IsCarryingRelic => _carriedRelic != null;
+    public RelicBase CarriedRelicComponent => _carriedRelic != null
+        ? _carriedRelic.GetComponent<RelicBase>()
+        : null;
 
-    // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
     {
         _inventory        = GetComponent<PlayerInventory>();
         _health           = GetComponent<PlayerHealthSystem>();
+        _itemUse          = GetComponent<ItemUseController>();
         _balanceIndicator = GetComponentInChildren<BalanceIndicator>();
         if (_cameraTransform == null)
             _cameraTransform = GetComponentInChildren<Camera>()?.transform ?? transform;
         _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
+    }
+
+    private void Start()
+    {
+        InventoryHud.Instance?.Bind(_inventory);
     }
 
     private void OnEnable()  => _health.OnDied += OnPlayerDied;
@@ -58,34 +61,222 @@ public class PlayerInteraction : MonoBehaviour
 
     private void Update()
     {
-        // 入力スロットは毎フレーム再解決（Awake 時点は未構成で -1 になり得る）。
         _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
         if (_inputSlot < 0 || _health.IsDead) return;
 
         if (InputStateReader.InteractPressedThisFrame(_inputSlot)) HandleInteract();
-        if (InputStateReader.UsePressedThisFrame(_inputSlot))      HandleUse();
         if (InputStateReader.DropPressedThisFrame(_inputSlot))     HandleDrop();
+        if (InputStateReader.CableCutPressedThisFrame(_inputSlot)) HandleCableCut();
     }
 
-    // ── E: インタラクト ──────────────────────────────────────
+    private void HandleCableCut()
+    {
+        if (TryCutShopRope()) return;
+
+        var winch = PortableWinchItem.FindDeployedNear(transform.position, PortableWinchItem.OperateRange);
+        if (winch == null) return;
+
+        winch.CutCable();
+    }
+
+    private bool TryCutShopRope()
+    {
+        if (_inventory.HandItem is IShopRopeItem handRope && handRope.IsConnected)
+        {
+            handRope.CutRope();
+            return true;
+        }
+
+        int playerId = PlayerScoreId.FromMember(this);
+        var ropes = GameServices.Ropes;
+        if (ropes == null || !ropes.IsPlayerInAnyShopRope(playerId)) return false;
+
+        if (_inventory.HandItem is IShopRopeItem anyRope)
+        {
+            anyRope.CutRope();
+            return true;
+        }
+
+        ropes.DisconnectAllForPlayer(playerId);
+        return true;
+    }
+
     private void HandleInteract()
     {
+        if (TryRefundAtLocker()) return;
+        if (TryRecoverGrapplingHook()) return;
+        if (TryInteractDeployedWinch()) return;
         if (TryBoardHelicopter()) return;
         if (TryDetachStretcher()) return;
-        if (TryPutDownRelic())    return;
+        if (TryMountRelicOnStretcher()) return;
+        if (TryConnectShopRope()) return;
+        if (TryAttachLongRopeToRelic()) return;
+        if (TryPutDownRelic()) return;
         if (TryAttachStretcher()) return;
-        if (TryPickUpRelic())     return;
+        if (TryPickUpRelic()) return;
         TryPickUpItem();
     }
 
-    // ── インタラクト分割メソッド ──────────────────────────────
+    private bool TryInteractDeployedWinch()
+    {
+        var winch = RaycastFor<PortableWinchItem>(_interactRange);
+        if (winch == null || !winch.IsDeployedInWorld) return false;
+        if (Vector3.Distance(transform.position, winch.transform.position) > PortableWinchItem.OperateRange)
+            return false;
+
+        if (!winch.HasCableHook && !winch.IsCableAttached)
+            return winch.TryDeployCable();
+
+        if (winch.HasCableHook && !winch.IsCableAttached)
+        {
+            var target = RaycastFor<Rigidbody>(_interactRange * 2f);
+            if (target != null)
+                return winch.TryAttachCableTo(target);
+        }
+
+        return false;
+    }
+
+    /// <summary>固定ベルト等へ遺物を移管したあと、手元運搬参照をクリアする。</summary>
+    public void NotifyRelicExternallyAttached()
+    {
+        _carriedRelic = null;
+        _balanceIndicator?.Hide();
+    }
+
+    private bool TryConnectShopRope()
+    {
+        if (_inventory.HandItem is not IShopRopeItem rope || rope.IsConnected) return false;
+
+        int playerId = PlayerScoreId.FromMember(this);
+
+        var partner = FindNearbyPlayerForRope(ShopRopeConstants.ConnectRange);
+        if (partner != null)
+        {
+            int partnerId = PlayerScoreId.FromMember(partner);
+            return rope.TryConnectToPlayer(playerId, partnerId);
+        }
+
+        var anchor = FindNearestAnchor(ShopRopeConstants.AnchorConnectRange);
+        if (anchor != null)
+            return rope.TryConnectToAnchor(anchor, playerId, transform.position);
+
+        return false;
+    }
+
+    private PlayerInventory FindNearbyPlayerForRope(float range)
+    {
+        PlayerInventory best     = null;
+        float           bestDist = float.MaxValue;
+        Vector3         myPos    = transform.position;
+
+        foreach (var inv in PlayerInventory.RegisteredInventories)
+        {
+            if (inv == null || inv == _inventory) continue;
+            float d = Vector3.Distance(myPos, inv.transform.position);
+            if (d > range || d >= bestDist) continue;
+            bestDist = d;
+            best     = inv;
+        }
+
+        return best;
+    }
+
+    private Transform FindNearestAnchor(float range)
+    {
+        var ropes = GameServices.Ropes;
+        if (ropes == null || ropes.AnchorPoints.Count == 0) return null;
+
+        Transform best     = null;
+        float       bestDist = float.MaxValue;
+        Vector3     myPos    = transform.position;
+
+        foreach (var anchor in ropes.AnchorPoints)
+        {
+            if (anchor == null) continue;
+            float d = Vector3.Distance(myPos, anchor.position);
+            if (d > range || d >= bestDist) continue;
+            bestDist = d;
+            best     = anchor;
+        }
+
+        return best;
+    }
+
+    private bool TryAttachLongRopeToRelic()
+    {
+        if (_inventory.HandItem is not LongRopeItem longRope) return false;
+        if (longRope.IsConnected) return false;
+
+        var relic = FindNearbyRelicForRope(LongRopeItem.RelicAttachRange);
+        if (relic == null) return false;
+
+        int playerId = PlayerScoreId.FromMember(this);
+        return longRope.TryAttachToRelic(relic, playerId, transform.position);
+    }
+
+    private RelicBase FindNearbyRelicForRope(float range)
+    {
+        RelicBase best     = null;
+        float     bestDist = float.MaxValue;
+
+        var carriers = Object.FindObjectsByType<RelicCarrier>(FindObjectsSortMode.None);
+        foreach (var carrier in carriers)
+        {
+            if (carrier == null || carrier.IsBeingCarried) continue;
+
+            var relic = carrier.GetComponent<RelicBase>();
+            if (relic == null || relic.IsDestroyed) continue;
+
+            var grab = relic.GetComponent<RelicGrabPoint>();
+            Vector3 anchor = grab != null ? grab.AttachPosition : relic.transform.position;
+            float dist = Vector3.Distance(transform.position, anchor);
+            if (dist > range || dist >= bestDist) continue;
+
+            bestDist = dist;
+            best     = relic;
+        }
+
+        return best;
+    }
+
+    private bool TryRecoverGrapplingHook()
+    {
+        var hook = FindActiveGrapplingHook();
+        return hook != null && hook.TryRecover(transform.position);
+    }
+
+    private GrapplingHookItem FindActiveGrapplingHook()
+    {
+        if (_inventory.HandItem is GrapplingHookItem handHook && handHook.IsGrappling)
+            return handHook;
+
+        foreach (var item in _inventory.BackpackItems)
+        {
+            if (item is GrapplingHookItem hook && hook.IsGrappling)
+                return hook;
+        }
+
+        foreach (var item in _inventory.QuickSlotItems)
+        {
+            if (item is GrapplingHookItem hook && hook.IsGrappling)
+                return hook;
+        }
+
+        return null;
+    }
+
+    private bool TryRefundAtLocker()
+    {
+        var locker = BasecampItemLocker.Instance;
+        return locker != null && locker.TryRefundNearby(_inventory, _cameraTransform);
+    }
+
     private bool TryBoardHelicopter()
     {
-        // IHelicopterService 経由でアクセス（GameServices で解決）
         var heli = GameServices.Helicopter;
         if (heli == null || !heli.IsBoarding) return false;
         if (Vector3.Distance(transform.position, heli.HelipadPosition) > HELICOPTER_RANGE) return false;
-
         heli.BoardPlayer(_health);
         return true;
     }
@@ -93,10 +284,31 @@ public class PlayerInteraction : MonoBehaviour
     private bool TryDetachStretcher()
     {
         if (_attachedStretcher == null) return false;
-        _attachedStretcher.Detach(this);
+
+        var netSync = _attachedStretcher.GetComponent<NetworkStretcherSync>();
+        if (netSync != null && netSync.IsSpawned)
+            netSync.RequestDetachServerRpc();
+        else
+            _attachedStretcher.Detach(this);
+
         _attachedStretcher = null;
-        Debug.Log("[Interaction] 担架から離脱");
         return true;
+    }
+
+    private bool TryMountRelicOnStretcher()
+    {
+        if (_carriedRelic == null) return false;
+        var stretcher = RaycastFor<StretcherItem>(STRETCHER_RANGE);
+        if (stretcher == null) return false;
+
+        var relic = _carriedRelic.GetComponent<RelicBase>();
+        if (relic == null) return false;
+
+        _carriedRelic.PutDown();
+        _carriedRelic = null;
+        _balanceIndicator?.Hide();
+
+        return stretcher.MountRelic(relic);
     }
 
     private bool TryPutDownRelic()
@@ -105,7 +317,6 @@ public class PlayerInteraction : MonoBehaviour
         _carriedRelic.PutDown();
         _carriedRelic = null;
         _balanceIndicator?.Hide();
-        Debug.Log("[Interaction] 遺物を置いた");
         return true;
     }
 
@@ -114,15 +325,16 @@ public class PlayerInteraction : MonoBehaviour
         var stretcher = RaycastFor<StretcherItem>(STRETCHER_RANGE);
         if (stretcher == null) return false;
 
-        if (stretcher.TryAttach(this, out Transform attachPoint))
+        var netSync = stretcher.GetComponent<NetworkStretcherSync>();
+        if (netSync != null && netSync.IsSpawned)
         {
+            netSync.RequestAttachServerRpc();
             _attachedStretcher = stretcher;
-            Debug.Log($"[Interaction] {name} が担架に乗り込んだ → {attachPoint?.name}");
+            return true;
         }
-        else
-        {
-            Debug.Log("[Interaction] 担架が満員です（2人まで）");
-        }
+
+        if (stretcher.TryAttach(this, out _))
+            _attachedStretcher = stretcher;
         return true;
     }
 
@@ -136,11 +348,7 @@ public class PlayerInteraction : MonoBehaviour
         _carriedRelic = carrier;
         _balanceIndicator?.Show(carrier);
         ScoreService?.RecordRelicFound(scoreId);
-        // チームスコア／リザルトの遺物価値集計に載せる。従来は NPC 経路でしか
-        // RegisterCollectedRelic が呼ばれず、プレイヤーが拾った遺物がチームスコアへ
-        // ゼロ反映だった配線漏れを解消する。
         ScoreService?.RegisterCollectedRelic(carrier.GetComponent<RelicBase>());
-        Debug.Log($"[Interaction] {carrier.name} を拾った");
         return true;
     }
 
@@ -151,53 +359,26 @@ public class PlayerInteraction : MonoBehaviour
 
         if (_inventory.TryAdd(item))
             Debug.Log($"[Interaction] {item.ItemName} を拾った");
-        else
-            Debug.Log("[Interaction] インベントリが満杯または重量超過");
     }
 
-    // ── F: アイテム使用 ─────────────────────────────────────
-    private void HandleUse()
-    {
-        // GDD §5.2 — アイテム毎に必要な引数が違うので、既定の TryUse() ではなく
-        // 専用 API に型別ディスパッチする。既定の TryUse() に頼ると
-        //   - 照準/座標を必要とするアイテム（アンカー/フレア/グラップリング/テント）は空撃ち
-        //   - 運搬中の遺物を対象とするアイテム（梱包キット/サーマルケース）は対象不明
-        // になるため、ここで正しいパラメータを供給する。
-        int playerId = PlayerScoreId.FromMember(this);
-        foreach (var item in _inventory.Items)
-        {
-            bool used = item switch
-            {
-                AnchorBoltItem    anchor  => anchor.TryPlaceAnchor(_cameraTransform, playerId),
-                FlareGunItem      flare   => flare.TryFire(_cameraTransform),
-                GrapplingHookItem hook    => hook.Fire(_cameraTransform.position, _cameraTransform.forward),
-                BivouacTentItem   tent    => tent.TryPlace(transform.position, transform.rotation),
-                ThermalCaseItem   thermal => _carriedRelic != null
-                                              && thermal.TryProtectRelic(_carriedRelic.GetComponent<RelicBase>()),
-                PackingKitItem    packing => _carriedRelic != null
-                                              && packing.ApplyToRelic(_carriedRelic.GetComponent<RelicBase>()),
-                _                         => item.TryUse()
-            };
-
-            if (used)
-            {
-                Debug.Log($"[Interaction] {item.ItemName} を使用");
-                return;
-            }
-        }
-    }
-
-    // ── G: 遺物をドロップ ────────────────────────────────────
     private void HandleDrop()
     {
-        if (_carriedRelic == null) return;
-        _carriedRelic.Drop(_cameraTransform.forward * DROP_IMPULSE);
-        _carriedRelic = null;
-        _balanceIndicator?.Hide();
-        Debug.Log("[Interaction] 遺物をドロップ");
+        var deployedWinch = PortableWinchItem.FindDeployedNear(transform.position, PortableWinchItem.OperateRange);
+        if (deployedWinch != null && deployedWinch.TryRetrieve(_inventory))
+            return;
+
+        if (_carriedRelic != null)
+        {
+            _carriedRelic.Drop(_cameraTransform.forward * DROP_IMPULSE);
+            _carriedRelic = null;
+            _balanceIndicator?.Hide();
+            return;
+        }
+
+        if (_inventory.HasHandItem)
+            _inventory.DropHandItemGently();
     }
 
-    // ── 死亡時：保持遺物を自動ドロップ＆担架から離脱（GDD §4.1）
     private void OnPlayerDied(PlayerHealthSystem _)
     {
         _attachedStretcher?.Detach(this);
@@ -210,10 +391,9 @@ public class PlayerInteraction : MonoBehaviour
             _balanceIndicator?.Hide();
         }
 
-        Debug.Log("[Interaction] 死亡により遺物をドロップ・担架から離脱");
+        _inventory.DropAllOnDeath();
     }
 
-    // ── Raycast ヘルパー ─────────────────────────────────────
     private T RaycastFor<T>(float range) where T : Component
     {
         if (_cameraTransform == null) return null;
@@ -222,11 +402,6 @@ public class PlayerInteraction : MonoBehaviour
         return hit.collider.GetComponentInParent<T>();
     }
 
-    /// <summary>
-    /// 遺物の掴み判定。単発 Raycast だと正確に狙わないと掴めず厳しいので、
-    /// ① 太めの SphereCast（照準が多少ズレても掴める）→ ② 前方コーン内の最寄り遺物、
-    /// の順で緩く拾い上げ対象を探す。背後の遺物や運搬中の遺物は対象外。
-    /// </summary>
     private RelicCarrier FindGrabbableRelic()
     {
         if (_cameraTransform == null) return null;
@@ -235,7 +410,6 @@ public class PlayerInteraction : MonoBehaviour
         Vector3 forward = _cameraTransform.forward;
         float   range   = _interactRange * RELIC_GRAB_RANGE_MULT;
 
-        // ① 太めの SphereCast（トリガーである発見検出コライダーは無視）。
         if (Physics.SphereCast(origin, RELIC_GRAB_CAST_RADIUS, forward,
                 out RaycastHit hit, range, ~0, QueryTriggerInteraction.Ignore))
         {
@@ -243,7 +417,6 @@ public class PlayerInteraction : MonoBehaviour
             if (IsGrabbable(carrier)) return carrier;
         }
 
-        // ② 近接フォールバック：前方コーン内で最も近い遺物を拾う。
         Vector3 center = origin + forward * (range * 0.5f);
         var overlaps = Physics.OverlapSphere(center, range, ~0, QueryTriggerInteraction.Ignore);
 
@@ -270,13 +443,4 @@ public class PlayerInteraction : MonoBehaviour
 
     private static bool IsGrabbable(RelicCarrier carrier)
         => carrier != null && !carrier.IsBeingCarried;
-
-    private void OnDrawGizmosSelected()
-    {
-        if (_cameraTransform == null) return;
-        Gizmos.color = Color.yellow;
-        Gizmos.DrawRay(_cameraTransform.position, _cameraTransform.forward * _interactRange);
-        Gizmos.color = new Color(0f, 1f, 0.5f, 0.6f);
-        Gizmos.DrawRay(_cameraTransform.position, _cameraTransform.forward * STRETCHER_RANGE);
-    }
 }

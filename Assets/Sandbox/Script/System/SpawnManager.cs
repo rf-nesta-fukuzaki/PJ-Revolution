@@ -217,20 +217,28 @@ public class SpawnManager : MonoBehaviour
     {
         var itemPoints = _allSpawnPoints
             .Where(sp => sp.Layer == SpawnLayer.Item)
+            .OrderBy(_ => Random.value)
             .ToList();
 
+        if (itemPoints.Count == 0) return;
+
+        int target = Random.Range(3, 7);
         int spawned = 0;
+
         foreach (var sp in itemPoints)
         {
-            // 50% の確率で遺留品が落ちている（耐久値が低い）
-            if (Random.value < 0.5f)
-            {
-                sp.Activate();
-                spawned++;
-            }
+            if (spawned >= target) break;
+            if (Random.value > 0.65f) continue;
+
+            var type = ItemFieldDropPool.PickRandom();
+            var go   = NetworkRuntimeItemSpawn.SpawnFieldDrop(type, sp.transform.position, sp.transform.rotation);
+            if (go == null) continue;
+
+            go.transform.SetParent(sp.transform);
+            spawned++;
         }
 
-        Debug.Log($"[Spawn L5] 遺留品 {spawned} 個を配置");
+        Debug.Log($"[Spawn L5] 遺留品 {spawned} 個を配置（8種プール・低耐久）");
     }
 
     // ── 再生成 ────────────────────────────────────────────────

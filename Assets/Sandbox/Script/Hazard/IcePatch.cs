@@ -11,7 +11,42 @@ public class IcePatch : MonoBehaviour
     [SerializeField] private float _frictionOverride = 0.02f;
     [SerializeField] private float _normalFriction   = 0.6f;
 
+    [Header("Visual (AAA icy sheen)")]
+    [Tooltip("ON なら起動時にこの氷面の MeshRenderer をツヤのある反射的な氷マテリアルへ差し替える（平板な白板を解消）。")]
+    [SerializeField] private bool  _upgradeVisual   = true;
+    [SerializeField] private Color _iceColor        = new Color(0.66f, 0.82f, 0.93f, 1f);
+    [SerializeField] private Color _iceEmission     = new Color(0.05f, 0.10f, 0.16f, 1f); // 影でも黒く沈まない冷たい発光
+    [Range(0f, 1f)] [SerializeField] private float _iceSmoothness = 0.93f;                 // 空/太陽を映す氷の照り
+
     private readonly Dictionary<Collider, PhysicsMaterial> _runtimeMaterials = new();
+    private Material _iceMat;
+
+    private void Awake()
+    {
+        if (_upgradeVisual) UpgradeVisual();
+    }
+
+    // フラットな白い板（URP/Lit 既定）を、空と太陽を映すツヤ氷へ。高 smoothness の鏡面で
+    // 水平な氷面が天空を反射し、太陽のグリントが走る。冷たい微発光で陰でも氷として読める。
+    private void UpgradeVisual()
+    {
+        var mr = GetComponent<MeshRenderer>();
+        if (mr == null) return;
+        var lit = Shader.Find("Universal Render Pipeline/Lit");
+        if (lit == null) return;
+
+        _iceMat = new Material(lit) { name = "IcePatchIceMat" };
+        if (_iceMat.HasProperty("_BaseColor")) _iceMat.SetColor("_BaseColor", _iceColor);
+        if (_iceMat.HasProperty("_Smoothness")) _iceMat.SetFloat("_Smoothness", _iceSmoothness);
+        if (_iceMat.HasProperty("_Metallic"))   _iceMat.SetFloat("_Metallic", 0f);
+        if (_iceMat.HasProperty("_SpecularHighlights")) _iceMat.SetFloat("_SpecularHighlights", 1f);
+        if (_iceMat.HasProperty("_EnvironmentReflections")) _iceMat.SetFloat("_EnvironmentReflections", 1f);
+        _iceMat.EnableKeyword("_EMISSION");
+        _iceMat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+        if (_iceMat.HasProperty("_EmissionColor")) _iceMat.SetColor("_EmissionColor", _iceEmission);
+
+        mr.sharedMaterial = _iceMat;
+    }
 
     private void OnTriggerEnter(Collider other)
     {
@@ -79,6 +114,8 @@ public class IcePatch : MonoBehaviour
                 Destroy(kv.Value);
         }
         _runtimeMaterials.Clear();
+
+        if (_iceMat != null) Destroy(_iceMat);
     }
 
     private void OnDrawGizmos()

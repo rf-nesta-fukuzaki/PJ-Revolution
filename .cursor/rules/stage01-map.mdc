@@ -7,7 +7,8 @@ alwaysApply: false
 # Stage01 MAP Rules
 
 - Treat `docs/map-stage01/` as the Stage01 MAP specification.
-- Do high-volume scene construction through Unity Editor APIs, mainly `Stage01MapBuilder`, not by hand-editing `.unity` YAML.
+- Do high-volume scene construction through Unity Editor APIs, mainly `Stage01MapBuilder` in `Assets/Sandbox/Editor/Stage01/`, not by hand-editing `.unity` YAML.
+- Editor menu paths are centralized in `PeakPlunderEditorMenus.cs`.
 - Main build menu: `Peak Plunder > Stage01 > Build Gameplay Scene`.
 - Main validation menu: `Peak Plunder > Stage01 > Validate Gameplay Scene`.
 - Generated scene target: `Assets/Sandbox/Scenes/Gameplay.unity`.

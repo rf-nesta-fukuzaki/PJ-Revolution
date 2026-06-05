@@ -107,6 +107,21 @@ public class RelicCarrier : MonoBehaviour
         _holderController?.SetCarryPenalty(ComputeCarryPenalty());
     }
 
+    /// <summary>固定ベルト等へ移管するため運搬状態のみ解除（PutDown は呼ばない）。</summary>
+    public void DetachCarrierState()
+    {
+        if (_holderAnimator != null)
+        {
+            _holderAnimator.SetBool(IsCarryingHash, false);
+            _holderAnimator.SetInteger(CarryTypeHash, CARRY_TYPE_NONE);
+            _holderAnimator = null;
+        }
+
+        _holderController?.SetCarryPenalty(0f);
+        _holderController = null;
+        _currentHolder = null;
+    }
+
     /// <summary>遺物を置く。</summary>
     public void PutDown()
     {

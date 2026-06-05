@@ -18,5 +18,9 @@ public class RopeConfigSO : ScriptableObject
     [Header("接続・破断")]
     public float MaxRopeLength      = 20f;
     public float BreakForce         = 800f;
+    /// <summary>GDD §8 — ロングロープ（25m）の張力切断閾値。</summary>
+    public float LongRopeBreakForce  = 2500f;
+    /// <summary>GDD §8 — ショートロープ（10m）の張力切断閾値。</summary>
+    public float ShortRopeBreakForce = 3000f;
     public float TensionForceScale  = 300f;
 }

@@ -24,28 +24,46 @@ public class OxygenTankItem : ItemBase
         _currentDurability = _maxDurability;
     }
 
+    public override void OnEquippedInHand(PlayerInventory inv, Transform anchor, Vector3 localOffset)
+    {
+        base.OnEquippedInHand(inv, anchor, localOffset);
+        ActivateOxygen(inv);
+    }
+
     public override void OnStoredInInventory(PlayerInventory inv)
     {
         base.OnStoredInInventory(inv);
-        _stamina = inv.GetComponent<StaminaSystem>();
-        if (_stamina != null)
-            _stamina.HasOxygenTank = true;
-
-        // 高山病エフェクトを抑制（GDD §3.4）
-        _altitudeSickness = inv.GetComponent<AltitudeSicknessEffect>();
-        _altitudeSickness?.SetOxygenTankActive(true);
+        ActivateOxygen(inv);
     }
 
     public override void OnRemovedFromInventory()
     {
+        DeactivateOxygen();
+        base.OnRemovedFromInventory();
+    }
+
+    public override void OnRemovedFromHand()
+    {
+        DeactivateOxygen();
+        base.OnRemovedFromHand();
+    }
+
+    private void ActivateOxygen(PlayerInventory inv)
+    {
+        _stamina = inv.GetComponent<StaminaSystem>();
+        if (_stamina != null)
+            _stamina.HasOxygenTank = true;
+        _altitudeSickness = inv.GetComponent<AltitudeSicknessEffect>();
+        _altitudeSickness?.SetOxygenTankActive(true);
+    }
+
+    private void DeactivateOxygen()
+    {
         if (_stamina != null)
             _stamina.HasOxygenTank = false;
         _stamina = null;
-
         _altitudeSickness?.SetOxygenTankActive(false);
         _altitudeSickness = null;
-
-        base.OnRemovedFromInventory();
     }
 
     private void Update()
@@ -61,12 +79,7 @@ public class OxygenTankItem : ItemBase
 
     protected override void OnItemBroken()
     {
-        if (_stamina != null)
-            _stamina.HasOxygenTank = false;
-
-        _altitudeSickness?.SetOxygenTankActive(false);
-        _altitudeSickness = null;
-
+        DeactivateOxygen();
         Debug.Log("[OxygenTank] 酸素タンクが空になった！高山病リスク！");
         Destroy(gameObject, 1f);
     }

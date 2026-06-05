@@ -219,6 +219,27 @@ namespace Sandbox.World.Integration
             K.Box("Pack", t, new Vector3(0.2f, 1.1f, 0f), new Vector3(0.5f, 0.7f, 0.35f), K.Mat(CanvasRed), solid: false);
             K.Cyl("AxeShaft", t, new Vector3(0.9f, 1.1f, 0f), 0.04f, 1.0f, K.Mat(TimberLight), solid: false);
             K.Box("AxeHead", t, new Vector3(0.9f, 1.55f, 0.08f), new Vector3(0.28f, 0.12f, 0.18f), K.Mat(Iron, 0.4f, 0.6f), solid: false);
+
+            EnsureItemLocker(t);
+        }
+
+        private static void EnsureItemLocker(Transform rackRoot)
+        {
+            if (rackRoot.GetComponent<BasecampItemLocker>() != null) return;
+
+            rackRoot.gameObject.AddComponent<BasecampItemLocker>();
+
+            var shelfA = new GameObject("Shelf_A").transform;
+            shelfA.SetParent(rackRoot, false);
+            shelfA.localPosition = new Vector3(-0.6f, 1.35f, 0.15f);
+
+            var shelfB = new GameObject("Shelf_B").transform;
+            shelfB.SetParent(rackRoot, false);
+            shelfB.localPosition = new Vector3(0.6f, 1.35f, 0.15f);
+
+            var refund = new GameObject("RefundShelf").transform;
+            refund.SetParent(rackRoot, false);
+            refund.localPosition = new Vector3(0f, 0.4f, 0.35f);
         }
 
         // ── 焚き火（リスポーンのランドマーク） ──────────────────────
@@ -431,7 +452,6 @@ namespace Sandbox.World.Integration
                 if (side == 0)
                 {
                     // +Z は開口の左右 2 本
-                    float segLen = (Perimeter - GateOpening) * 0.5f;
                     float cxOff = (GateOpening + Perimeter) * 0.5f;
                     K.Box($"Rail_z_l_{hy:F0}", t, new Vector3(-cxOff, hy, Perimeter), new Vector3(Perimeter - GateOpening, 0.08f, 0.08f), rail, solid: false);
                     K.Box($"Rail_z_r_{hy:F0}", t, new Vector3(cxOff, hy, Perimeter), new Vector3(Perimeter - GateOpening, 0.08f, 0.08f), rail, solid: false);

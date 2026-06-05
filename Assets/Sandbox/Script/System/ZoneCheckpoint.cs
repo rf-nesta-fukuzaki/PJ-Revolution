@@ -44,7 +44,7 @@ public class ZoneCheckpoint : MonoBehaviour
         if (!other.CompareTag("Player")) return;
 
         _passed = true;
-        ExpeditionManager.Instance?.OnCheckpointReached(_checkpointIndex);
+        GameServices.Expedition?.OnCheckpointReached(_checkpointIndex);
 
         // 拠点⇄当該チェックポイントのジップラインを開通させ、以後は登りをショートカットできるようにする。
         Sandbox.World.Zipline.ZiplineNetwork.Ensure().InstallLine(_checkpointIndex, transform.position);
@@ -52,7 +52,7 @@ public class ZoneCheckpoint : MonoBehaviour
         if (_passParticles != null)
             _passParticles.Play();
 
-        PPAudioManager.Instance?.PlaySE(SoundId.Checkpoint, transform.position);
+        GameServices.Audio?.PlaySE(SoundId.Checkpoint, transform.position);
         Debug.Log($"[Checkpoint] Checkpoint {_checkpointIndex + 1} 通過");
     }
 

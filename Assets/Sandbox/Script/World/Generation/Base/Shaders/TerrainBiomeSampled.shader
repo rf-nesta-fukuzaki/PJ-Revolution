@@ -30,9 +30,17 @@ Shader "Sandbox/TerrainBiomeSampled"
         _SlopeRockFull ("Slope Rock Full (deg)",  Float) = 60
 
         [Header(Snow)]
-        _SnowColor     ("Snow Color", Color) = (0.94, 0.96, 1.0, 1)
+        _SnowColor     ("Snow Color", Color) = (0.90, 0.92, 0.98, 1)
         _SnowSparkle   ("Snow Sparkle", Range(0,1)) = 0.6
         _SnowSlopeMax  ("Snow Max Slope (deg)", Float) = 42
+
+        [Header(Band Naturalization)]
+        // 標高帯の境界をワールド XZ ノイズで上下に揺らし、雪線/岩線の『バスタブの輪』を
+        // 自然な雪の指・岩の露出に分解する（AAA 級の有機的な遷移）。
+        _SnowLineJitter ("Snow Line Jitter [m]", Float) = 44
+        _RockLineJitter ("Rock Line Jitter [m]", Float) = 28
+        _BandJitterFreq ("Band Jitter Freq (1/m)", Float) = 0.021
+        _BandJitterFreq2("Band Jitter Freq Fine (1/m)", Float) = 0.085
 
         [Header(PBR)]
         _RockSmooth ("Rock Smoothness",  Range(0,1)) = 0.13
@@ -93,6 +101,10 @@ Shader "Sandbox/TerrainBiomeSampled"
                 float4 _SnowColor;
                 float  _SnowSparkle;
                 float  _SnowSlopeMax;
+                float  _SnowLineJitter;
+                float  _RockLineJitter;
+                float  _BandJitterFreq;
+                float  _BandJitterFreq2;
                 float  _RockSmooth;
                 float  _GrassSmooth;
                 float  _SnowSmooth;
@@ -169,8 +181,14 @@ Shader "Sandbox/TerrainBiomeSampled"
                 // ── ベース色: biome + 標高帯 overlay ──
                 float3 biomeCol = SAMPLE_TEXTURE2D(_BiomeColorTex, sampler_BiomeColorTex, IN.uv).rgb;
                 float y = wp.y;
-                float wSnowB  = smoothstep(_SnowLine  - _SnowBlend,  _SnowLine  + _SnowBlend,  y);
-                float wRockB  = smoothstep(_RockLine  - _RockBlend,  _RockLine  + _RockBlend,  y) * (1.0 - wSnowB);
+                // 標高帯境界の有機的な揺らぎ（粗い起伏 + 細かいフィンガリングの 2 周波）。
+                // -1..1 のノイズで雪線/岩線を上下させ、ベルト状の硬い遷移をなくす。
+                float bandN = (sdFbm2(wp.xz * _BandJitterFreq,  4, 2.0, 0.5) - 0.5) * 2.0
+                            + (sdFbm2(wp.xz * _BandJitterFreq2, 3, 2.0, 0.5) - 0.5) * 0.7;
+                float ySnow = y + bandN * _SnowLineJitter;
+                float yRock = y + bandN * _RockLineJitter;
+                float wSnowB  = smoothstep(_SnowLine  - _SnowBlend,  _SnowLine  + _SnowBlend,  ySnow);
+                float wRockB  = smoothstep(_RockLine  - _RockBlend,  _RockLine  + _RockBlend,  yRock) * (1.0 - wSnowB);
                 float wGrassB = smoothstep(_GrassLine - _GrassBlend, _GrassLine + _GrassBlend, y) * (1.0 - wRockB - wSnowB);
                 float wShoreB = saturate(1.0 - wSnowB - wRockB - wGrassB);
                 float3 bandCol = _ColSnow.rgb*wSnowB + _ColRock.rgb*wRockB + _ColGrass.rgb*wGrassB + _ColShore.rgb*wShoreB;

@@ -10,6 +10,8 @@ using PeakPlunder.Audio;
 /// </summary>
 public class MagneticHelmetRelic : RelicBase
 {
+    public override RelicSizeCategory SizeCategory => RelicSizeCategory.Small;
+
     [Header("磁力設定 (GDD §6.2)")]
     [Tooltip("フル引力圏。この半径内では最大トルク (_magnetForce) が適用される。")]
     [SerializeField] private float _magnetRadius    = 6f;

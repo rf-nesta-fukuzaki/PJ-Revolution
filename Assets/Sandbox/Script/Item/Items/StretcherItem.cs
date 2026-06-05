@@ -1,41 +1,65 @@
 using UnityEngine;
 
 /// <summary>
-/// GDD §5.2 — アイテム「折りたたみ担架」
-/// 大型遺物運搬用。2人で安定、1人で引きずり。
-/// 担架の両端の高さが違うと遺物が滑り落ちる（コメディ演出）。
-///
-/// 2人操作フロー:
-///   1人目が E キーで端A を掴む → TryAttach() で割り当て
-///   2人目が E キーで端B を掴む → TryAttach() で割り当て
-///   各キャリアは FixedUpdate で担架端位置にスナップ追従
-///   E キー再押しで離脱 → Detach()
-///
-/// コスト 10pt / 重量 3 / スロット 3 / 耐久 70
+/// GDD §5.2 — 折りたたみ担架（ConfigurableJoint 2人運搬・遺物スリップ）。
 /// </summary>
 public class StretcherItem : ItemBase
 {
+    private const float JointBreakForce = 4000f;
+
     [Header("担架エンド")]
-    [SerializeField] private Transform _endA;         // 担架の片端（1人目が持つ）
-    [SerializeField] private Transform _endB;         // 担架の反対端（2人目が持つ）
-    [SerializeField] private Transform _relicMount;   // 遺物を置く中央プラットフォーム
+    [SerializeField] private Transform _endA;
+    [SerializeField] private Transform _endB;
+    [SerializeField] private Transform _relicMount;
 
     [Header("設定")]
-    [SerializeField] private float _slideTiltAngle = 15f;  // この角度以上で滑り始める
+    [SerializeField] private float _slideTiltAngle = 45f;
     [SerializeField] private float _slideForce     = 8f;
-    [SerializeField] private float _snapRadius     = 2.0f; // 端への吸着判定距離
-    [SerializeField] private float _snapSpeed      = 10f;  // 追従スピード（m/s Lerp係数）
+    [SerializeField] private float _snapRadius     = 2.0f;
 
-    private Transform         _carrierA;
-    private Transform         _carrierB;
-    private PlayerInteraction _driverA;    // 端Aを操作するプレイヤー
-    private PlayerInteraction _driverB;    // 端Bを操作するプレイヤー
-    private RelicBase         _mountedRelic;
-    private bool              _relicSlidOff;
+    private Rigidbody           _endRbA;
+    private Rigidbody           _endRbB;
+    private ConfigurableJoint   _jointA;
+    private ConfigurableJoint   _jointB;
+    private PlayerInteraction   _driverA;
+    private PlayerInteraction   _driverB;
+    private RelicBase           _mountedRelic;
+    private bool                _relicSlidOff;
+    private bool                _isExpanded = true;
+    private BoxCollider         _bodyCollider;
+    private PhysicsMaterial      _highFrictionMat;
+    private float               _soloDragTimer;
 
-    public bool IsCarriedByTwo => _carrierA != null && _carrierB != null;
+    public bool IsExpanded     => _isExpanded;
+    public bool IsCarriedByTwo => _driverA != null && _driverB != null;
     public bool IsEndAFree     => _driverA == null;
     public bool IsEndBFree     => _driverB == null;
+    public RelicBase MountedRelic => _mountedRelic;
+
+    public bool TryToggleExpand()
+    {
+        var sync = GetComponent<NetworkStretcherSync>();
+        if (sync != null && sync.IsNetworkActive)
+            return sync.RequestToggleExpand();
+        return ToggleExpandLocal();
+    }
+
+    public bool ToggleExpandLocal()
+    {
+        if (_isBroken) return false;
+        if (_driverA != null || _driverB != null) return false;
+
+        _isExpanded = !_isExpanded;
+        ApplyExpandedCollider();
+        return true;
+    }
+
+    public void ApplyExpandedState(bool expanded)
+    {
+        if (_driverA != null || _driverB != null) return;
+        _isExpanded = expanded;
+        ApplyExpandedCollider();
+    }
 
     protected override void Awake()
     {
@@ -46,11 +70,79 @@ public class StretcherItem : ItemBase
         _slots             = 3;
         _maxDurability     = 70f;
         _currentDurability = _maxDurability;
+        EnsureStretcherStructure();
+    }
+
+    private void EnsureStretcherStructure()
+    {
+        _bodyCollider = GetComponent<BoxCollider>();
+        if (_bodyCollider == null)
+            _bodyCollider = gameObject.AddComponent<BoxCollider>();
+
+        _highFrictionMat = new PhysicsMaterial("StretcherFriction")
+        {
+            staticFriction  = 0.8f,
+            dynamicFriction = 0.8f,
+            bounciness      = 0.05f,
+        };
+        _bodyCollider.material = _highFrictionMat;
+
+        if (_endA == null)
+        {
+            var go = new GameObject("EndA");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = new Vector3(-1f, 0f, 0f);
+            _endA = go.transform;
+        }
+        if (_endB == null)
+        {
+            var go = new GameObject("EndB");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = new Vector3(1f, 0f, 0f);
+            _endB = go.transform;
+        }
+        if (_relicMount == null)
+        {
+            var go = new GameObject("RelicMount");
+            go.transform.SetParent(transform, false);
+            _relicMount = go.transform;
+        }
+
+        _endRbA = EnsureEndRigidbody(_endA);
+        _endRbB = EnsureEndRigidbody(_endB);
+
+        ApplyExpandedCollider();
+    }
+
+    private static Rigidbody EnsureEndRigidbody(Transform end)
+    {
+        var rb = end.GetComponent<Rigidbody>();
+        if (rb == null) rb = end.gameObject.AddComponent<Rigidbody>();
+        rb.mass = 5f;
+        rb.useGravity = false;
+        rb.isKinematic = false;
+        rb.constraints = RigidbodyConstraints.FreezeRotation;
+
+        var fj = end.GetComponent<FixedJoint>();
+        if (fj == null) fj = end.gameObject.AddComponent<FixedJoint>();
+        fj.connectedBody = end.parent.GetComponent<Rigidbody>();
+        fj.breakForce = JointBreakForce;
+
+        return rb;
+    }
+
+    private void ApplyExpandedCollider()
+    {
+        if (_bodyCollider == null) return;
+        _bodyCollider.size = _isExpanded
+            ? new Vector3(2f, 0.15f, 0.8f)
+            : new Vector3(0.5f, 0.3f, 0.3f);
+        _bodyCollider.center = Vector3.zero;
     }
 
     private void FixedUpdate()
     {
-        SnapCarriersToEnds();
+        ApplySoloDragDamage();
 
         if (_mountedRelic == null || _relicSlidOff) return;
         float tilt = GetStretcherTiltAngle();
@@ -58,34 +150,35 @@ public class StretcherItem : ItemBase
             SlideRelicOff(tilt);
     }
 
-    // ── 2人操作 API ──────────────────────────────────────────────
-    /// <summary>
-    /// プレイヤーが担架に乗り込む。空いている端（A優先、次にB）を割り当てる。
-    /// </summary>
-    /// <param name="player">操作するプレイヤーの PlayerInteraction</param>
-    /// <param name="attachPoint">割り当てられた端の Transform（追従先）</param>
-    /// <returns>乗り込み成功なら true</returns>
+    private void ApplySoloDragDamage()
+    {
+        if (_mountedRelic == null || IsCarriedByTwo) return;
+        if (_driverA == null && _driverB == null) return;
+
+        _soloDragTimer += Time.fixedDeltaTime;
+        if (_soloDragTimer >= 1f)
+        {
+            _soloDragTimer = 0f;
+            _mountedRelic?.ApplyDamage(1f);
+        }
+    }
+
     public bool TryAttach(PlayerInteraction player, out Transform attachPoint)
     {
         attachPoint = null;
         if (player == null) return false;
 
-        // 最寄りの空き端が _snapRadius 以内にあるときのみ乗り込める。
-        // これで離れた場所からワープで掴めないよう制約する。
-        Transform nearest        = GetNearestFreeEnd(player.transform, out float nearestDist);
-        bool      withinSnapRange = nearest != null && nearestDist <= _snapRadius;
+        Transform nearest = GetNearestFreeEnd(player.transform, out float nearestDist);
+        if (nearest == null || nearestDist > _snapRadius) return false;
 
-        if (!withinSnapRange)
-        {
-            Debug.Log($"[Stretcher] 端から遠すぎる ({nearestDist:F1}m > {_snapRadius:F1}m)。もっと近づいてから掴んでください");
-            return false;
-        }
+        var playerRb = player.GetComponent<Rigidbody>();
+        if (playerRb == null) return false;
 
         if (_driverA == null && nearest == _endA)
         {
             _driverA    = player;
-            _carrierA   = player.transform;
             attachPoint = _endA;
+            _jointA     = CreateCarrierJoint(_endRbA, playerRb);
             Debug.Log($"[Stretcher] {player.name} が端Aを掴んだ");
             return true;
         }
@@ -93,16 +186,58 @@ public class StretcherItem : ItemBase
         if (_driverB == null && _driverA != player && nearest == _endB)
         {
             _driverB    = player;
-            _carrierB   = player.transform;
             attachPoint = _endB;
-            Debug.Log($"[Stretcher] {player.name} が端Bを掴んだ → 2人担架スタート");
+            _jointB     = CreateCarrierJoint(_endRbB, playerRb);
+            Debug.Log($"[Stretcher] {player.name} が端Bを掴んだ → 2人担架");
             return true;
         }
 
         return false;
     }
 
-    /// <summary>指定 Transform から最も近い「空き」担架端を返す（出距離付き）。</summary>
+    private static ConfigurableJoint CreateCarrierJoint(Rigidbody stretcherEnd, Rigidbody playerRb)
+    {
+        var joint = stretcherEnd.gameObject.AddComponent<ConfigurableJoint>();
+        joint.connectedBody = playerRb;
+        joint.autoConfigureConnectedAnchor = true;
+        joint.xMotion = ConfigurableJointMotion.Limited;
+        joint.yMotion = ConfigurableJointMotion.Limited;
+        joint.zMotion = ConfigurableJointMotion.Limited;
+        joint.linearLimit = new SoftJointLimit { limit = 0.35f };
+        joint.breakForce = JointBreakForce;
+        return joint;
+    }
+
+    public void Detach(PlayerInteraction player)
+    {
+        if (player == null) return;
+
+        if (_driverA == player)
+        {
+            DestroyJoint(ref _jointA);
+            _driverA = null;
+            Debug.Log("[Stretcher] 端Aが離れた");
+        }
+        else if (_driverB == player)
+        {
+            DestroyJoint(ref _jointB);
+            _driverB = null;
+            Debug.Log("[Stretcher] 端Bが離れた");
+        }
+    }
+
+    private static void DestroyJoint(ref ConfigurableJoint joint)
+    {
+        if (joint != null)
+        {
+            Destroy(joint);
+            joint = null;
+        }
+    }
+
+    public bool IsAttachedBy(PlayerInteraction player) =>
+        _driverA == player || _driverB == player;
+
     private Transform GetNearestFreeEnd(Transform from, out float dist)
     {
         dist = float.PositiveInfinity;
@@ -121,60 +256,23 @@ public class StretcherItem : ItemBase
         return result;
     }
 
-    /// <summary>プレイヤーが担架を離す。</summary>
-    public void Detach(PlayerInteraction player)
-    {
-        if (player == null) return;
-
-        if (_driverA == player)
-        {
-            _driverA  = null;
-            _carrierA = null;
-            Debug.Log("[Stretcher] 端Aが離れた！遺物が不安定に！");
-        }
-        else if (_driverB == player)
-        {
-            _driverB  = null;
-            _carrierB = null;
-            Debug.Log("[Stretcher] 端Bが離れた！");
-        }
-    }
-
-    /// <summary>指定プレイヤーが既に乗り込んでいるか確認。</summary>
-    public bool IsAttachedBy(PlayerInteraction player) =>
-        _driverA == player || _driverB == player;
-
-    /// <summary>指定 Transform に最も近い担架端を返す。</summary>
-    public Transform GetNearestEnd(Transform from)
-    {
-        if (_endA == null && _endB == null) return transform;
-        if (_endA == null) return _endB;
-        if (_endB == null) return _endA;
-
-        float dA = Vector3.Distance(from.position, _endA.position);
-        float dB = Vector3.Distance(from.position, _endB.position);
-        return dA <= dB ? _endA : _endB;
-    }
-
-    // ── キャリア追従 ─────────────────────────────────────────────
-    private void SnapCarriersToEnds()
-    {
-        if (_carrierA != null && _endA != null)
-            _carrierA.position = Vector3.Lerp(
-                _carrierA.position, _endA.position, Time.fixedDeltaTime * _snapSpeed);
-
-        if (_carrierB != null && _endB != null)
-            _carrierB.position = Vector3.Lerp(
-                _carrierB.position, _endB.position, Time.fixedDeltaTime * _snapSpeed);
-    }
-
-    // ── 遺物マウント ─────────────────────────────────────────────
     public bool MountRelic(RelicBase relic)
     {
-        if (_mountedRelic != null) return false;
+        var sync = GetComponent<NetworkStretcherSync>();
+        if (sync != null && sync.IsNetworkActive)
+            return sync.RequestMountRelic(relic);
+        return MountRelicLocal(relic);
+    }
+
+    public bool MountRelicLocal(RelicBase relic)
+    {
+        if (_mountedRelic != null || relic == null) return false;
 
         _mountedRelic = relic;
         _relicSlidOff = false;
+
+        var carrier = relic.GetComponent<RelicCarrier>();
+        carrier?.DetachCarrierState();
 
         if (_relicMount != null)
         {
@@ -182,33 +280,31 @@ public class StretcherItem : ItemBase
             relic.transform.localPosition = Vector3.zero;
         }
 
-        var carrier = relic.GetComponent<RelicCarrier>();
-        carrier?.PickUp(_relicMount, -1);
+        var rb = relic.GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.useGravity  = false;
+        }
+
         return true;
     }
 
-    public void UnmountRelic()
-    {
-        if (_mountedRelic == null) return;
-        _mountedRelic.transform.SetParent(null);
-        _mountedRelic = null;
-    }
-
-    // ── 傾き計算 ─────────────────────────────────────────────────
     private float GetStretcherTiltAngle()
     {
         if (_endA == null || _endB == null) return 0f;
-
         float heightDiff = Mathf.Abs(_endA.position.y - _endB.position.y);
         float length     = Vector3.Distance(_endA.position, _endB.position);
         if (length < 0.001f) return 0f;
-
         return Mathf.Atan2(heightDiff, length) * Mathf.Rad2Deg;
     }
 
     private void SlideRelicOff(float tiltAngle)
     {
         _relicSlidOff = true;
+
+        if (_bodyCollider != null && _highFrictionMat != null)
+            _highFrictionMat.dynamicFriction = 0.05f;
 
         Vector3 slideDir = _endA.position.y < _endB.position.y
             ? (_endA.position - _endB.position).normalized
@@ -225,10 +321,18 @@ public class StretcherItem : ItemBase
         _mountedRelic.transform.SetParent(null);
         _mountedRelic = null;
 
-        Debug.Log($"[Stretcher] 傾き {tiltAngle:F1}° — 遺物が滑り落ちた！「担架の両端の高さ合わせろ！」");
+        Debug.Log($"[Stretcher] 傾き {tiltAngle:F1}° — 遺物が滑り落ちた");
     }
 
-    // ── デバッグ Gizmos ──────────────────────────────────────────
+    private void OnJointBreak(float breakForce)
+    {
+        Debug.Log("[Stretcher] Joint破断 — 担架が手から離れた");
+        _driverA = null;
+        _driverB = null;
+        _jointA  = null;
+        _jointB  = null;
+    }
+
     private void OnDrawGizmosSelected()
     {
         if (_endA != null)
@@ -240,11 +344,6 @@ public class StretcherItem : ItemBase
         {
             Gizmos.color = _driverB != null ? Color.green : Color.white;
             Gizmos.DrawWireSphere(_endB.position, 0.3f);
-        }
-        if (_snapRadius > 0f)
-        {
-            Gizmos.color = new Color(1f, 1f, 0f, 0.2f);
-            Gizmos.DrawWireSphere(transform.position, _snapRadius);
         }
     }
 }

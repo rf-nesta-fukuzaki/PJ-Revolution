@@ -16,6 +16,7 @@ cbuffer PlacementConstants
     float4 _TreeParams;   // x=density y=maxSlopeDeg z=scaleMin w=scaleMax
     float4 _RockParams;   // x=density y=scaleMin z=scaleMax
     float4 _ExcludeXZR;   // xy = 除外円の中心(world xz), z = 半径[m] (0 で無効)。基地キャンプの平坦地に木/岩を生やさない。
+    float4 _PlaceFilter;  // x = minPlacementAltitude[m]。海面(≈0)付近の浅瀬に植生を生やさない。
     uint4  _PSeed;        // x=seed
 }
 
@@ -58,6 +59,9 @@ void Scatter(uint3 id : SV_DispatchThreadID)
     int   biome  = (int)round(_BiomeMaskTex[int2(tx, ty)]);
     float height = _HeightTex[int2(tx, ty)];
     float slope  = _NormalSlopeTex[int2(tx, ty)].w;
+
+    // 海面付近の浅瀬には木/岩を配置しない（自然な砂浜を残し、水面に植生が立つのを防ぐ）。
+    if (height < _PlaceFilter.x) return;
 
     int   proto = -1;
     float scale = 1.0;

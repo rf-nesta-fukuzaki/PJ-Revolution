@@ -28,6 +28,18 @@ public class IceAxeItem : ItemBase
         _impactDmgScale    = 2f;
     }
 
+    /// <summary>R 打ち込み — 掴みポイント生成のみ（耐久は登攀開始時に消費）。</summary>
+    public bool PlaceGripPoint(Vector3 position, Vector3 normal)
+    {
+        if (_isBroken) return false;
+
+        ClimbingPointFactory.CreateIceAxePoint(position, normal);
+        GameServices.Audio?.PlaySE(SoundId.IceAxeStrike, position);
+        Debug.Log("[IceAxe] グリップポイントを設置");
+        return true;
+    }
+
+    /// <summary>登攀開始時の耐久消費（GDD: 4/回 = 15回）。</summary>
     public override bool TryUse()
     {
         if (_isBroken) return false;
@@ -36,10 +48,8 @@ public class IceAxeItem : ItemBase
         float drain = _maxDurability / MAX_USES;
         ConsumeDurability(drain);
 
-        // GDD §15.2 — ice_axe_strike
         GameServices.Audio?.PlaySE(SoundId.IceAxeStrike, transform.position);
-
-        Debug.Log($"[IceAxe] 使用 {_useCount}/{MAX_USES}");
+        Debug.Log($"[IceAxe] 登攀グリップ {_useCount}/{MAX_USES}");
         return true;
     }
 

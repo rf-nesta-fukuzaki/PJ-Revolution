@@ -253,7 +253,7 @@ RouteGate_Z5_Couloir:
 
 ```csharp
 // Editor専用スクリプト: GrappableRockPlacer.cs
-// Assets/Sandbox/Script/Editor/ に配置
+// Assets/Sandbox/Editor/Stage01/ に配置
 
 #if UNITY_EDITOR
 using UnityEditor;

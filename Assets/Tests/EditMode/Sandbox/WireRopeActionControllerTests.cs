@@ -19,6 +19,7 @@ public sealed class WireRopeActionControllerTests
         _rb.useGravity = false;
         _root.AddComponent<CapsuleCollider>();
         _controller = _root.AddComponent<WireRopeActionController>();
+        InvokeLifecycle(_controller);
 
         // チューニング値は ScriptableObject に外部化されたため、テスト用 config を注入する。
         _config = ScriptableObject.CreateInstance<WireRopeActionConfigSO>();
@@ -161,7 +162,15 @@ public sealed class WireRopeActionControllerTests
     {
         Set("_anchorPoint", anchor);
         Set("_anchorIsGround", isGround);
+        Set("_retrieveRunDirectionXZ", Vector3.right);
         _config.GroundClimbLiftThreshold = 1.5f;
+    }
+
+    private static void InvokeLifecycle(MonoBehaviour behaviour)
+    {
+        var type = behaviour.GetType();
+        var awake = type.GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+        awake?.Invoke(behaviour, null);
     }
 
     private void MoveBody(Vector3 position)

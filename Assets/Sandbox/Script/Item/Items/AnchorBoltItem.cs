@@ -68,9 +68,15 @@ public class AnchorBoltItem : ItemBase
             var rend = anchor.GetComponent<Renderer>();
             if (rend != null) rend.material.color = new Color(0.6f, 0.5f, 0.3f);
 
-            // 物理は不要（固定点として壁にめり込む）
-            Destroy(anchor.GetComponent<Collider>());
+            var col = anchor.GetComponent<Collider>();
+            if (col != null) col.isTrigger = false;
         }
+
+        var anchorRb = anchor.GetComponent<Rigidbody>();
+        if (anchorRb == null)
+            anchorRb = anchor.AddComponent<Rigidbody>();
+        anchorRb.isKinematic = true;
+        anchorRb.useGravity  = false;
 
         anchor.name = "AnchorBolt_Placed";
 

@@ -36,7 +36,17 @@ public class NetworkStretcherSync : NetworkBehaviour
         NetworkVariableReadPermission.Everyone,
         NetworkVariableWritePermission.Server);
 
-    // ── ライフサイクル ────────────────────────────────────────
+    private readonly NetworkVariable<bool> _expanded = new(
+        true,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
+
+    private readonly NetworkVariable<NetworkObjectReference> _mountedRelic = new(
+        default,
+        NetworkVariableReadPermission.Everyone,
+        NetworkVariableWritePermission.Server);
+
+    public bool IsNetworkActive => IsSpawned && NetworkManager.Singleton != null;
     private void Awake()
     {
         _stretcher = GetComponent<StretcherItem>();
@@ -46,12 +56,116 @@ public class NetworkStretcherSync : NetworkBehaviour
     {
         _carrierA.OnValueChanged += OnCarrierAChanged;
         _carrierB.OnValueChanged += OnCarrierBChanged;
+        _expanded.OnValueChanged += OnExpandedChanged;
+        _mountedRelic.OnValueChanged += OnMountedRelicChanged;
     }
 
     public override void OnNetworkDespawn()
     {
         _carrierA.OnValueChanged -= OnCarrierAChanged;
         _carrierB.OnValueChanged -= OnCarrierBChanged;
+        _expanded.OnValueChanged -= OnExpandedChanged;
+        _mountedRelic.OnValueChanged -= OnMountedRelicChanged;
+    }
+
+    public bool RequestToggleExpand()
+    {
+        if (!IsNetworkActive) return false;
+        if (IsServer) return ApplyToggleExpandLocal();
+        RequestToggleExpandServerRpc();
+        return true;
+    }
+
+    public bool RequestMountRelic(RelicBase relic)
+    {
+        if (!IsNetworkActive || relic == null) return false;
+
+        var netObj = relic.GetComponent<NetworkObject>();
+        if (netObj == null) return _stretcher.MountRelicLocal(relic);
+
+        if (IsServer) return ApplyMountRelicLocal(netObj);
+        RequestMountRelicServerRpc(new NetworkObjectReference(netObj));
+        return true;
+    }
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void RequestToggleExpandServerRpc(RpcParams rpcParams = default)
+    {
+        ApplyToggleExpandLocal();
+    }
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void RequestMountRelicServerRpc(NetworkObjectReference relicRef, RpcParams rpcParams = default)
+    {
+        if (!relicRef.TryGet(out var netObj)) return;
+        ApplyMountRelicLocal(netObj);
+    }
+
+    private bool ApplyToggleExpandLocal()
+    {
+        if (_stretcher == null) return false;
+        bool ok = _stretcher.ToggleExpandLocal();
+        if (ok && IsServer)
+            _expanded.Value = _stretcher.IsExpanded;
+        return ok;
+    }
+
+    private bool ApplyMountRelicLocal(NetworkObject netObj)
+    {
+        var relic = netObj.GetComponent<RelicBase>();
+        if (relic == null) return false;
+
+        bool ok = _stretcher.MountRelicLocal(relic);
+        if (ok && IsServer)
+            _mountedRelic.Value = netObj;
+        return ok;
+    }
+
+    private void OnExpandedChanged(bool _, bool expanded)
+    {
+        _stretcher?.ApplyExpandedState(expanded);
+    }
+
+    private void OnMountedRelicChanged(NetworkObjectReference _, NetworkObjectReference current)
+    {
+        if (IsServer || _stretcher == null) return;
+        if (!current.TryGet(out var netObj)) return;
+
+        var relic = netObj.GetComponent<RelicBase>();
+        if (relic != null && _stretcher.MountedRelic == null)
+            _stretcher.MountRelicLocal(relic);
+    }
+
+    private void ApplyCarrierSlot(ulong clientId, bool isEndA)
+    {
+        if (_stretcher == null || clientId == EMPTY) return;
+
+        var player = FindPlayerInteraction(clientId);
+        if (player == null) return;
+
+        if (isEndA && _stretcher.IsEndAFree)
+            _stretcher.TryAttach(player, out _);
+        else if (!isEndA && _stretcher.IsEndBFree)
+            _stretcher.TryAttach(player, out _);
+    }
+
+    private void ClearCarrierSlot(ulong clientId)
+    {
+        var player = FindPlayerInteraction(clientId);
+        if (player != null)
+            _stretcher?.Detach(player);
+    }
+
+    private static PlayerInteraction FindPlayerInteraction(ulong clientId)
+    {
+        foreach (var inv in PlayerInventory.RegisteredInventories)
+        {
+            if (inv == null) continue;
+            var netObj = inv.GetComponent<NetworkObject>();
+            if (netObj != null && netObj.OwnerClientId == clientId)
+                return inv.GetComponent<PlayerInteraction>();
+        }
+        return null;
     }
 
     // ── クライアント → サーバー RPC ──────────────────────────
@@ -116,12 +230,22 @@ public class NetworkStretcherSync : NetworkBehaviour
     // ── 変化コールバック ──────────────────────────────────────
     private void OnCarrierAChanged(ulong oldId, ulong newId)
     {
+        if (newId == EMPTY)
+            ClearCarrierSlot(oldId);
+        else
+            ApplyCarrierSlot(newId, isEndA: true);
+
         string status = newId == EMPTY ? "解放" : $"client {newId} が接続";
         Debug.Log($"[NetStretcher] 端A: {status}");
     }
 
     private void OnCarrierBChanged(ulong oldId, ulong newId)
     {
+        if (newId == EMPTY)
+            ClearCarrierSlot(oldId);
+        else
+            ApplyCarrierSlot(newId, isEndA: false);
+
         string status = newId == EMPTY ? "解放" : $"client {newId} が接続";
         Debug.Log($"[NetStretcher] 端B: {status}");
     }

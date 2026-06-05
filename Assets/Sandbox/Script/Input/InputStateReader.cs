@@ -322,6 +322,96 @@ public static class InputStateReader
 
     public static bool DropPressedThisFrame() => DropPressedThisFrame(0);
 
+    /// <summary>GDD §8.3 — X キー / 西ボタン（ウインチケーブル切断）。</summary>
+    public static bool CableCutPressedThisFrame(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.xKey.wasPressedThisFrame)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
+        return gamepad != null && gamepad.buttonWest.wasPressedThisFrame;
+    }
+
+    public static bool CableCutPressedThisFrame() => CableCutPressedThisFrame(0);
+
+    /// <summary>GDD §8 — R キー / 北ボタン（アイテム使用）。ワイヤーロープと共有。</summary>
+    public static bool ItemUsePressedThisFrame(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.rKey.wasPressedThisFrame)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
+        return gamepad != null && gamepad.buttonNorth.wasPressedThisFrame;
+    }
+
+    public static bool ItemUsePressedThisFrame() => ItemUsePressedThisFrame(0);
+
+    public static bool ItemUseHeld(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.rKey.isPressed)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
+        return gamepad != null && gamepad.buttonNorth.isPressed;
+    }
+
+    public static bool ItemUseHeld() => ItemUseHeld(0);
+
+    public static bool UseHeld(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.fKey.isPressed)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
+        return gamepad != null && gamepad.leftShoulder.isPressed;
+    }
+
+    public static bool UseHeld() => UseHeld(0);
+
+    public static bool InventoryTogglePressedThisFrame(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.tabKey.wasPressedThisFrame)
+                return true;
+        }
+        return false;
+    }
+
+    public static bool InventoryTogglePressedThisFrame() => InventoryTogglePressedThisFrame(0);
+
+    public static bool QuickSlotPressedThisFrame(int index, int slot)
+    {
+        if (!UsesKeyboardForSlot(slot)) return false;
+        var keyboard = Keyboard.current;
+        if (keyboard == null) return false;
+        return index switch
+        {
+            0 => keyboard.digit1Key.wasPressedThisFrame,
+            1 => keyboard.digit2Key.wasPressedThisFrame,
+            2 => keyboard.digit3Key.wasPressedThisFrame,
+            3 => keyboard.digit4Key.wasPressedThisFrame,
+            _ => false,
+        };
+    }
+
     public static bool ReelPressed()
     {
         var keyboard = Keyboard.current;

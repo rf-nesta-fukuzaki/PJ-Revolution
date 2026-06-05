@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a3384effd8cf84e10be5029ea9861f74, type: 3}
+  m_Name: ItemDef_AnchorBolt
+  m_EditorClassIdentifier: Sandbox.Runtime::ItemDefinitionSO
+  ItemName: "\u30A2\u30F3\u30AB\u30FC\u30DC\u30EB\u30C8"
+  Cost: 6
+  Description: 
+  Weight: 1
+  Slots: 1
+  MaxDurability: 100
+  ImpactDamageScale: 1
+  ImpactDamageThreshold: 3

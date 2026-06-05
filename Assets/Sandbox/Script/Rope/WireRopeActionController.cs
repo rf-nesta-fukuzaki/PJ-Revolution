@@ -374,6 +374,7 @@ public class WireRopeActionController : MonoBehaviour
         switch (_phase)
         {
             case WireRopePhase.Ready:
+                if (HasHandItemBlockingWireRope()) break;
                 if (InputStateReader.IsWireRopeHeld(_inputSlot))
                     BeginCharging();
                 break;
@@ -390,7 +391,8 @@ public class WireRopeActionController : MonoBehaviour
                 break;
 
             case WireRopePhase.Attached:
-                if (InputStateReader.WireRopePressedThisFrame(_inputSlot))
+                if (InputStateReader.WireRopePressedThisFrame(_inputSlot)
+                    && !ItemUseController.ConsumedRopePressThisFrame)
                     BeginRetrieve();
                 break;
 
@@ -2137,5 +2139,11 @@ public class WireRopeActionController : MonoBehaviour
         Gizmos.DrawWireSphere(_anchorPoint, 0.25f);
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(_retrieveStopPoint.sqrMagnitude > 0.01f ? _retrieveStopPoint : ComputeRetrieveStopPoint(), 0.2f);
+    }
+
+    private bool HasHandItemBlockingWireRope()
+    {
+        var inv = GetComponent<PlayerInventory>();
+        return inv != null && inv.HasHandItem;
     }
 }

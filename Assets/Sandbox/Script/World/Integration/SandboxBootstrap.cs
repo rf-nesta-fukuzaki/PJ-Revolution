@@ -78,6 +78,7 @@ namespace Sandbox.World.Integration
                 if (GetComponent<OceanLayer>()                  == null) gameObject.AddComponent<OceanLayer>();
                 if (GetComponent<SummitVisualEffects>()         == null) gameObject.AddComponent<SummitVisualEffects>();
                 if (GetComponent<SummitConfettiCelebration>()   == null) gameObject.AddComponent<SummitConfettiCelebration>();
+                if (GetComponent<AtmosphericParticles>()        == null) gameObject.AddComponent<AtmosphericParticles>();
             }
             _routePath = GetComponent<SandboxRoutePath>();
             _explorerPositioner = GetComponent<SandboxExplorerPositioner>();
