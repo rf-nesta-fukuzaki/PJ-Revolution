@@ -27,14 +27,15 @@ public class HintTriggerDriver : MonoBehaviour
     private const float CLIMB_PROXIMITY_RANGE  = 3f;    // GrabPoint ヒント発火距離
     private const float RELIC_PROXIMITY_RANGE  = 5f;    // 遺物発見ヒント発火距離
     private const float PLAYER_PROXIMITY_RANGE = 4f;    // ロープ接続ヒント発火距離
-    private const float ZONE2_ALTITUDE         = 400f;  // ゾーン2（岩場帯）入口
-    private const float ZONE3_ALTITUDE         = 800f;  // ゾーン3（急壁）入口
+    private const float ZONE2_FRACTION         = 0.35f; // 山頂に対する割合（岩場帯入口）
+    private const float ZONE3_FRACTION         = 0.65f; // 山頂に対する割合（急壁/帰還判断）
     private const int   PHYSICS_BUFFER_SIZE    = 16;
 
     // ── コンポーネント参照 ──────────────────────────────────
     [SerializeField] private StaminaSystem     _stamina;
     [SerializeField] private ClimbingController _climbing;
     [SerializeField] private RelicCarrier      _carrier;
+    [SerializeField] private PlayerInteraction _interaction;
     [SerializeField] private Transform         _playerTransform;
 
     // ── 状態 ────────────────────────────────────────────────
@@ -47,8 +48,9 @@ public class HintTriggerDriver : MonoBehaviour
     private void Awake()
     {
         if (_playerTransform == null) _playerTransform = transform;
-        if (_stamina   == null) _stamina   = GetComponent<StaminaSystem>();
-        if (_climbing  == null) _climbing  = GetComponent<ClimbingController>();
+        if (_stamina     == null) _stamina     = GetComponent<StaminaSystem>();
+        if (_climbing    == null) _climbing    = GetComponent<ClimbingController>();
+        if (_interaction == null) _interaction = GetComponent<PlayerInteraction>();
     }
 
     private void OnEnable()
@@ -78,16 +80,18 @@ public class HintTriggerDriver : MonoBehaviour
         if (_walkAccum >= DASH_INTRO_DELAY)
             hintMgr.TriggerHint(HintManager.HintId.DashIntroduction);
 
-        // Zone-based（Y 座標参照）
-        float altitude = _playerTransform.position.y;
-        if (altitude >= ZONE2_ALTITUDE)
+        float altitudeFraction = MountainProfile.IsReady
+            ? MountainProfile.Fraction(_playerTransform.position.y)
+            : Mathf.InverseLerp(50f, 460f, _playerTransform.position.y);
+
+        if (altitudeFraction >= ZONE2_FRACTION)
             hintMgr.TriggerHint(HintManager.HintId.Zone2Entry);
-        if (altitude >= ZONE3_ALTITUDE)
+        if (altitudeFraction >= ZONE3_FRACTION)
             hintMgr.TriggerHint(HintManager.HintId.ReturnOrZone3);
 
-        // 近接判定（GrabPoint・遺物・他プレイヤー）
         bool nearGrabPoint = IsAnythingNearby<GrabPoint>(CLIMB_PROXIMITY_RANGE);
-        bool carryingRelic = _carrier != null && _carrier.IsBeingCarried;
+        bool carryingRelic = (_interaction != null && _interaction.IsCarryingRelic)
+            || (_carrier != null && _carrier.IsBeingCarried);
 
         if (nearGrabPoint && !carryingRelic)
             hintMgr.TriggerHint(HintManager.HintId.FirstClimbApproach);

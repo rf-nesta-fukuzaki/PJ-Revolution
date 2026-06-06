@@ -60,7 +60,12 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
     /// <summary>ヘリパッドのワールド座標（PlayerInteraction の距離チェック用）。</summary>
     public Vector3 HelipadPosition => _helipadPosition;
     private readonly HashSet<int> _boardedPlayerIds = new();
+    // 搭乗者が運搬していた遺物（=ヘリの積荷として持ち帰る）。GDD §2.4 荷台搭載の簡易版。
+    private readonly HashSet<RelicBase> _relicsAboard = new();
     private GameObject _heliVisual;
+
+    // ヘリ周辺この距離内に置かれた遺物も積荷（荷台ゾーン）として扱う。
+    private const float CARGO_RADIUS = 12f;
 
     // ── ネットワーク ─────────────────────────────────────────
     private readonly NetworkVariable<bool> _helicopterCalled = new(
@@ -259,6 +264,11 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
         if (_boardedPlayerIds.Contains(id)) return;
 
         _boardedPlayerIds.Add(id);
+
+        // 搭乗者が運搬中の遺物を積荷として記録（持ち帰り成立）。
+        var carried = player.GetComponent<PlayerInteraction>()?.CarriedRelicComponent;
+        if (carried != null && !carried.IsDestroyed) _relicsAboard.Add(carried);
+
         Debug.Log($"[Heli] {player.name} が搭乗！({_boardedPlayerIds.Count}人)");
 
         // 全員搭乗チェック（サーバー権威）
@@ -285,8 +295,31 @@ public class HelicopterController : NetworkBehaviour, IHelicopterService
         _isBoarding = false;
         DepartClientRpc();
 
+        // ヘリの積荷（搭乗者の運搬遺物 + 荷台ゾーンに置かれた遺物）を抽出として登録する。
+        // 帰還ゾーン外でもノルマ/チームスコアに算入されるようにする（GDD §2.4 空輸帰還）。
+        ExtractAboardRelics();
+
         bool allSurvived = AllSurvivorsBoarded();
         GameServices.Expedition?.ReturnToBase(allSurvived);
+    }
+
+    /// <summary>離陸時、ヘリの積荷遺物をスコア/ノルマに登録する。</summary>
+    private void ExtractAboardRelics()
+    {
+        Vector3 heliPos = _heliVisual != null ? _heliVisual.transform.position : _helipadPosition;
+        foreach (var relic in FindObjectsByType<RelicBase>(FindObjectsSortMode.None))
+        {
+            if (relic == null || relic.IsDestroyed) continue;
+            if (Vector3.Distance(relic.transform.position, heliPos) <= CARGO_RADIUS)
+                _relicsAboard.Add(relic);
+        }
+
+        foreach (var relic in _relicsAboard)
+        {
+            if (relic == null || relic.IsDestroyed) continue;
+            GameServices.Score?.RegisterCollectedRelic(relic);          // チームスコア
+            ExtractionQuotaSystem.Instance?.RegisterAirliftedRelic(relic); // ノルマ価値
+        }
     }
 
     [Rpc(SendTo.ClientsAndHost)]

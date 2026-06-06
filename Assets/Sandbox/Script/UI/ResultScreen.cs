@@ -418,9 +418,10 @@ public class ResultScreen : MonoBehaviour
     }
 
     // ── ボタン ────────────────────────────────────────────────
-    private void OnRetry()       => UnityEngine.SceneManagement.SceneManager.LoadScene(
-                                       UnityEngine.SceneManagement.SceneManager.GetActiveScene().buildIndex);
-    private void OnReturnBase()  => UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+    // 「もう一度」= インゲームを再ロードして即出撃（GameFlow 経由で自動出発）。
+    private void OnRetry()       => GameFlow.GoToInGame();
+    // 「ベースに戻る」= ショップ（ベースキャンプ準備）へ。次の遠征の買い物導線。
+    private void OnReturnBase()  => GameFlow.GoToShop();
 }
 
 // ScoreData と PlayerScore は Assets/Sandbox/Script/System/ScoreData.cs に移動済み

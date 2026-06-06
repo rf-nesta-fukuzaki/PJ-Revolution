@@ -61,6 +61,21 @@ public class BasecampShop : MonoBehaviour
 
     private bool _tutorialShownThisSession;
 
+    // 独立したショップシーン（GameFlow.ShopScene）で動作しているか。
+    // true のとき「出発」は遠征開始ではなく、購入内容を持ち越してインゲームシーンへ遷移する。
+    private bool _standaloneSceneMode;
+
+    /// <summary>
+    /// 独立ショップシーン用に設定する（ShopSceneController から Start 前に呼ぶ）。
+    /// パネルを開いた状態にし、「出発」をインゲーム遷移にする。
+    /// </summary>
+    public void ConfigureForStandaloneScene()
+    {
+        _standaloneSceneMode = true;
+        _openOnStart = true;
+        if (_shopPanel != null) _shopPanel.SetActive(true);
+    }
+
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
     {
@@ -429,6 +444,12 @@ public class BasecampShop : MonoBehaviour
         };
     }
 
+    /// <summary>
+    /// 自動スモークテスト用: 「出発」ボタンと同じ処理をコードから実行する。
+    /// 独立ショップシーンでは購入内容を持ち越してインゲームへ遷移する。
+    /// </summary>
+    public void DepartNow() => OnDepart();
+
     private void OnDepart()
     {
         if (!_session.TryDepart(out var reason))
@@ -439,6 +460,17 @@ public class BasecampShop : MonoBehaviour
 
         SetShopPanelVisible(false);
 
+        if (_standaloneSceneMode)
+        {
+            // 独立ショップシーン: 購入内容を次の遠征へ持ち越し、インゲームへ遷移する。
+            RunLoadout.SetFromCounts(_session.PurchasedCounts);
+            Debug.Log($"[Shop] 出発（→インゲーム）！購入: {GetTotalPurchasedCount()}個  " +
+                      $"使用予算: {TEAM_BUDGET_MAX - GetCurrentBudget()}pt");
+            GameFlow.GoToInGame();
+            return;
+        }
+
+        // インゲーム内ショップ（従来フロー）: その場で遠征を開始する。
         GameServices.Expedition?.StartExpedition();
 
         Debug.Log($"[Shop] 出発！購入: {GetTotalPurchasedCount()}個  使用予算: {TEAM_BUDGET_MAX - GetCurrentBudget()}pt");

@@ -36,7 +36,7 @@ public class RopeManager : MonoBehaviour
     {
         if (_instance != null && _instance != this)
         {
-            DestroyObject(gameObject);
+            DestroySafe(gameObject);
             return;
         }
         _instance = this;
@@ -50,7 +50,7 @@ public class RopeManager : MonoBehaviour
         GameServices.ClearRopeIf(this);
     }
 
-    private static void DestroyObject(UnityEngine.Object target)
+    private static void DestroySafe(UnityEngine.Object target)
     {
         if (target == null) return;
         if (Application.isPlaying)
@@ -112,7 +112,7 @@ public class RopeManager : MonoBehaviour
         if (!_ropes.TryGetValue(key, out var rope)) return;
 
         rope.Disconnect();
-        DestroyObject(rope.gameObject);
+        DestroySafe(rope.gameObject);
         _ropes.Remove(key);
     }
 
@@ -122,7 +122,7 @@ public class RopeManager : MonoBehaviour
         foreach (var rope in _ropes.Values)
         {
             rope.Disconnect();
-            DestroyObject(rope.gameObject);
+            DestroySafe(rope.gameObject);
         }
         _ropes.Clear();
     }
@@ -180,7 +180,7 @@ public class RopeManager : MonoBehaviour
         if (!_playerAnchorRopes.TryGetValue(playerId, out var rope)) return;
 
         rope.Disconnect();
-        DestroyObject(rope.gameObject);
+        DestroySafe(rope.gameObject);
         _playerAnchorRopes.Remove(playerId);
     }
 
@@ -240,7 +240,7 @@ public class RopeManager : MonoBehaviour
         if (!_playerRelicRopes.TryGetValue(playerId, out var rope)) return;
 
         rope.Disconnect();
-        DestroyObject(rope.gameObject);
+        DestroySafe(rope.gameObject);
         _playerRelicRopes.Remove(playerId);
         _playerRelicBodies.Remove(playerId);
     }

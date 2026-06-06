@@ -21,6 +21,7 @@ public interface IScoreService
     void RecordGhostPin(int playerId);
     void RecordTeammateFall(int causerId);
     void RecordShout(int playerId);
+    void RecordRelicDestroyed(int playerId);   // GDD §12.3 — 持っていた遺物のHPが0になった
 
     // ── 遺物収集 ─────────────────────────────────────────────
     void RegisterCollectedRelic(RelicBase relic);

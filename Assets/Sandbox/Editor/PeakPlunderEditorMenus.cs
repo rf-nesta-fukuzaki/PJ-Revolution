@@ -58,6 +58,13 @@ namespace PeakPlunder.EditorTools
             }
         }
 
+        public static class GameLoop
+        {
+            public const string SetupGameLoopScenes = Root + "/Game Loop/Setup Game Loop Scenes";
+            public const string ValidateGameLoop = Root + "/Game Loop/Validate Game Loop";
+            public const string RunLoopSmokeTest = Root + "/Game Loop/Run Loop Smoke Test";
+        }
+
         public static class Build
         {
             public const string BuildMacOS = Root + "/Build/Build macOS";

@@ -54,6 +54,14 @@ public static class UpgradeStore
         PlayerPrefs.Save();
     }
 
+    /// <summary>デバッグメニュー用: 全アップグレードを最大レベルにする（資金消費なし）。</summary>
+    public static void DebugMaxAll()
+    {
+        foreach (UpgradeType t in System.Enum.GetValues(typeof(UpgradeType)))
+            PlayerPrefs.SetInt(Key(t), MaxLevel);
+        PlayerPrefs.Save();
+    }
+
     private static void SetLevel(UpgradeType t, int level)
     {
         PlayerPrefs.SetInt(Key(t), Mathf.Clamp(level, 0, MaxLevel));

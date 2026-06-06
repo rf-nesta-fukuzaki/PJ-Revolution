@@ -26,7 +26,7 @@ public abstract class RelicBase : MonoBehaviour
     [SerializeField] protected int    _baseValue  = 100;
 
     [Header("耐久")]
-    [SerializeField, Range(0f, 100f)] protected float _maxHp          = 100f;
+    [SerializeField, Range(0f, 500f)] protected float _maxHp          = 100f;
     [SerializeField]                  protected float _impactThreshold = 2f;
     [SerializeField]                  protected float _damageMultiplier = 1f;
 
@@ -67,11 +67,13 @@ public abstract class RelicBase : MonoBehaviour
     public bool IsHeld => _isHeld;
     public RelicCondition Condition => _durability?.Condition ?? RelicCondition.Destroyed;
 
+    // GDD §5.2 / §12.1 — 5段階の報酬係数。完品1.0 / 軽傷0.85 / 損傷0.6 / 大破0.25 / 破壊0。
     public float RewardMultiplier => Condition switch
     {
         RelicCondition.Perfect        => 1.0f,
+        RelicCondition.LightlyDamaged => 0.85f,
         RelicCondition.Damaged        => 0.6f,
-        RelicCondition.HeavilyDamaged => 0.2f,
+        RelicCondition.HeavilyDamaged => 0.25f,
         _                             => 0.0f
     };
 
@@ -180,6 +182,8 @@ public abstract class RelicBase : MonoBehaviour
         if (impactSpeed < _impactThreshold) return;
 
         float damage = CalculateDamage(impactSpeed, collision);
+        // GDD §5.2 — 接触面によるダメージ係数（地面1.0 / 壁0.8 / プレイヤー0.5 / 遺物同士0.7）。
+        damage *= GetSurfaceDamageMultiplier(collision);
         damage = ApplyDamageModifiers(damage, collision);
         if (damage <= 0f) return;
         ApplyDamage(damage, collision.gameObject);
@@ -189,6 +193,28 @@ public abstract class RelicBase : MonoBehaviour
     {
         float excessSpeed = impactSpeed - _impactThreshold;
         return excessSpeed * _damageMultiplier * 5f;
+    }
+
+    /// <summary>
+    /// GDD §5.2 — 接触相手によるダメージ係数。
+    /// 地面 1.0 / 壁 0.8 / プレイヤー 0.5 / 遺物同士 0.7。
+    /// 地面と壁は接触法線で判別（上向き≒地面 / 水平≒壁）。
+    /// </summary>
+    protected float GetSurfaceDamageMultiplier(Collision collision)
+    {
+        var other = collision.collider;
+        if (other == null) return 1.0f;
+
+        if (other.GetComponentInParent<RelicBase>() != null) return 0.7f;   // 遺物同士
+        if (other.CompareTag("Player") || other.GetComponentInParent<PlayerHealthSystem>() != null)
+            return 0.5f;                                                      // プレイヤー
+
+        if (collision.contactCount > 0)
+        {
+            Vector3 n = collision.GetContact(0).normal;
+            if (Mathf.Abs(n.y) < 0.5f) return 0.8f;                          // 壁（法線が水平寄り）
+        }
+        return 1.0f;                                                          // 地面
     }
 
     public void ApplyDamage(float damage, GameObject source = null)
@@ -229,7 +255,7 @@ public abstract class RelicBase : MonoBehaviour
 
         OnConditionChanged?.Invoke(prev, newCondition);
 
-        if (newCondition == RelicCondition.Damaged)
+        if (newCondition == RelicCondition.LightlyDamaged || newCondition == RelicCondition.Damaged)
             GameServices.Audio?.PlaySE(SoundId.RelicDamageLight, transform.position);
         else if (newCondition == RelicCondition.HeavilyDamaged)
             GameServices.Audio?.PlaySE(SoundId.RelicDamageHeavy, transform.position);
@@ -435,6 +461,7 @@ public abstract class RelicBase : MonoBehaviour
         Gizmos.color = Condition switch
         {
             RelicCondition.Perfect        => Color.green,
+            RelicCondition.LightlyDamaged => new Color(0.6f, 1f, 0.3f),
             RelicCondition.Damaged        => Color.yellow,
             RelicCondition.HeavilyDamaged => new Color(1f, 0.5f, 0f),
             _                             => Color.red
@@ -459,12 +486,14 @@ public abstract class RelicBase : MonoBehaviour
         => _visualizer.CreatePrimitiveRot(type, label, localPos, localRot, localScale, color, metallic, smoothness);
 }
 
+// GDD §5.2 — 遺物の状態（5段階）。enum 値の昇順が「悪化方向」を表す（Contract が依存）。
 public enum RelicCondition
 {
-    Perfect,
-    Damaged,
-    HeavilyDamaged,
-    Destroyed
+    Perfect,          // 完品   100%
+    LightlyDamaged,   // 軽傷   70-99%
+    Damaged,          // 損傷   50-69%
+    HeavilyDamaged,   // 大破   1-49%
+    Destroyed         // 破壊   0%
 }
 
 public interface IRelicDamageModifier

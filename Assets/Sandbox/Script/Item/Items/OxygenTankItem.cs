@@ -8,7 +8,8 @@ using UnityEngine;
 public class OxygenTankItem : ItemBase
 {
     [Header("酸素設定")]
-    [SerializeField] private float _oxygenPerSecond = 1f;   // 毎秒消費量
+    // GDD §8.3 — 1/10秒 = 0.1/秒。耐久60 → 約600秒(=約10分)で空。
+    [SerializeField] private float _oxygenPerSecond = 0.1f;   // 毎秒消費量
 
     private StaminaSystem           _stamina;
     private AltitudeSicknessEffect  _altitudeSickness;
@@ -70,10 +71,13 @@ public class OxygenTankItem : ItemBase
     {
         if (_isBroken || _owner == null) return;
 
-        float altitude = transform.position.y;
-        if (altitude < 2000f) return;
+        // GDD §8.3 — 標高2000m以上(=高山病が発生する高度)でのみ自動消費する。
+        // 手続き山の実山高に追従させるため、高山病システムと同じ閾値(MountainProfile 連動)を参照。
+        bool highAltitude = _altitudeSickness != null
+            ? _altitudeSickness.IsAboveSicknessAltitude
+            : transform.position.y >= 2000f;
+        if (!highAltitude) return;
 
-        // 高山帯にいる間は酸素を消費
         ConsumeDurability(_oxygenPerSecond * Time.deltaTime);
     }
 

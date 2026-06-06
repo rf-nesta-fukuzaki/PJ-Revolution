@@ -16,15 +16,24 @@ namespace Sandbox.UI
     /// </summary>
     public sealed class SandboxStartMenu : MonoBehaviour
     {
-        [SerializeField] private string gameSceneName = "Sandbox";
+        [Tooltip("空欄なら GameFlow.InGameScene（SandboxOfflineCombined）を使用する。")]
+        [SerializeField] private string gameSceneName = "";
         [SerializeField] private string title = "PEAK IDIOTS";
         [SerializeField] private string subtitle = "ドタバタ山岳 Co-op ロープアクション";
+
+        private GameObject _titlePanel;
+        private GameObject _lobbyPanel;
 
         private void Start()
         {
             EnsureEventSystem();
             BuildUI();
             GameplayCursorPolicy.SetMenuMode();
+
+            // タイトルに戻った時点でラン横断状態（持ち越し買い物等）を初期化する。
+            GameFlow.ResetRun();
+
+            ShowTitle();
         }
 
         private void BuildUI()
@@ -43,29 +52,77 @@ namespace Sandbox.UI
             Stretch(bg);
             bg.gameObject.AddComponent<Image>().color = new Color(0.06f, 0.08f, 0.12f, 1f);
 
-            // タイトル
-            var t = CreateText("Title", canvas.transform, title, 96, new Vector2(0.5f, 0.72f));
+            BuildTitlePanel(canvas.transform);
+            BuildLobbyPanel(canvas.transform);
+        }
+
+        // ── タイトルパネル ───────────────────────────────────
+        private void BuildTitlePanel(Transform parent)
+        {
+            var panel = NewRect("TitlePanel", parent);
+            Stretch(panel);
+            _titlePanel = panel.gameObject;
+
+            var t = CreateText("Title", panel, title, 96, new Vector2(0.5f, 0.72f));
             t.fontStyle = FontStyles.Bold;
             t.color = new Color(1f, 0.92f, 0.6f);
-            var st = CreateText("Subtitle", canvas.transform, subtitle, 34, new Vector2(0.5f, 0.62f));
+            var st = CreateText("Subtitle", panel, subtitle, 34, new Vector2(0.5f, 0.62f));
             st.color = new Color(0.85f, 0.9f, 1f);
 
-            // ボタン
-            CreateButton("PlayButton", canvas.transform, "PLAY", new Vector2(0.5f, 0.42f),
+            CreateButton("PlayButton", panel, "PLAY", new Vector2(0.5f, 0.42f),
                 new Color(0.2f, 0.55f, 0.25f), OnPlay);
-            CreateButton("QuitButton", canvas.transform, "QUIT", new Vector2(0.5f, 0.30f),
+            CreateButton("QuitButton", panel, "QUIT", new Vector2(0.5f, 0.30f),
                 new Color(0.5f, 0.2f, 0.2f), OnQuit);
 
-            CreateText("Hint", canvas.transform,
+            CreateText("Hint", panel,
                 "WASD: 移動 / Space: ジャンプ / 左クリック: ロープ / R: 解放", 24, new Vector2(0.5f, 0.12f));
+        }
+
+        // ── ロビーパネル（ソロ用の出発確認）─────────────────
+        private void BuildLobbyPanel(Transform parent)
+        {
+            var panel = NewRect("LobbyPanel", parent);
+            Stretch(panel);
+            _lobbyPanel = panel.gameObject;
+
+            var h = CreateText("LobbyHeader", panel, "ロビー", 72, new Vector2(0.5f, 0.74f));
+            h.fontStyle = FontStyles.Bold;
+            h.color = new Color(1f, 0.92f, 0.6f);
+
+            CreateText("LobbyInfo", panel,
+                "ソロで出発します。準備ができたら「ゲーム開始」を押してください。",
+                30, new Vector2(0.5f, 0.6f));
+
+            CreateButton("StartGameButton", panel, "ゲーム開始", new Vector2(0.5f, 0.42f),
+                new Color(0.2f, 0.55f, 0.25f), OnStartGame);
+            CreateButton("BackButton", panel, "戻る", new Vector2(0.5f, 0.30f),
+                new Color(0.35f, 0.35f, 0.4f), ShowTitle);
+        }
+
+        private void ShowTitle()
+        {
+            _titlePanel?.SetActive(true);
+            _lobbyPanel?.SetActive(false);
         }
 
         private void OnPlay()
         {
-            if (Application.CanStreamedLevelBeLoaded(gameSceneName))
+            // タイトル → ロビー
+            _titlePanel?.SetActive(false);
+            _lobbyPanel?.SetActive(true);
+        }
+
+        private void OnStartGame()
+        {
+            // ロビー → インゲーム（遠征は到着後に自動開始）
+            if (!string.IsNullOrEmpty(gameSceneName) && gameSceneName != "Sandbox")
+            {
+                GameplayCursorPolicy.SetGameplayMode();
                 SceneManager.LoadScene(gameSceneName);
-            else
-                Debug.LogError($"[SandboxStartMenu] scene '{gameSceneName}' is not in Build Settings.");
+                return;
+            }
+
+            GameFlow.GoToInGame();
         }
 
         private void OnQuit()

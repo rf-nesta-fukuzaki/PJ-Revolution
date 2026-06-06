@@ -56,7 +56,7 @@ public class CameraModeController : MonoBehaviour
     private static readonly ModeParams ClimbingParams = new(3.0f, 55f, 0.8f);
     private static readonly ModeParams CarryingParams = new(4.5f, 60f, 1.5f);
     private static readonly ModeParams AimingParams   = new(3.0f, 50f, 1.0f);
-    private static readonly ModeParams GhostParams    = new(0.0f, 70f, 1.2f); // フリーフライ: 自由移動は未実装、FOV のみ GDD 準拠
+    private static readonly ModeParams GhostParams    = new(0.0f, 70f, 1.2f); // GDD §6.2 幽霊: FOV 70° + GhostSystem フリーフライ
     private static readonly ModeParams IndoorParams   = new(2.5f, 55f, 0.8f);
 
     [Header("参照（未設定時は自動解決）")]

@@ -21,6 +21,10 @@ public sealed class GameplaySceneHostBootstrap : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void AutoCreateIfNeeded()
     {
+        // タイトル / ショップ等の非ゲームプレイシーンでは Host を起動しない（ネットワーク不要）。
+        var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+        if (activeScene == GameFlow.TitleScene || activeScene == GameFlow.ShopScene) return;
+
         if (NetworkManager.Singleton != null) return;
         if (Object.FindFirstObjectByType<GameplaySceneHostBootstrap>() != null) return;
 
@@ -66,6 +70,7 @@ public sealed class GameplaySceneHostBootstrap : MonoBehaviour
         }
 
         yield return WaitForPlayerSpawn();
+        ItemGameplayBootstrap.EnsureNetworkGameplayServices();
         TeleportLocalPlayerToBasecamp();
         ItemGameplayBootstrap.EnsureAllPlayerItemComponents();
         _started = true;
@@ -157,6 +162,10 @@ public sealed class GameplaySceneHostBootstrap : MonoBehaviour
         root.AddComponent<UnityTransport>();
 
         var nm = root.AddComponent<NetworkManager>();
+
+        // 実行時に AddComponent した NetworkManager は NetworkConfig が未初期化（null）のため、
+        // PlayerPrefab を設定する前に生成しておく。
+        nm.NetworkConfig ??= new NetworkConfig();
         nm.NetworkConfig.PlayerPrefab = prefab;
         nm.NetworkConfig.EnsureNetworkVariableLengthSafety = true;
 

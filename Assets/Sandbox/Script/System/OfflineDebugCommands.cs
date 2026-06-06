@@ -1,10 +1,11 @@
 using UnityEngine;
 
 /// <summary>
-/// OfflineTestScene 用デバッグコマンド（F1〜F9）。
-/// MonoBehaviour から分離した純粋 C# ハンドラ。
+/// OfflineTestScene 用デバッグコマンド（F1〜F9 + 拡張デバッグメニュー）。
+/// MonoBehaviour から分離した純粋 C# ハンドラ。カテゴリごとに partial 分割している
+/// （Player / World / Progression）。
 /// </summary>
-public static class OfflineDebugCommands
+public static partial class OfflineDebugCommands
 {
     public static string KillLocalPlayer()
     {

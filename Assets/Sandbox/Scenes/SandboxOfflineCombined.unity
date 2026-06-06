@@ -424,6 +424,7 @@ MonoBehaviour:
   padCornerRadius: 6
   padCornerSegments: 6
   playerLift: 1.2
+  partySpawnSpacing: 3
   objectLift: 0
   buriedThreshold: 1.5
   maxConformSeconds: 20
@@ -433,6 +434,13 @@ MonoBehaviour:
   escapeNudgeDist: 3.5
   escapeClimbStep: 2.5
   escapeFallbackPull: 0.4
+  containAgents: 1
+  agentSeaContainY: 8
+  seaBarrier: 1
+  seaBarrierGroundY: 8
+  seaBarrierBottomY: -40
+  seaBarrierTopY: 50
+  seaBarrierSegments: 128
   tuneFog: 1
   fogStartOverride: 700
   fogEndOverride: 6000
@@ -27082,7 +27090,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1911900992}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1a8425fb0632f4d559b5c5bc44c78987, type: 3}
   m_Name: 

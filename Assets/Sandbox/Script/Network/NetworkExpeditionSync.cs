@@ -138,7 +138,16 @@ public class NetworkExpeditionSync : NetworkBehaviour
     private void NotifyPlayerDeathClientRpc(ulong clientId)
     {
         Debug.Log($"[ExpeditionSync] プレイヤー死亡通知: client={clientId}");
-        // 各クライアントで幽霊UIを有効化する処理をここに追加
+
+        foreach (var health in Object.FindObjectsByType<PlayerHealthSystem>(FindObjectsSortMode.None))
+        {
+            if (health == null) continue;
+
+            var netObj = health.GetComponent<NetworkObject>();
+            if (netObj == null || netObj.OwnerClientId != clientId) continue;
+
+            health.GetComponent<GhostSystem>()?.EnterGhostMode();
+        }
     }
 
     // ── チェックポイント同期 ──────────────────────────────────────

@@ -14,9 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Sandbox.Runtime::ScoreConfigSO
   <RelicIntactBonus>k__BackingField: 50
   <TeamSurvivalBonus>k__BackingField: 200
-  <RopePlaceBonus>k__BackingField: 5
-  <RelicFindBonus>k__BackingField: 30
-  <RelicCarryBonus>k__BackingField: 2
+  <SurvivalBonusMultiplier>k__BackingField: 1.2
+  <MinRewardShare>k__BackingField: 0.1
+  <RopePlaceBonus>k__BackingField: 15
+  <RelicFindBonus>k__BackingField: 50
+  <RelicCarryBonus>k__BackingField: 0.2
   <GhostPinBonus>k__BackingField: 10
-  <RelicDamagePenaltyRate>k__BackingField: 0.5
-  <ItemLostPenalty>k__BackingField: 20
+  <RelicDamagePenaltyRate>k__BackingField: 2
+  <ItemLostPenalty>k__BackingField: 10
+  <RelicDestroyedPenalty>k__BackingField: 50

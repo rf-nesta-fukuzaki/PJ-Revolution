@@ -38,6 +38,44 @@ public class GrapplingHookItem : ItemBase
         _slots             = 1;
         _maxDurability     = 50f;
         _currentDurability = _maxDurability;
+
+        ResolveHookMask();
+    }
+
+    /// <summary>
+    /// _hookableLayers が未設定（Nothing=0）の場合に妥当な既定マスクを構築する。
+    /// 実行時生成（ItemRuntimeFactory）では Inspector 値が無くマスクが 0 のままになり、
+    /// レイキャストが常に外れてフックが機能しないため必須。WireRopeActionController と同方針。
+    /// </summary>
+    private void ResolveHookMask()
+    {
+        int mask = _hookableLayers.value;
+        if (mask != 0) return;
+
+        mask = Physics.DefaultRaycastLayers;
+        TryAddLayer(ref mask, "Grappable");
+        TryAddLayer(ref mask, "Ground");
+        TryAddLayer(ref mask, "Default");
+
+        // 自分自身（手持ちアイテム）やプレイヤーへの自己ヒットを除外する。
+        ExcludeLayer(ref mask, "Player");
+        ExcludeLayer(ref mask, "Item");
+
+        _hookableLayers = mask;
+    }
+
+    private static void TryAddLayer(ref int mask, string layerName)
+    {
+        int layer = LayerMask.NameToLayer(layerName);
+        if (layer >= 0)
+            mask |= 1 << layer;
+    }
+
+    private static void ExcludeLayer(ref int mask, string layerName)
+    {
+        int layer = LayerMask.NameToLayer(layerName);
+        if (layer >= 0)
+            mask &= ~(1 << layer);
     }
 
     private void FixedUpdate()
@@ -76,6 +114,13 @@ public class GrapplingHookItem : ItemBase
         // 飛翔演出：発射点 → 標的へ _hookFlySpeed でフックが飛ぶビジュアル
         // GDD §15.2 — grappling_hit SE は HookFlyRoutine 到達時に発火（ビジュアル同期）
         SpawnFlyingHook(origin, _anchorPoint);
+
+        var ownerRoot = _owner != null ? _owner.gameObject : GetComponentInParent<NetworkGrapplingHookSync>()?.gameObject;
+        if (ownerRoot != null)
+        {
+            var sync = ownerRoot.GetComponent<NetworkGrapplingHookSync>();
+            sync?.ReportGrappleStarted(origin, _anchorPoint, _lineLength);
+        }
 
         ConsumeDurability(GetUseDurabilityDrain());
 
@@ -144,6 +189,11 @@ public class GrapplingHookItem : ItemBase
             Destroy(_hookVisual);
             _hookVisual = null;
         }
+
+        var ownerRoot = _owner != null ? _owner.gameObject : GetComponentInParent<NetworkGrapplingHookSync>()?.gameObject;
+        if (ownerRoot != null)
+            ownerRoot.GetComponent<NetworkGrapplingHookSync>()?.ReportGrappleReleased();
+
         Debug.Log("[GrapplingHook] 解除");
     }
 

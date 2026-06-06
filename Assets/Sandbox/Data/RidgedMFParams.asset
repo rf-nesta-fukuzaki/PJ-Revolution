@@ -24,11 +24,11 @@ MonoBehaviour:
   mountainCenter: {x: 128, y: 688}
   mountainRadius: 1600
   mountainFalloff: 1.75
-  mountainEdgeNoise: 300
+  mountainEdgeNoise: 120
   mountainReliefBase: 0.6
   islandMode: 1
   seabedDepth: 160
-  seabedFalloffDistance: 240
+  seabedFalloffDistance: 420
   shoreFlatten: 1
   domainWarpFreq: 0.002
   domainWarpAmp: 30

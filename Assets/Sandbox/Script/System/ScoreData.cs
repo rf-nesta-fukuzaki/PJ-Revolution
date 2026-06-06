@@ -27,4 +27,8 @@ public class PlayerScore
     public int    ShoutCount;             // 歌う壺ボイチャ妨害による「叫び」回数
     public int    RelicsFoundCount;       // GDD §12.5「遺物マスター」用: 発見/運搬した遺物数
     public bool   Survived;               // GDD §12.5「鉄人ハンター」用: 一度も死亡せずに帰還
+
+    // GDD §12.4 — 報酬配分。RewardShare = チームスコアの配分比率(0-1)、PlayerReward = 実配分pt。
+    public float  RewardShare;
+    public int    PlayerReward;
 }

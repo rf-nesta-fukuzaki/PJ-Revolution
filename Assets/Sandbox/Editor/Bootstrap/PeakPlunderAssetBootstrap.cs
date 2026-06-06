@@ -55,7 +55,7 @@ namespace PeakPlunder.EditorTools
                 var entry = new SoundLibrary.SoundEntry
                 {
                     id              = id,
-                    clip            = null,
+                    clip            = ProceduralSoundClipFactory.Create(id),
                     spatialBlend    = ClassifyIs2D(id) ? 0f : 1f,
                     volume          = 1f,
                     loop            = IsLoopSe(id),
@@ -73,7 +73,7 @@ namespace PeakPlunder.EditorTools
 
             EditorUtility.SetDirty(lib);
             AssetDatabase.SaveAssets();
-            Debug.Log($"[PeakPlunder] Populated {ei} SoundLibrary entries (clips left null — assign manually).");
+            Debug.Log($"[PeakPlunder] Populated {ei} SoundLibrary entries with procedural clips.");
         }
 
         private static AudioMixerGroup FindGroup(AudioMixer mixer, string name)

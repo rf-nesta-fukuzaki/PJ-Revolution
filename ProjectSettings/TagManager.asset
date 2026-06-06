@@ -33,11 +33,9 @@ TagManager:
   - RagdollBone
   - Grappable
   - Hazard
-  - 
-  - 
-  - 
-  - 
-  - 
+  - Item
+  - SafeZone
+  - Helicopter
   - 
   - 
   - 

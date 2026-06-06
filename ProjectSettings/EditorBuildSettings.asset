@@ -6,11 +6,20 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Sandbox/Scenes/Sandbox.unity
-    guid: ea4d9d725331b475eb8c667e72837813
+    path: Assets/Sandbox/Scenes/StartMenu.unity
+    guid: ecdb00a4fb4c44a7ba5d6807a8c07c67
   - enabled: 1
     path: Assets/Sandbox/Scenes/SandboxOfflineCombined.unity
     guid: 0442419281cd441a0b2996dc1bf702a1
+  - enabled: 1
+    path: Assets/Sandbox/Scenes/Shop.unity
+    guid: 08ee4d4306fda450d9af23caa48a5942
+  - enabled: 1
+    path: Assets/Sandbox/Scenes/Sandbox.unity
+    guid: ea4d9d725331b475eb8c667e72837813
+  - enabled: 1
+    path: Assets/Sandbox/Scenes/MainMenu.unity
+    guid: 66da034d7e5274401a09d0d7d9ebed76
   m_configObjects:
     com.unity.addressableassets: {fileID: 11400000, guid: 280dd378a05db445bb7cb0256ec62b29, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

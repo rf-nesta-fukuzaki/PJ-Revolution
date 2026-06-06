@@ -1,3 +1,4 @@
+using Unity.Netcode;
 using UnityEngine;
 
 /// <summary>
@@ -34,8 +35,9 @@ public class RelicCarrier : MonoBehaviour
     [Tooltip("ペナルティ最大となる質量(kg)。")]
     [SerializeField] private float _heavyMass = 80f;
 
-    private RelicBase  _relic;
-    private Rigidbody  _rb;
+    private RelicBase        _relic;
+    private NetworkRelicSync _relicSync;
+    private Rigidbody        _rb;
     private Transform  _currentHolder;
     private Animator   _holderAnimator;
     private ExplorerController _holderController; // 運搬中の移動ペナルティ適用先
@@ -54,8 +56,9 @@ public class RelicCarrier : MonoBehaviour
 
     private void Awake()
     {
-        _relic = GetComponent<RelicBase>();
-        _rb    = GetComponent<Rigidbody>();
+        _relic     = GetComponent<RelicBase>();
+        _relicSync = GetComponent<NetworkRelicSync>();
+        _rb        = GetComponent<Rigidbody>();
     }
 
     private void FixedUpdate()
@@ -105,6 +108,21 @@ public class RelicCarrier : MonoBehaviour
         _holderController = holder.GetComponentInParent<ExplorerController>();
         if (_holderController == null) _holderController = holder.GetComponentInChildren<ExplorerController>();
         _holderController?.SetCarryPenalty(ComputeCarryPenalty());
+
+        NotifyPickupNetwork(holder);
+    }
+
+    private void NotifyPickupNetwork(Transform holder)
+    {
+        var nm = NetworkManager.Singleton;
+        if (_relicSync == null || nm == null || !nm.IsListening)
+            return;
+
+        var holderNet = holder.GetComponentInParent<NetworkObject>();
+        if (holderNet == null || !holderNet.IsSpawned)
+            return;
+
+        _relicSync.PickupServerRpc(holderNet.OwnerClientId);
     }
 
     /// <summary>固定ベルト等へ移管するため運搬状態のみ解除（PutDown は呼ばない）。</summary>
@@ -142,6 +160,8 @@ public class RelicCarrier : MonoBehaviour
         _currentHolder  = null;
         _rb.useGravity  = _useGravityBeforePickup;   // 拾う前の重力設定を復元（無条件 true 化を廃止）
         _relic.OnPutDown();
+
+        _relicSync?.PutDownServerRpc();
     }
 
     /// <summary>運搬中の移動速度低下率を質量から算出する（軽い→ _minCarryPenalty / 重い→ _maxCarryPenalty）。</summary>

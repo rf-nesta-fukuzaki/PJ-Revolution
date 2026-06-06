@@ -1,3 +1,4 @@
+using Unity.Netcode;
 using UnityEngine;
 
 /// <summary>
@@ -32,22 +33,29 @@ public class SpawnPoint : MonoBehaviour
         return true;
     }
 
-    /// <summary>強制的にスポーンする。</summary>
-    public void Activate(int prefabIndex = -1)
+    /// <summary>強制的にスポーンする。prefabIndex を指定すると同じプレハブを再現できる。</summary>
+    public int Activate(int prefabIndex = -1)
     {
-        if (_spawnPrefabs == null || _spawnPrefabs.Length == 0) return;
+        if (_spawnPrefabs == null || _spawnPrefabs.Length == 0) return -1;
 
         int idx = (_pickRandom || prefabIndex < 0)
             ? Random.Range(0, _spawnPrefabs.Length)
             : Mathf.Clamp(prefabIndex, 0, _spawnPrefabs.Length - 1);
 
         var prefab = _spawnPrefabs[idx];
-        if (prefab == null) return;
+        if (prefab == null) return -1;
 
         _spawnedObject = Instantiate(prefab, transform.position, transform.rotation);
-        // NetworkObject を持つ Prefab は NGO が未起動の場合 SetParent 禁止
-        if (_spawnedObject.GetComponent<Unity.Netcode.NetworkObject>() == null)
+
+        var netObj = _spawnedObject.GetComponent<NetworkObject>();
+        var nm     = NetworkManager.Singleton;
+        if (netObj != null && nm != null && nm.IsServer && !netObj.IsSpawned)
+            netObj.Spawn(destroyWithScene: true);
+
+        if (netObj == null)
             _spawnedObject.transform.SetParent(transform);
+
+        return idx;
     }
 
     /// <summary>スポーンしたオブジェクトを取り除く。</summary>

@@ -148,7 +148,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 67d13640dace74ee5b22de4009ee7263, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Sandbox.UI.SandboxStartMenu
-  gameSceneName: Sandbox
+  gameSceneName: 
   title: PEAK IDIOTS
   subtitle: "\u30C9\u30BF\u30D0\u30BF\u5C71\u5CB3 Co-op \u30ED\u30FC\u30D7\u30A2\u30AF\u30B7\u30E7\u30F3"
 --- !u!4 &923479855

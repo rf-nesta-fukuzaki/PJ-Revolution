@@ -15,7 +15,19 @@ public static class NetworkRuntimeItemSpawn
 
     public static GameObject SpawnFieldDrop(ShopItemType itemType, Vector3 position, Quaternion rotation)
     {
-        var go = ItemRuntimeFactory.CreateFieldDrop(itemType, position, rotation);
+        float durability = Random.Range(20f, 40f);
+
+        var sync = NetworkWorldPlacementsSync.Instance ?? NetworkWorldPlacementsSync.EnsureExists();
+        var nm   = NetworkManager.Singleton;
+        if (nm != null)
+        {
+            if (nm.IsServer)
+                sync.SpawnFieldDropAuthoritative(itemType, position, rotation, durability);
+
+            return null;
+        }
+
+        var go = WorldPlacementFactory.CreateFieldDrop(itemType, position, rotation, durability);
         TrySpawnOnServer(go, itemType);
         return go;
     }

@@ -24,14 +24,14 @@ namespace Sandbox.World.Environment
         [SerializeField] private float planeSize = 24000f;
 
         [Header("Water Look（Sandbox/WaterSurface 使用時）")]
-        [Tooltip("浅瀬の色（RGB）と透過度（A）。岸付近の色。")]
-        [SerializeField] private Color shallowColor = new Color(0.18f, 0.52f, 0.58f, 0.55f);
+        [Tooltip("浅瀬の色（RGB）と透過度（A）。岸付近の色。砂浜の遠浅らしい明るいターコイズに。")]
+        [SerializeField] private Color shallowColor = new Color(0.30f, 0.66f, 0.68f, 0.5f);
         [Tooltip("深場の色（RGB）と透過度（A）。沖の色。")]
         [SerializeField] private Color deepColor = new Color(0.02f, 0.11f, 0.24f, 0.95f);
-        [Tooltip("この水深[m]で浅瀬色→深場色へ遷移しきる。")]
-        [SerializeField] private float depthFadeMeters = 14f;
-        [Tooltip("岸の泡が出る水深帯[m]。")]
-        [SerializeField] private float foamDistance = 3f;
+        [Tooltip("この水深[m]で浅瀬色→深場色へ遷移しきる。大きいほど遠浅のターコイズ帯が広く＝砂浜らしい。")]
+        [SerializeField] private float depthFadeMeters = 24f;
+        [Tooltip("岸の泡が出る水深帯[m]。波打ち際の白波。")]
+        [SerializeField] private float foamDistance = 5f;
         [Tooltip("波の細かさ。大きいほど細波。")]
         [SerializeField] private float waveScale = 0.08f;
         [Tooltip("波のスクロール速度。")]

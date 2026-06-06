@@ -363,6 +363,11 @@ public class WeatherSystem : MonoBehaviour, IWeatherService
     /// 悪天候へ、山頂直下なら吹雪へ寄る。F キー等のデバッグや動作確認から呼ぶ。
     /// </summary>
     public void DebugForcePickWeather() => ChangeWeather(PickNextWeather());
+
+    /// <summary>
+    /// デバッグメニュー用: 指定の天候へ即時に切り替える（検証目的で任意の天候を再現する）。
+    /// </summary>
+    public void SetWeather(WeatherType type) => ChangeWeather(type);
 }
 
 public enum WeatherType { Sunny, Cloudy, Fog, Rain, Blizzard }

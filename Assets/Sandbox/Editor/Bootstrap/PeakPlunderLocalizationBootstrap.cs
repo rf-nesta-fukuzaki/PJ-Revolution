@@ -50,6 +50,8 @@ namespace PeakPlunder.EditorTools
             CreateTableAndPopulate(LocalizationKeys.TableTitle,  BuildTitlePairs(),  jaLocale, enLocale);
             CreateTableAndPopulate(LocalizationKeys.TableWeather,BuildWeatherPairs(),jaLocale, enLocale);
             CreateTableAndPopulate(LocalizationKeys.TableStone,  BuildStonePairs(),  jaLocale, enLocale);
+            CreateTableAndPopulate(LocalizationKeys.TableHint,   BuildHintPairs(),   jaLocale, enLocale);
+            CreateTableAndPopulate(LocalizationKeys.TableTip,    BuildTipPairs(),    jaLocale, enLocale);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -216,6 +218,48 @@ namespace PeakPlunder.EditorTools
             P(LocalizationKeys.StoneSlabMenu3, "本日の給食：花崗岩プリン",   "Today's Menu: Granite Pudding"),
             P(LocalizationKeys.StoneSlabMenu4, "本日の給食：玄武岩煮込み",   "Today's Menu: Basalt Stew"),
             P(LocalizationKeys.StoneSlabMenu5, "本日の給食：水晶ジュレ",     "Today's Menu: Crystal Jelly"),
+        };
+
+        private static IEnumerable<KeyValuePair<string, (string ja, string en)>> BuildHintPairs() => new[]
+        {
+            P(LocalizationKeys.HintContextFirstClimb,    "左クリックで掴もう！黄色いポイントに手を伸ばして", "Left-click to grab a yellow climbing point"),
+            P(LocalizationKeys.HintContextDashIntro,     "Shiftでダッシュ！ ただしスタミナに注意",           "Hold Shift to dash — watch your stamina"),
+            P(LocalizationKeys.HintContextStaminaEmpty,  "スタミナが切れた！壁から手が離れます",             "Stamina depleted — you will release the wall"),
+            P(LocalizationKeys.HintContextRelicApproach, "遺物を発見！左クリックで掴んで運ぼう。Gキーで丁寧に置けます", "Relic found! Grab with left-click, place gently with G"),
+            P(LocalizationKeys.HintContextRelicClimb,    "遺物を持ったままでは壁を登れません。Gキーで置いてから登りましょう", "You cannot climb while carrying a relic. Drop it with G first"),
+            P(LocalizationKeys.HintContextRopeNearby,  "ロープでチームメイトとつながろう！近づいてEキーで接続", "Connect to a teammate with E while holding a rope"),
+            P(LocalizationKeys.HintContextPinMarker,     "Fキーでマーカーを設置！チームに危険やルートを知らせよう", "Place a marker with F to warn your team"),
+            P(LocalizationKeys.HintContextReturnHeli,    "ベースキャンプに戻るか、フレアガンでヘリを呼ぼう（上空に向けて発射！）", "Return to basecamp or call a helicopter with a flare aimed skyward"),
+            P(LocalizationKeys.TutorialShopStep1,        "予算 100pt はチーム共有です。早い者勝ちで誰でも買えます。", "The 100pt budget is shared. First come, first served."),
+            P(LocalizationKeys.TutorialShopStep2,        "アイテム行をクリックで購入、再クリックで返品できます。装備数の上限に注意。", "Click a row to buy; click again to refund. Watch slot limits."),
+            P(LocalizationKeys.TutorialShopStep3,        "各アイテムの説明を読み、遠征ルートに合わせて組み合わせましょう。", "Read item descriptions and plan for your route."),
+            P(LocalizationKeys.TutorialShopStep4,        "準備ができたら「出発」ボタンで遠征開始！ 予算や装備は持ち越せません。", "When ready, press Depart. Budget and gear do not carry over."),
+            P(LocalizationKeys.HintDepart,      "全員が出発ゲート前に集まり、ホストが出発を実行しよう", "Gather at the departure gate and have the host start the expedition"),
+            P(LocalizationKeys.HintRopeSwing,     "ロープで岩に引っかけてスイングし、高い場所へ進もう",   "Hook a rope onto rocks and swing to reach higher ground"),
+            P(LocalizationKeys.HintRelicCarry,    "遺物は壊れやすい。ゆっくり運んでチームで支え合おう",     "Relics are fragile — carry slowly and support each other"),
+            P(LocalizationKeys.HintReturnVote,    "F5で帰還投票を開始できる。欲張りすぎると全滅のもと",   "Press F5 to start a return vote. Greed leads to wipeouts"),
+            P(LocalizationKeys.HintGhostRevive,   "死亡後は幽霊になれる。祠を見つければ1回だけ復活できる", "After death you become a ghost. Find a shrine to revive once"),
+            P(LocalizationKeys.HintShopBudget,    "チーム予算100ptで装備を買おう。役割分担がカギ",       "Spend the 100pt team budget wisely. Divide roles"),
+            P(LocalizationKeys.HintIcePatch,      "氷パッチでは滑る。ピッケルや慎重な移動が有効",         "Ice patches are slippery. Use an ice axe or move carefully"),
+            P(LocalizationKeys.HintStretcher,     "担架は2人で端を掴んで運べる。負傷者救出に使える",     "Two players can carry a stretcher by each end"),
+            P(LocalizationKeys.HintWinch,         "ウインチで遺物を巻き上げられる。張力に注意",           "Use the winch to haul relics. Watch cable tension"),
+            P(LocalizationKeys.HintFlareHeli,     "フレアを真上に撃つとヘリが呼べる（60秒後に到着）",     "Fire a flare straight up to call a helicopter (arrives in 60s)"),
+            P(LocalizationKeys.HintCheckpoint,    "チェックポイントを通過すると死亡時の復帰地点になる",     "Checkpoints set your respawn point if you fall"),
+            P(LocalizationKeys.HintRouteGate,     "ルートゲートは毎回ランダムに開閉する",                 "Route gates open and close randomly each run"),
+        };
+
+        private static IEnumerable<KeyValuePair<string, (string ja, string en)>> BuildTipPairs() => new[]
+        {
+            P(LocalizationKeys.TipCoopRope,       "ロープで仲間を引き上げよう。Co-opの基本テク",           "Use ropes to pull teammates up — core co-op tech"),
+            P(LocalizationKeys.TipRelicDamage,    "落下・衝突で遺物はダメージ。梱包キットで保護できる",     "Falls and impacts damage relics. Packing kits help"),
+            P(LocalizationKeys.TipWeather,        "天候は時間とともに悪化する。早めの帰還も戦略",         "Weather worsens over time. Early return is valid"),
+            P(LocalizationKeys.TipSecureBelt,     "固定ベルトで小型遺物を体に固定できる",                   "Secure belt attaches small relics to your body"),
+            P(LocalizationKeys.TipThermalCase,    "保温ケースは凍結ダメージを軽減する",                     "Thermal case reduces freeze damage on relics"),
+            P(LocalizationKeys.TipBivouac,      "ビバークテントで動的チェックポイントを作れる",           "Bivouac tent creates a dynamic checkpoint"),
+            P(LocalizationKeys.TipMagnetHelmet,     "磁力の兜は近くの金属を引き寄せる。注意して運搬",       "Magnetic helmet pulls nearby metal — carry with care"),
+            P(LocalizationKeys.TipSingingVase,    "歌う壺の周りではボイスチャットが乱れる",               "Singing vases jam proximity voice chat"),
+            P(LocalizationKeys.TipTwinStatue,       "双子像はペアで運ぶと安定する",                           "Twin statues are stable when carried as a pair"),
+            P(LocalizationKeys.TipScoreTitles,    "個人スコアでコメディ称号が付く。配信映え間違いなし",   "Personal scores award comedy titles — clip-worthy chaos"),
         };
 
         private static KeyValuePair<string, (string ja, string en)> P(string key, string ja, string en)

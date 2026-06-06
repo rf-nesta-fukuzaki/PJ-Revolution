@@ -118,13 +118,21 @@ float ComputeWorldHeight(float2 worldXZ)
             float shoreFade = lerp(1.0, land, SHORE_FLATTEN);
             plainsRel *= shoreFade;
 
+            // ── 砂浜の平滑化 ──
+            // 海岸の細い帯では、尾根プロファイル（domeRelief の (1-RELIEF_BASE)*profile 項）と
+            // 微細ディテールを滑らかなドーム基底へ寄せる。これにより波打ち際が尖った小島群ではなく
+            // 連続した砂浜の傾斜になる。beachZone=1 が海岸線、内陸(land>BEACH_BAND)で 0。
+            const float BEACH_BAND = 0.16;
+            float beachZone = 1.0 - smoothstep(0.0, BEACH_BAND, land);
+            domeRelief = lerp(domeRelief, dome * RELIEF_BASE, beachZone);
+
             // 海岸線より外側は連続して海底へ沈降（島が水に囲まれる）。
             float over = saturate((dist - MOUNTAIN_RADIUS) / SEABED_FALLOFF);
             // smoothstep で岸壁を滑らかにし、海底でほぼ一定深へ落ち着かせる。
             seabed = smoothstep(0.0, 1.0, over) * SEABED_DEPTH;
 
             h01       = domeRelief + plainsRel;
-            microMask = max(dome, 0.25 * land);   // 海面下では微細ディテールを抑える
+            microMask = max(dome, 0.25 * land) * (1.0 - 0.7 * beachZone); // 砂浜では微細凹凸も抑える
         }
         else
         {

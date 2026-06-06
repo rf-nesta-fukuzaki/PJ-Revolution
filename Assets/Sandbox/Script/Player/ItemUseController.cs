@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using PeakPlunder.Localization;
 
 /// <summary>
 /// GDD §4.3 / §8 — アイテム使用の集中ディスパッチ（R/F・長押し対応）。
@@ -156,8 +157,28 @@ public class ItemUseController : MonoBehaviour
         };
 
         if (used)
+        {
+            TriggerItemHints(item);
             Debug.Log($"[ItemUse] {item.ItemName} を使用");
+        }
+
         return used;
+    }
+
+    private static void TriggerItemHints(ItemBase item)
+    {
+        var hints = GameServices.Hints;
+        if (hints == null || item == null) return;
+
+        switch (item)
+        {
+            case StretcherItem:
+                hints.TriggerLocalizedHint(LocalizationKeys.HintStretcher);
+                break;
+            case PortableWinchItem:
+                hints.TriggerLocalizedHint(LocalizationKeys.HintWinch);
+                break;
+        }
     }
 
     private bool TryUseIceAxe(IceAxeItem axe)

@@ -244,8 +244,8 @@ public static class VoiceBackendFactory
         Debug.Log("[VoiceBackend] Photon Voice バックエンドを使用");
         return new PhotonVoiceBackend(conn, recorder);
 #else
-        Debug.Log("[VoiceBackend] SDK 未検出 → AudioSource シミュレーションで動作");
-        return null;
+        Debug.Log("[VoiceBackend] SDK 未検出 → SimulatedVoiceBackend で動作");
+        return new SimulatedVoiceBackend(go);
 #endif
     }
 }

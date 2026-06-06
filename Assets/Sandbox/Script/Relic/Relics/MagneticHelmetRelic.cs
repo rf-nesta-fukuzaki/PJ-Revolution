@@ -32,8 +32,8 @@ public class MagneticHelmetRelic : RelicBase
     protected override void Awake()
     {
         _relicName        = "磁力の兜";
-        _baseValue        = 160;
-        _maxHp            = 120f;   // 高密度で壊れにくい
+        _baseValue        = 1300;   // GDD §9.4 #8
+        _maxHp            = 200f;   // GDD §9.4 #8 — 高密度で壊れにくい(Toughness 400)
         _damageMultiplier = 0.6f;
         _impactThreshold  = 4f;
 

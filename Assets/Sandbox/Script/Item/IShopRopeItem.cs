@@ -13,5 +13,7 @@ public interface IShopRopeItem
     bool TryConnectToAnchor(Transform anchor, int playerId, Vector3 fromPosition);
     void CutRope();
     void ApplyPlayerConnectState(int playerIdA, int playerIdB);
+    void ApplyRelicAttachState(RelicBase relic, int playerId);
+    void ApplyAnchorConnectState(Transform anchor, int playerId);
     void CutRopeLocalOnly();
 }

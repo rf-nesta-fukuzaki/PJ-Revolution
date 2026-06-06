@@ -20,8 +20,8 @@ public class CrystalCupRelic : RelicBase
     protected override void Awake()
     {
         _relicName        = "古代クリスタルの杯";
-        _baseValue        = 200;    // 完品で超高額
-        _maxHp            = 100f;
+        _baseValue        = 1500;   // GDD §9.4 #2 — 完品で超高額
+        _maxHp            = 80f;    // GDD §9.4 #2
         _damageMultiplier = 8f;     // 極めて壊れやすい
         _impactThreshold  = 0.3f;   // わずかな衝撃でダメージ
 

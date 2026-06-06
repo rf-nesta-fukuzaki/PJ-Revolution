@@ -32,8 +32,8 @@ public class TwinStatueRelic : RelicBase
     protected override void Awake()
     {
         _relicName        = "鎖付き双子像";
-        _baseValue        = 110;
-        _maxHp            = 70f;
+        _baseValue        = 900;    // GDD §9.4 #6 — セットで。片方のみは報酬0
+        _maxHp            = 90f;    // GDD §9.4 #6 — 共有HP
         _damageMultiplier = 4f;
         _impactThreshold  = 1.5f;
 

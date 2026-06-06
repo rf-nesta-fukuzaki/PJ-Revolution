@@ -292,6 +292,22 @@ public static class InputStateReader
 
     public static bool InteractPressedThisFrame() => InteractPressedThisFrame(0);
 
+    /// <summary>E キー / 西ボタンの押下保持（GDD §7.3 祠チャネリングなどの長押し用）。</summary>
+    public static bool InteractHeld(int slot)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.eKey.isPressed)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
+        return gamepad != null && gamepad.buttonWest.isPressed;
+    }
+
+    public static bool InteractHeld() => InteractHeld(0);
+
     public static bool UsePressedThisFrame(int slot)
     {
         if (UsesKeyboardForSlot(slot))
@@ -476,4 +492,20 @@ public static class InputStateReader
         var gamepad = Gamepad.current;
         return gamepad != null && gamepad.buttonSouth.wasPressedThisFrame;
     }
+
+    /// <summary>GDD §4.2 — プッシュトゥトーク（V ホールド / ゲームパッド D-pad Up）。</summary>
+    public static bool VoicePushToTalkHeld(int slot = 0)
+    {
+        if (UsesKeyboardForSlot(slot))
+        {
+            var keyboard = Keyboard.current;
+            if (keyboard != null && keyboard.vKey.isPressed)
+                return true;
+        }
+
+        var gamepad = GetGamepadForSlot(slot);
+        return gamepad != null && gamepad.dpad.up.isPressed;
+    }
+
+    public static bool VoicePushToTalkHeld() => VoicePushToTalkHeld(0);
 }

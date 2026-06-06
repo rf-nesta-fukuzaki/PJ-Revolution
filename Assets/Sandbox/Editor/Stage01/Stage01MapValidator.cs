@@ -90,6 +90,16 @@ public static class Stage01MapValidator
         report.Require(gameManager.GetComponent<ExpeditionManager>() != null, "GameManager has ExpeditionManager");
         report.Require(gameManager.GetComponent<ScoreTracker>() != null, "GameManager has ScoreTracker");
         report.Require(gameManager.GetComponent<PeakPlunder.Audio.AudioManager>() != null, "GameManager has AudioManager");
+        report.Require(gameManager.GetComponent<EnemySpawner>() != null, "GameManager has EnemySpawner");
+        report.Require(gameManager.GetComponent<HintManager>() != null, "GameManager has HintManager");
+        report.Require(gameManager.GetComponent<SceneServiceInstaller>() != null, "GameManager has SceneServiceInstaller");
+        report.Require(gameManager.transform.Find("NetworkExpeditionSync")?.GetComponent<Unity.Netcode.NetworkObject>() != null,
+            "GameManager has NetworkExpeditionSync with NetworkObject");
+        report.Require(gameManager.transform.Find("NetworkWorldPlacementsSync")?.GetComponent<Unity.Netcode.NetworkObject>() != null,
+            "GameManager has NetworkWorldPlacementsSync with NetworkObject");
+        report.Require(gameManager.transform.Find("NetworkSpawnAuthoringSync")?.GetComponent<Unity.Netcode.NetworkObject>() != null,
+            "GameManager has NetworkSpawnAuthoringSync with NetworkObject");
+        report.Require(Object.FindFirstObjectByType<HelicopterController>() != null, "HelicopterController exists in scene");
 
         var returnPoint = GameObject.Find("ReturnPoint");
         report.Require(returnPoint?.GetComponent<ReturnZone>() != null, "ReturnPoint has ReturnZone");

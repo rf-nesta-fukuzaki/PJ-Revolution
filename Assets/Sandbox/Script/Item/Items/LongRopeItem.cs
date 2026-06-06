@@ -52,7 +52,7 @@ public class LongRopeItem : ItemBase, IShopRopeItem
 
         var bridge = FindOwnerBridge();
         if (bridge != null)
-            return bridge.RequestAttachToRelic(this, relic, _ropeLength, fromPosition);
+            return bridge.RequestAttachToRelic(this, relic, _ropeLength, fromPosition, BreakForce);
 
         return TryAttachToRelicLocal(relic, playerId, fromPosition, _ropeLength, BreakForce);
     }
@@ -63,15 +63,21 @@ public class LongRopeItem : ItemBase, IShopRopeItem
         if (Vector3.Distance(fromPosition, anchor.position) > ShopRopeConstants.AnchorConnectRange)
             return false;
 
+        var bridge = FindOwnerBridge();
+        if (bridge != null)
+            return bridge.RequestConnectToAnchor(this, anchor, playerId, fromPosition, _ropeLength, BreakForce);
+
+        return ApplyAnchorConnectLocal(anchor, playerId);
+    }
+
+    private bool ApplyAnchorConnectLocal(Transform anchor, int playerId)
+    {
         bool ok = GameServices.Ropes != null &&
                   GameServices.Ropes.ConnectPlayerToAnchor(playerId, anchor, _ropeLength, BreakForce, this);
 
         if (!ok) return false;
 
-        _isConnected        = true;
-        _isRelicMode        = false;
-        _connectedPlayerIdA = playerId;
-        _connectedPlayerIdB = -1;
+        ApplyAnchorConnectState(anchor, playerId);
         Debug.Log($"[LongRope] アンカー {anchor.name} に固定");
         return true;
     }
@@ -140,6 +146,15 @@ public class LongRopeItem : ItemBase, IShopRopeItem
         _connectedPlayerIdA = playerId;
         _connectedPlayerIdB = -1;
         _connectedRelic     = relic;
+    }
+
+    public void ApplyAnchorConnectState(Transform anchor, int playerId)
+    {
+        _isConnected        = true;
+        _isRelicMode        = false;
+        _connectedPlayerIdA = playerId;
+        _connectedPlayerIdB = -1;
+        _connectedRelic     = null;
     }
 
     public void CutRope()

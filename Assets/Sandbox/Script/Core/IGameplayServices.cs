@@ -42,6 +42,7 @@ public interface ISceneFadeService
 public interface IHintService
 {
     void TriggerHint(int hintId);
+    void TriggerLocalizedHint(string localizationKey);
 }
 
 /// <summary>色覚サポートパレット（GDD §14.7）。</summary>

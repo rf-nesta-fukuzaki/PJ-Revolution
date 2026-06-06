@@ -8,7 +8,8 @@ using UnityEngine;
 ///   - 各プレイヤーの AudioSource の maxDistance / rolloffMode を制御
 ///   - 緊急無線機使用時に距離制限を一時解除
 ///
-/// 本番化 TODO: Vivox SDK または Photon Voice への差し替え
+/// SDK 未導入時は <see cref="SimulatedVoiceBackend"/>（V キー PTT + 距離減衰）。
+/// 本番化: Vivox SDK または Photon Voice への差し替え（Scripting Define: UNITY_VIVOX / PHOTON_VOICE_DEFINED）
 ///   - Vivox: com.unity.services.vivox パッケージを追加
 ///   - Photon Voice: com.exitgames.photonvoice2 パッケージを追加
 /// </summary>
@@ -88,6 +89,14 @@ public class ProximityVoiceChat : NetworkBehaviour
     /// <summary>緊急無線機アイテムから呼び出す互換 API。</summary>
     public void SetRangeOverride(bool active)
     {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening)
+        {
+            // NM 未起動（オフライン）では RPC / NetworkVariable を使わずローカルに距離を適用する。
+            ConfigureAudioSource(active ? _emergencyMaxDistance : _defaultMaxDistance);
+            return;
+        }
+
         ActivateEmergencyRadioServerRpc(active ? _emergencyMaxDistance : 0f);
     }
 
@@ -101,6 +110,16 @@ public class ProximityVoiceChat : NetworkBehaviour
         }
 
         CheckJamming();
+        UpdatePushToTalkSimulation();
+    }
+
+    private void UpdatePushToTalkSimulation()
+    {
+        if (!IsOwner || _voiceBackend is not SimulatedVoiceBackend simulated) return;
+
+        int slot = LocalCoopPartyMember.ResolveInputSlot(GetComponent<PlayerInventory>());
+        bool ptt = InputStateReader.VoicePushToTalkHeld(slot >= 0 ? slot : 0);
+        simulated.SetPushToTalkActive(ptt && !IsEmergencyActive && !_isJammed);
     }
 
     // ── 緊急無線機起動（クライアント → サーバー）────────────────

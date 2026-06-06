@@ -53,9 +53,9 @@ public class FloatingSphereRelic : RelicBase
     protected override void Awake()
     {
         _relicName        = "浮遊する球体";
-        _baseValue        = 130;
-        _maxHp            = 80f;
-        _damageMultiplier = 0.8f;   // 壊れにくい
+        _baseValue        = 1000;   // GDD §9.4 #5
+        _maxHp            = 200f;   // GDD §9.4 #5
+        _damageMultiplier = 0.8f;   // 壊れにくい(Toughness 500)
         _impactThreshold  = 2f;
 
         base.Awake();

@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using PeakPlunder.Audio;
+using PeakPlunder.Localization;
 
 /// <summary>
 /// GDD §5.2 — アイテム「フレアガン」
@@ -62,8 +63,8 @@ public class FlareGunItem : ItemBase
 
         if (isSkyShot)
         {
-            // 上空発射 → ヘリコプター呼び出し（GameServices 経由で IHelicopterService を使用）
             GameServices.Helicopter?.CallHelicopter(firePoint.position);
+            GameServices.Hints?.TriggerLocalizedHint(LocalizationKeys.HintFlareHeli);
             Debug.Log($"[FlareGun] 上空発射！ヘリを呼び出しました。残り {_flaresLeft}/{_maxFlares} 発");
         }
         else
@@ -76,39 +77,17 @@ public class FlareGunItem : ItemBase
 
     private void FireFlare(Vector3 origin, Vector3 direction)
     {
-        // フレアプロジェクタイル生成（プリミティブ代替）
-        var flare = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        flare.name = "Flare";
-        flare.transform.position   = origin;
-        flare.transform.localScale = Vector3.one * 0.1f;
+        var sync = NetworkWorldPlacementsSync.Instance
+            ?? Object.FindFirstObjectByType<NetworkWorldPlacementsSync>()
+            ?? NetworkWorldPlacementsSync.EnsureExists();
 
-        // 発光色（オレンジ）
-        var rend = flare.GetComponent<Renderer>();
-        if (rend != null)
+        if (sync != null)
         {
-            var material = GetSharedFlareMaterial();
-            if (material != null)
-            {
-                rend.sharedMaterial = material;
-                var block = new MaterialPropertyBlock();
-                var baseColor = new Color(1f, 0.4f, 0f);
-                block.SetColor(BaseColorId, baseColor);
-                block.SetColor(ColorId, baseColor);
-                rend.SetPropertyBlock(block);
-            }
+            sync.RequestSpawnFlare(origin, direction, _flareSpeed, _flareBurnTime, _visibleRange);
+            return;
         }
 
-        // 物理
-        var rb = flare.AddComponent<Rigidbody>();
-        rb.linearVelocity = direction * _flareSpeed;
-
-        // 衝突後の処理
-        var flareComp = flare.AddComponent<FlareBehavior>();
-        flareComp.Init(_flareBurnTime, _visibleRange);
-
-        // コライダー不要（マーカー目的）
-        var col = flare.GetComponent<SphereCollider>();
-        if (col != null) col.isTrigger = true;
+        WorldPlacementFactory.CreateFlareProjectile(origin, direction, _flareSpeed, _flareBurnTime, _visibleRange);
     }
 
     public override bool TryUse() => _flaresLeft > 0 && !_isBroken;
@@ -150,9 +129,12 @@ public class FlareBehavior : MonoBehaviour
     private static readonly System.Collections.Generic.List<FlareBehavior> s_burningFlares = new();
     public static System.Collections.Generic.IReadOnlyList<FlareBehavior> BurningFlares => s_burningFlares;
 
+    private const float ArmDelay = 0.05f;   // 発射直後の自己衝突を無視する猶予
+
     private float _burnTime;
     private float _visibleRange = 100f;
     private bool  _hasLanded;
+    private float _spawnTime;
     private Renderer _renderer;
     private MaterialPropertyBlock _propertyBlock;
 
@@ -169,6 +151,7 @@ public class FlareBehavior : MonoBehaviour
     {
         _renderer = GetComponent<Renderer>();
         _propertyBlock = new MaterialPropertyBlock();
+        _spawnTime = Time.time;
     }
 
     /// <summary>
@@ -200,9 +183,20 @@ public class FlareBehavior : MonoBehaviour
         }
     }
 
-    private void OnCollisionEnter(Collision col)
+    // trigger コライダーのため通常は OnTriggerEnter が発火する。
+    // 非 trigger 構成にフォールバックした場合に備え OnCollisionEnter も処理する。
+    private void OnTriggerEnter(Collider other) => TryLand(other);
+
+    private void OnCollisionEnter(Collision col) => TryLand(col.collider);
+
+    private void TryLand(Collider other)
     {
         if (_hasLanded) return;
+        // 発射直後（プレイヤー周辺）での自己着地を防ぐ。
+        if (Time.time - _spawnTime < ArmDelay) return;
+        // 他のトリガー領域（シェルター等）では着地扱いにしない。固い面のみ着地する。
+        if (other != null && other.isTrigger) return;
+
         _hasLanded = true;
 
         var rb = GetComponent<Rigidbody>();

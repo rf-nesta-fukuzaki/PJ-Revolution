@@ -52,42 +52,44 @@ public class AnchorBoltItem : ItemBase
 
     private void PlaceAnchorAt(Vector3 position, Vector3 normal, int playerId)
     {
-        GameObject anchor;
+        var nm = Unity.Netcode.NetworkManager.Singleton;
+        if (nm != null && nm.IsListening)
+        {
+            var sync = NetworkWorldPlacementsSync.Instance
+                ?? Object.FindFirstObjectByType<NetworkWorldPlacementsSync>()
+                ?? (nm.IsServer ? NetworkWorldPlacementsSync.EnsureExists() : null);
+            if (sync == null)
+            {
+                Debug.LogWarning("[AnchorBolt] NetworkWorldPlacementsSync 未準備 — 設置をスキップ");
+                return;
+            }
+
+            sync.RequestPlaceAnchor(position, normal, playerId);
+            _chargesLeft--;
+            ConsumeDurability(100f / _maxCharges);
+            Debug.Log($"[AnchorBolt] 設置完了（同期）。残り {_chargesLeft}/{_maxCharges} 個");
+            return;
+        }
+
         if (_anchorPrefab != null)
         {
-            anchor = Instantiate(_anchorPrefab, position, Quaternion.LookRotation(normal));
+            var anchor = Instantiate(_anchorPrefab, position, Quaternion.LookRotation(normal));
+            anchor.name = "AnchorBolt_Placed";
+            var anchorRb = anchor.GetComponent<Rigidbody>() ?? anchor.AddComponent<Rigidbody>();
+            anchorRb.isKinematic = true;
+            anchorRb.useGravity  = false;
+            GameServices.Ropes?.RegisterAnchorPoint(anchor.transform);
+            GameServices.Audio?.PlaySE(SoundId.AnchorBoltSet, position);
+            GameServices.Score?.RecordRopePlacement(playerId);
         }
         else
         {
-            // プリミティブ代替
-            anchor = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            anchor.transform.position   = position;
-            anchor.transform.rotation   = Quaternion.LookRotation(normal);
-            anchor.transform.localScale = new Vector3(0.08f, 0.15f, 0.08f);
-
-            var rend = anchor.GetComponent<Renderer>();
-            if (rend != null) rend.material.color = new Color(0.6f, 0.5f, 0.3f);
-
-            var col = anchor.GetComponent<Collider>();
-            if (col != null) col.isTrigger = false;
+            WorldPlacementFactory.CreateAnchorBolt(position, normal);
+            GameServices.Audio?.PlaySE(SoundId.AnchorBoltSet, position);
+            GameServices.Score?.RecordRopePlacement(playerId);
         }
 
-        var anchorRb = anchor.GetComponent<Rigidbody>();
-        if (anchorRb == null)
-            anchorRb = anchor.AddComponent<Rigidbody>();
-        anchorRb.isKinematic = true;
-        anchorRb.useGravity  = false;
-
-        anchor.name = "AnchorBolt_Placed";
-
-        // RopeManager にアンカーポイントとして登録（実装があれば）
-        GameServices.Ropes?.RegisterAnchorPoint(anchor.transform);
-
-        // GDD §15.2 — anchor_bolt_set
-        GameServices.Audio?.PlaySE(SoundId.AnchorBoltSet, position);
-
         _chargesLeft--;
-        GameServices.Score?.RecordRopePlacement(playerId);
         ConsumeDurability(100f / _maxCharges);
 
         Debug.Log($"[AnchorBolt] 設置完了。残り {_chargesLeft}/{_maxCharges} 個");

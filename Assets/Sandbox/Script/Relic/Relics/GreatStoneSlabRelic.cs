@@ -38,8 +38,8 @@ public class GreatStoneSlabRelic : RelicBase
     protected override void Awake()
     {
         _relicName        = "儀式用の大石板";
-        _baseValue        = 120;
-        _maxHp            = 150f;   // 壊れにくい
+        _baseValue        = 800;    // GDD §9.4 #3
+        _maxHp            = 150f;   // GDD §9.4 #3 — 壊れにくい
         _damageMultiplier = 0.3f;
         _impactThreshold  = 5f;     // かなりの衝撃でないとダメージなし
 

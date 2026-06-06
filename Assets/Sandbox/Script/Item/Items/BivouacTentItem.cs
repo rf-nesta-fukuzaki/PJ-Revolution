@@ -18,6 +18,10 @@ public class BivouacTentItem : ItemBase
 
     public bool IsPlaced => _isPlaced;
 
+    public static bool IsPlacedThisExpedition => _hasBeenPlacedThisExpedition;
+
+    public static void MarkPlacedThisExpedition() => _hasBeenPlacedThisExpedition = true;
+
     protected override void Awake()
     {
         base.Awake();
@@ -41,56 +45,52 @@ public class BivouacTentItem : ItemBase
             return false;
         }
 
-        SpawnTent(position, rotation);
+        var nm = Unity.Netcode.NetworkManager.Singleton;
+        if (nm != null && nm.IsListening)
+        {
+            var sync = NetworkWorldPlacementsSync.Instance
+                ?? Object.FindFirstObjectByType<NetworkWorldPlacementsSync>()
+                ?? (nm.IsServer ? NetworkWorldPlacementsSync.EnsureExists() : null);
+            if (sync == null)
+            {
+                Debug.LogWarning("[BivouacTent] NetworkWorldPlacementsSync 未準備 — 設置をスキップ");
+                return false;
+            }
+
+            if (!sync.RequestPlaceBivouac(position, rotation, _shelterRadius))
+                return false;
+
+            _isPlaced = true;
+            ConsumeDurability(20f);
+            Debug.Log("[BivouacTent] テント設置完了（ネットワーク同期）");
+            return true;
+        }
+
+        SpawnTentLocal(position, rotation);
         return true;
     }
 
-    private void SpawnTent(Vector3 position, Quaternion rotation)
+    private void SpawnTentLocal(Vector3 position, Quaternion rotation)
     {
         if (_tentPrefab != null)
         {
             _tentInstance = Instantiate(_tentPrefab, position, rotation);
+            _tentInstance.name = "BivouacTent_Placed";
+            var checkpoint = _tentInstance.GetComponent<BivouacCheckpoint>();
+            if (checkpoint == null)
+                checkpoint = _tentInstance.AddComponent<BivouacCheckpoint>();
+            checkpoint.Init(_shelterRadius);
         }
         else
         {
-            // プリミティブ代替：Cube でテントを表現
-            _tentInstance = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            _tentInstance.transform.position   = position + Vector3.up * 1f;
-            _tentInstance.transform.rotation   = rotation;
-            _tentInstance.transform.localScale = new Vector3(3f, 2f, 3f);
-
-            var rend = _tentInstance.GetComponent<Renderer>();
-            if (rend != null)
-                rend.material.color = new Color(0.2f, 0.5f, 0.8f);
-
-            // テント内部は Trigger にして天候保護エリアを判定
-            var col = _tentInstance.GetComponent<BoxCollider>();
-            if (col != null) col.isTrigger = false;
+            _tentInstance = WorldPlacementFactory.CreateBivouacTent(position, rotation, _shelterRadius);
         }
-
-        _tentInstance.name = "BivouacTent_Placed";
-
-        // ShelterZone をアタッチ — FrostbiteDamage / RelicFreezeDamage の保護エリアとして機能
-        var shelterChild = new GameObject("ShelterZone");
-        shelterChild.transform.SetParent(_tentInstance.transform);
-        shelterChild.transform.localPosition = Vector3.zero;
-        var shelterCol = shelterChild.AddComponent<SphereCollider>();
-        shelterCol.isTrigger = true;
-        shelterCol.radius    = _shelterRadius;
-        shelterChild.AddComponent<ShelterZone>();
-
-        // チェックポイント機能をアタッチ
-        var checkpoint = _tentInstance.AddComponent<BivouacCheckpoint>();
-        checkpoint.Init(_shelterRadius);
 
         _isPlaced                    = true;
         _hasBeenPlacedThisExpedition = true;
-
-        // GDD §15.2 — tent_setup
         GameServices.Audio?.PlaySE(SoundId.TentSetup, position);
-
-        ConsumeDurability(20f);  // 設置で消耗
-        Debug.Log($"[BivouacTent] テント設置完了。チェックポイントとして登録");
+        ConsumeDurability(20f);
+        Debug.Log("[BivouacTent] テント設置完了。チェックポイントとして登録");
     }
 
     protected override float GetUseDurabilityDrain() => 10f;
@@ -132,26 +132,6 @@ public class BivouacCheckpoint : MonoBehaviour
         GameServices.Expedition?.RegisterDynamicCheckpoint(transform);
         _isRegistered = true;
         Debug.Log($"[BivouacCheckpoint] チェックポイント登録 at {transform.position}");
-    }
-
-    private void OnTriggerEnter(Collider other)
-    {
-        if (!other.CompareTag("Player")) return;
-
-        var health = other.GetComponent<PlayerHealthSystem>();
-        if (health == null) return;
-
-        // テント内では天候ダメージを無効化（WeatherSystem に通知）
-        GameServices.Weather?.AddShelterOccupant(other.gameObject);
-        Debug.Log($"[BivouacCheckpoint] {other.name} がテントに入りました（天候保護）");
-    }
-
-    private void OnTriggerExit(Collider other)
-    {
-        if (!other.CompareTag("Player")) return;
-
-        GameServices.Weather?.RemoveShelterOccupant(other.gameObject);
-        Debug.Log($"[BivouacCheckpoint] {other.name} がテントから出ました");
     }
 
     private void OnDrawGizmosSelected()

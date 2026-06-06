@@ -13,8 +13,9 @@ public class ExtractionQuotaSystem : MonoBehaviour
     public static ExtractionQuotaSystem Instance { get; private set; }
 
     [Header("ノルマ")]
+    // GDD §9.4 の基準報酬額(300〜1500pt/個)に整合。レベル1は「良い遺物1個ぶん(~800pt)」が目安。
     [Tooltip("レベル1の必要価値")]
-    [SerializeField] private int _baseQuota = 120;
+    [SerializeField] private int _baseQuota = 800;
     [Tooltip("レベルごとのノルマ増加率")]
     [SerializeField] private float _quotaGrowth = 1.5f;
     [SerializeField] private int _startLevel = 1;
@@ -24,6 +25,9 @@ public class ExtractionQuotaSystem : MonoBehaviour
     private int  _lastExtractedValue;
     private bool _lastRunSucceeded;
     private bool _hasResult;
+
+    // ヘリ空輸で抽出された遺物 ID。帰還ゾーン外でも「持ち帰り成立」として価値に算入する（GDD §2.4）。
+    private readonly System.Collections.Generic.HashSet<int> _airliftedRelicIds = new();
 
     public int  Level              => _level;
     public int  RequiredQuota      => _requiredQuota;
@@ -59,7 +63,15 @@ public class ExtractionQuotaSystem : MonoBehaviour
     {
         _hasResult = false;
         _lastExtractedValue = 0;
+        _airliftedRelicIds.Clear();
         Debug.Log($"[Quota] レベル {_level} 開始。必要ノルマ {_requiredQuota}pt");
+    }
+
+    /// <summary>ヘリ空輸で持ち帰った遺物を抽出価値に算入する（HelicopterController から呼ぶ）。</summary>
+    public void RegisterAirliftedRelic(RelicBase relic)
+    {
+        if (relic != null && !relic.IsDestroyed)
+            _airliftedRelicIds.Add(relic.GetInstanceID());
     }
 
     private void HandleExpeditionEnded()
@@ -97,26 +109,32 @@ public class ExtractionQuotaSystem : MonoBehaviour
         }
     }
 
-    /// <summary>帰還エリア内に物理的に存在する（破壊されていない）遺物の価値合計。</summary>
+    /// <summary>帰還エリア内に物理的に存在する（破壊されていない）遺物 + ヘリ空輸された遺物の価値合計。</summary>
     private int ComputeExtractedValue()
     {
+        // 帰還ゾーンの AABB（無ければ位置判定はスキップし、ヘリ空輸分のみ算入）。
+        bool hasZone = false;
+        Bounds bounds = default;
         var zone = UnityEngine.Object.FindFirstObjectByType<ReturnZone>();
-        if (zone == null)
+        if (zone != null && zone.TryGetComponent<BoxCollider>(out var box))
         {
-            Debug.LogWarning("[Quota] ReturnZone が見つかりません。搬入価値 0 として扱います。");
+            bounds = box.bounds;
+            hasZone = true;
+        }
+        else if (_airliftedRelicIds.Count == 0)
+        {
+            Debug.LogWarning("[Quota] ReturnZone が見つからず空輸もありません。搬入価値 0 として扱います。");
             return 0;
         }
-
-        var box = zone.GetComponent<BoxCollider>();
-        if (box == null) return 0;
-        Bounds bounds = box.bounds; // ワールド AABB
 
         int total = 0;
         var relics = UnityEngine.Object.FindObjectsByType<RelicBase>(FindObjectsSortMode.None);
         foreach (var relic in relics)
         {
             if (relic == null || relic.IsDestroyed) continue;
-            if (bounds.Contains(relic.transform.position))
+            // 帰還ゾーン内に置かれた遺物 or ヘリ空輸された遺物を持ち帰り成立として加算（重複は自然に1回）。
+            bool inZone = hasZone && bounds.Contains(relic.transform.position);
+            if (inZone || _airliftedRelicIds.Contains(relic.GetInstanceID()))
                 total += relic.CurrentValue;
         }
         return total;

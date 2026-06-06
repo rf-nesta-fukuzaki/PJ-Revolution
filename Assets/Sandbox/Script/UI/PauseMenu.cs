@@ -28,7 +28,8 @@ public class PauseMenu : MonoBehaviour
     public static bool IsPaused { get; private set; }
 
     [Header("遷移先")]
-    [SerializeField] private string _mainMenuScene = "MainMenu";
+    [Tooltip("空欄なら GameFlow.TitleScene（StartMenu）へ戻る。")]
+    [SerializeField] private string _mainMenuScene = "";
 
     [Header("演出")]
     [Tooltip("開閉フェード時間（秒・unscaled）")]
@@ -217,8 +218,15 @@ public class PauseMenu : MonoBehaviour
         if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
             NetworkManager.Singleton.Shutdown();
 
-        GameplayCursorPolicy.SetMenuMode();
-        SceneManager.LoadScene(_mainMenuScene);
+        // 明示的な遷移先が設定されていればそれを優先し、無ければ GameFlow でタイトルへ戻る。
+        if (!string.IsNullOrEmpty(_mainMenuScene) && _mainMenuScene != "MainMenu")
+        {
+            GameplayCursorPolicy.SetMenuMode();
+            SceneManager.LoadScene(_mainMenuScene);
+            return;
+        }
+
+        GameFlow.GoToTitle();
     }
 
     // ── アニメーション（unscaled 時間）────────────────────────

@@ -17,6 +17,24 @@ public class ShelterZone : MonoBehaviour
         // 物理演算には影響しない Trigger として機能する
         var col = GetComponent<Collider>();
         col.isTrigger = true;
+
+        // GDD §5.6 — セーフゾーンは SafeZone レイヤーに置く（存在する場合）。
+        // Player×SafeZone は既定で有効なのでトリガー検出は維持され、PhysicsLayerPolicy の
+        // Item×SafeZone 除外が意味を持つ。レイヤー未定義環境では何もしない（安全）。
+        int safeLayer = LayerMask.NameToLayer("SafeZone");
+        if (safeLayer >= 0) gameObject.layer = safeLayer;
+    }
+
+    private void OnTriggerEnter(Collider other)
+    {
+        if (!other.CompareTag("Player")) return;
+        GameServices.Weather?.AddShelterOccupant(other.gameObject);
+    }
+
+    private void OnTriggerExit(Collider other)
+    {
+        if (!other.CompareTag("Player")) return;
+        GameServices.Weather?.RemoveShelterOccupant(other.gameObject);
     }
 
     private void OnDrawGizmosSelected()

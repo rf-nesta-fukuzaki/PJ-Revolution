@@ -50,8 +50,8 @@ public class SingingVaseRelic : RelicBase
     protected override void Awake()
     {
         _relicName        = "歌う壺";
-        _baseValue        = 150;
-        _maxHp            = 60f;
+        _baseValue        = 1200;   // GDD §9.4 #4
+        _maxHp            = 90f;    // GDD §9.4 #4
         _damageMultiplier = 4f;
         _impactThreshold  = 1f;
 

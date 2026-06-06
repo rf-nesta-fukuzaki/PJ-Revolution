@@ -55,6 +55,24 @@ public class EnemySpawner : MonoBehaviour
         }
     }
 
+    /// <summary>現在アクティブな（破壊されていない）敵の数。</summary>
+    public int ActiveEnemyCount
+    {
+        get
+        {
+            int n = 0;
+            for (int i = 0; i < _spawned.Count; i++)
+                if (_spawned[i] != null) n++;
+            return n;
+        }
+    }
+
+    /// <summary>デバッグメニュー用: フェーズに関係なく即時に1ウェーブをスポーンする。</summary>
+    public void DebugSpawnWave() => SpawnWave();
+
+    /// <summary>デバッグメニュー用: スポーン済みの敵を全て撤去する。</summary>
+    public void DebugDespawnAll() => DespawnAll();
+
     private void SpawnWave()
     {
         _hasSpawned = true;

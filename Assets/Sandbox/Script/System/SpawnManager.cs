@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Unity.Netcode;
 using UnityEngine;
 
 /// <summary>
@@ -44,6 +45,8 @@ public class SpawnManager : MonoBehaviour
         GameServices.Register(this);
     }
 
+    private bool _layersExecuted;
+
     private void Start()
     {
         _allSpawnPoints = FindObjectsByType<SpawnPoint>(FindObjectsSortMode.None);
@@ -55,14 +58,27 @@ public class SpawnManager : MonoBehaviour
     // ── 全レイヤー実行 ───────────────────────────────────────
     public void RunAllLayers()
     {
+        if (!ShouldAuthorSpawns())
+            return;
+
+        if (_layersExecuted)
+            return;
+
         EnsureSceneCache();
         ClearAll();
         InjectRelicPool();
-        GenerateLayer2_Routes();
+
+        var spawnSync = NetworkSpawnAuthoringSync.EnsureExists();
+        spawnSync?.BeginBatch();
+
+        GenerateLayer2_Routes(spawnSync);
         GenerateLayer3_Relics();
-        GenerateLayer5_Hazards();
+        GenerateLayer5_Hazards(spawnSync);
         GenerateLayer5_DroppedItems();
+
+        spawnSync?.FlushToClients();
         PairTwinStatues();
+        _layersExecuted = true;
     }
 
     private void EnsureSceneCache()
@@ -134,7 +150,7 @@ public class SpawnManager : MonoBehaviour
     }
 
     // ── L2: ルート開閉 ───────────────────────────────────────
-    private void GenerateLayer2_Routes()
+    private void GenerateLayer2_Routes(NetworkSpawnAuthoringSync spawnSync)
     {
         if (_allRouteGates == null) return;
 
@@ -144,6 +160,7 @@ public class SpawnManager : MonoBehaviour
         {
             bool isOpen = Random.value < _routeOpenChance;
             gate.SetOpen(isOpen);
+            spawnSync?.RecordRoute(gate.transform.position, isOpen);
 
             if (isOpen)
                 _openRouteCount++;
@@ -193,7 +210,7 @@ public class SpawnManager : MonoBehaviour
     }
 
     // ── L5: ハザード ─────────────────────────────────────────
-    private void GenerateLayer5_Hazards()
+    private void GenerateLayer5_Hazards(NetworkSpawnAuthoringSync spawnSync)
     {
         var hazardPoints = _allSpawnPoints
             .Where(sp => sp.Layer == SpawnLayer.Hazard)
@@ -202,11 +219,14 @@ public class SpawnManager : MonoBehaviour
         int spawned = 0;
         foreach (var sp in hazardPoints)
         {
-            if (Random.value < _hazardDensity)
-            {
-                sp.Activate();
-                spawned++;
-            }
+            if (Random.value >= _hazardDensity)
+                continue;
+
+            int idx = sp.Activate();
+            if (idx < 0) continue;
+
+            spawnSync?.RecordHazard(sp.transform.position, idx);
+            spawned++;
         }
 
         Debug.Log($"[Spawn L5] ハザード {spawned} 個を配置");
@@ -232,9 +252,9 @@ public class SpawnManager : MonoBehaviour
 
             var type = ItemFieldDropPool.PickRandom();
             var go   = NetworkRuntimeItemSpawn.SpawnFieldDrop(type, sp.transform.position, sp.transform.rotation);
-            if (go == null) continue;
+            if (go != null)
+                go.transform.SetParent(sp.transform);
 
-            go.transform.SetParent(sp.transform);
             spawned++;
         }
 
@@ -242,5 +262,15 @@ public class SpawnManager : MonoBehaviour
     }
 
     // ── 再生成 ────────────────────────────────────────────────
-    public void RegenerateAll() => RunAllLayers();
+    public void RegenerateAll()
+    {
+        _layersExecuted = false;
+        RunAllLayers();
+    }
+
+    private static bool ShouldAuthorSpawns()
+    {
+        var nm = NetworkManager.Singleton;
+        return nm == null || nm.IsServer;
+    }
 }

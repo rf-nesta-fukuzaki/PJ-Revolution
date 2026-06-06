@@ -23,8 +23,8 @@ public class SlipperyFishStatueRelic : RelicBase
     protected override void Awake()
     {
         _relicName        = "ぬるぬる聖なる魚像";
-        _baseValue        = 140;
-        _maxHp            = 60f;
+        _baseValue        = 1100;   // GDD §9.4 #7
+        _maxHp            = 85f;    // GDD §9.4 #7
         _damageMultiplier = 4.5f;
         _impactThreshold  = 1f;
 

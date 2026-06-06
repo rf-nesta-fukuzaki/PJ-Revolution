@@ -50,6 +50,9 @@ namespace PeakPlunder.Audio
         // SoundId → SoundEntry 辞書
         private Dictionary<SoundId, SoundLibrary.SoundEntry> _lookup;
 
+        // ライブラリ未割当時の手続き SE キャッシュ
+        private readonly Dictionary<SoundId, SoundLibrary.SoundEntry> _proceduralEntries = new();
+
         // SE プール（AudioSource 使い回し）
         private readonly List<AudioSource> _sePool = new();
 
@@ -96,6 +99,7 @@ namespace PeakPlunder.Audio
             GameServices.Register((IAudioService)this);
 
             InitializeLookup();
+            WarmupProceduralClips();
             InitializeSePool();
             InitializeBgmSources();
         }
@@ -110,6 +114,18 @@ namespace PeakPlunder.Audio
             _lookup = _library != null
                 ? _library.BuildLookup()
                 : new Dictionary<SoundId, SoundLibrary.SoundEntry>();
+        }
+
+        private void WarmupProceduralClips()
+        {
+            foreach (SoundId id in System.Enum.GetValues(typeof(SoundId)))
+            {
+                if (id == SoundId.None) continue;
+                if (_lookup != null && _lookup.TryGetValue(id, out var entry) && entry?.clip != null)
+                    continue;
+
+                TryGetEntry(id, out _);
+            }
         }
 
         private void InitializeSePool()
@@ -250,11 +266,17 @@ namespace PeakPlunder.Audio
         {
             entry = null;
             if (id == SoundId.None) return false;
-            if (_lookup == null || !_lookup.TryGetValue(id, out entry) || entry.clip == null)
-            {
-                // Clip 未設定は警告のみ。呼び出し側をクラッシュさせない。
-                return false;
-            }
+
+            if (_lookup != null && _lookup.TryGetValue(id, out entry) && entry.clip != null)
+                return true;
+
+            if (_proceduralEntries.TryGetValue(id, out entry))
+                return entry?.clip != null;
+
+            entry = ProceduralSoundClipFactory.CreateEntry(id);
+            if (entry?.clip == null) return false;
+
+            _proceduralEntries[id] = entry;
             return true;
         }
 

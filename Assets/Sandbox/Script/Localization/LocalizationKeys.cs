@@ -96,6 +96,48 @@ namespace PeakPlunder.Localization
         public const string WeatherBlizzard = "weather.blizzard";
         public const string WeatherFog      = "weather.fog";
 
+        // ── コンテキストヒント (GDD §21.2 / HintManager.HintId) ───
+        public const string HintContextFirstClimb    = "hint.context.first_climb";
+        public const string HintContextDashIntro     = "hint.context.dash_intro";
+        public const string HintContextStaminaEmpty  = "hint.context.stamina_empty";
+        public const string HintContextRelicApproach = "hint.context.relic_approach";
+        public const string HintContextRelicClimb    = "hint.context.relic_climb";
+        public const string HintContextRopeNearby    = "hint.context.rope_nearby";
+        public const string HintContextPinMarker     = "hint.context.pin_marker";
+        public const string HintContextReturnHeli    = "hint.context.return_heli";
+
+        // ── ショップチュートリアル (GDD §21.3) ───────────────────
+        public const string TutorialShopStep1 = "tutorial.shop.step_1";
+        public const string TutorialShopStep2 = "tutorial.shop.step_2";
+        public const string TutorialShopStep3 = "tutorial.shop.step_3";
+        public const string TutorialShopStep4 = "tutorial.shop.step_4";
+
+        // ── チュートリアルヒント (GDD §22.3) ─────────────────────
+        public const string HintDepart       = "hint.depart";
+        public const string HintRopeSwing    = "hint.rope_swing";
+        public const string HintRelicCarry   = "hint.relic_carry";
+        public const string HintReturnVote   = "hint.return_vote";
+        public const string HintGhostRevive  = "hint.ghost_revive";
+        public const string HintShopBudget   = "hint.shop_budget";
+        public const string HintIcePatch     = "hint.ice_patch";
+        public const string HintStretcher    = "hint.stretcher";
+        public const string HintWinch        = "hint.winch";
+        public const string HintFlareHeli    = "hint.flare_heli";
+        public const string HintCheckpoint   = "hint.checkpoint";
+        public const string HintRouteGate    = "hint.route_gate";
+
+        // ── TIPS (GDD §22.3) ─────────────────────────────────────
+        public const string TipCoopRope      = "tip.coop_rope";
+        public const string TipRelicDamage   = "tip.relic_damage";
+        public const string TipWeather       = "tip.weather";
+        public const string TipSecureBelt    = "tip.secure_belt";
+        public const string TipThermalCase   = "tip.thermal_case";
+        public const string TipBivouac       = "tip.bivouac";
+        public const string TipMagnetHelmet  = "tip.magnet_helmet";
+        public const string TipSingingVase   = "tip.singing_vase";
+        public const string TipTwinStatue    = "tip.twin_statue";
+        public const string TipScoreTitles   = "tip.score_titles";
+
         // ── 大石板 (5キー、GDD §9.3 歌う壺/大石板系) ─────────────
         public const string StoneSlabMenu1 = "stone.slab_menu_1";
         public const string StoneSlabMenu2 = "stone.slab_menu_2";

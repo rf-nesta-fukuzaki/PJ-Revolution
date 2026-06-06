@@ -110,7 +110,7 @@ public class PlayerInteraction : MonoBehaviour
         if (TryDetachStretcher()) return;
         if (TryMountRelicOnStretcher()) return;
         if (TryConnectShopRope()) return;
-        if (TryAttachLongRopeToRelic()) return;
+        if (TryAttachShopRopeToRelic()) return;
         if (TryPutDownRelic()) return;
         if (TryAttachStretcher()) return;
         if (TryPickUpRelic()) return;
@@ -203,16 +203,20 @@ public class PlayerInteraction : MonoBehaviour
         return best;
     }
 
-    private bool TryAttachLongRopeToRelic()
+    private bool TryAttachShopRopeToRelic()
     {
-        if (_inventory.HandItem is not LongRopeItem longRope) return false;
-        if (longRope.IsConnected) return false;
+        if (_inventory.HandItem is not IShopRopeItem rope) return false;
+        if (rope.IsConnected) return false;
 
-        var relic = FindNearbyRelicForRope(LongRopeItem.RelicAttachRange);
+        float range = rope is LongRopeItem
+            ? LongRopeItem.RelicAttachRange
+            : ShortRopeItem.RelicAttachRange;
+
+        var relic = FindNearbyRelicForRope(range);
         if (relic == null) return false;
 
         int playerId = PlayerScoreId.FromMember(this);
-        return longRope.TryAttachToRelic(relic, playerId, transform.position);
+        return rope.TryAttachToRelic(relic, playerId, transform.position);
     }
 
     private RelicBase FindNearbyRelicForRope(float range)
@@ -348,8 +352,18 @@ public class PlayerInteraction : MonoBehaviour
         _carriedRelic = carrier;
         _balanceIndicator?.Show(carrier);
         ScoreService?.RecordRelicFound(scoreId);
-        ScoreService?.RegisterCollectedRelic(carrier.GetComponent<RelicBase>());
+        var relic = carrier.GetComponent<RelicBase>();
+        ScoreService?.RegisterCollectedRelic(relic);
+        SyncRelicCollectedCount();
         return true;
+    }
+
+    private void SyncRelicCollectedCount()
+    {
+        if (ScoreService is not ScoreTracker tracker)
+            return;
+
+        NetworkExpeditionSync.Instance?.RegisterRelicCollectedServerRpc(tracker.CollectedRelicCount);
     }
 
     private void TryPickUpItem()

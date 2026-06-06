@@ -19,13 +19,17 @@ public class PlayerHealthSystem : MonoBehaviour
     [SerializeField] private float _maxHp             = 100f;
     [SerializeField] private float _fallDamageMinSpeed = 8f;
     [SerializeField] private float _fallDamageScale    = 3f;
+    [SerializeField] private float _safeFallHeight     = 3f;
+    [SerializeField] private float _instantKillHeight  = 15f;
+    [SerializeField] private float _fallDamagePerMeter = 8f;
     [SerializeField] private float _deathY             = -30f;
 
-    private float     _currentHp;
-    private bool      _isDead;
-    private bool      _isDowned;
-    private Rigidbody _rb;
-    private float     _prevVelocityY;
+    private float        _currentHp;
+    private bool         _isDead;
+    private bool         _isDowned;
+    private Rigidbody    _rb;
+    private float        _prevVelocityY;
+    private RagdollSystem _ragdoll;
 
     private float _bonusMaxHp;        // 恒久アップグレードによる加算
     private float _damageResistance;  // 役割(Vanguard)による被ダメージ軽減 (0-1)
@@ -33,6 +37,9 @@ public class PlayerHealthSystem : MonoBehaviour
     private float MaxHpValue             => (_config != null ? _config.MaxHp : _maxHp) + _bonusMaxHp;
     private float FallDamageMinSpeedValue => _config != null ? _config.FallDamageMinSpeed : _fallDamageMinSpeed;
     private float FallDamageScaleValue    => _config != null ? _config.FallDamageScale : _fallDamageScale;
+    private float SafeFallHeightValue     => _config != null ? _config.SafeFallHeight : _safeFallHeight;
+    private float InstantKillHeightValue  => _config != null ? _config.InstantKillHeight : _instantKillHeight;
+    private float FallDamagePerMeterValue => _config != null ? _config.FallDamagePerMeter : _fallDamagePerMeter;
     private float DeathYValue             => _config != null ? _config.DeathY : _deathY;
 
     public float HpPercent => MaxHpValue > 0f ? _currentHp / MaxHpValue : 0f;
@@ -56,6 +63,7 @@ public class PlayerHealthSystem : MonoBehaviour
             $"PlayerHealthSystem.Awake: maxHp は 0 より大きくなければなりません (value={MaxHpValue})");
 
         _rb        = GetComponent<Rigidbody>();
+        _ragdoll   = GetComponent<RagdollSystem>();
         _currentHp = MaxHpValue;
 
         // ダウン→蘇生システムを全プレイヤーに付与（非破壊・無ければ生成）
@@ -114,13 +122,29 @@ public class PlayerHealthSystem : MonoBehaviour
 
     private void OnCollisionEnter(Collision col)
     {
-        if (_isDead) return;
+        if (_isDead || _isDowned) return;
 
+        // 高速衝突（Ragdoll 閾値以上）は RagdollSystem が一手に処理し、復帰時に落下ダメージを
+        // 適用する。ここで二重に適用しないようスキップする（旧実装は両方が別式で適用するバグ）。
+        if (_ragdoll != null && col.relativeVelocity.magnitude >= _ragdoll.VelocityThreshold)
+            return;
+
+        // GDD §3.4 — 落下ダメージは「落下高さ」基準。衝突直前の Y 速度から h = v²/2g で換算。
         float impactSpeedY = Mathf.Abs(_prevVelocityY);
-        if (impactSpeedY < FallDamageMinSpeedValue) return;
+        float fallHeight   = impactSpeedY * impactSpeedY / (2f * 9.81f);
+        float damage       = ComputeFallDamage(fallHeight);
+        if (damage > 0f)
+            TakeDamage(damage);
+    }
 
-        float damage = (impactSpeedY - FallDamageMinSpeedValue) * FallDamageScaleValue;
-        TakeDamage(damage);
+    /// <summary>GDD §3.4 — 落下高さからダメージを求める。&lt;安全高さ=0 / ≥即死高さ=即死 / 間=(h-安全)×係数。</summary>
+    private float ComputeFallDamage(float fallHeight)
+    {
+        float safe = SafeFallHeightValue;
+        float kill = InstantKillHeightValue;
+        if (fallHeight < safe)  return 0f;
+        if (fallHeight >= kill) return MaxHpValue;   // 即死
+        return (fallHeight - safe) * FallDamagePerMeterValue;
     }
 
     /// <summary>ダメージを与える。前提条件: amount は 0 以上。</summary>

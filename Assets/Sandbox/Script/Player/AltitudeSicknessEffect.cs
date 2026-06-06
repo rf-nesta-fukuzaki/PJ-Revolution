@@ -110,4 +110,18 @@ public class AltitudeSicknessEffect : MonoBehaviour
     }
 
     public bool IsAffected => _effectStrength > 0.05f && !_oxygenTankActive;
+
+    /// <summary>
+    /// 酸素タンクの有無に関わらず「高山病が発生する高度」にいるか。
+    /// 閾値は MountainProfile 連動の EnvironmentHazardConfigSO を参照（実山高に追従）。
+    /// OxygenTankItem が「この高度でのみ酸素を消費する」ために参照する。
+    /// </summary>
+    public bool IsAboveSicknessAltitude
+    {
+        get
+        {
+            float threshold = _hazardConfig != null ? _hazardConfig.AltitudeSicknessMin : 2000f;
+            return transform.position.y >= threshold;
+        }
+    }
 }

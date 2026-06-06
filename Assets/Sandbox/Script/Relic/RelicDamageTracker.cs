@@ -23,12 +23,24 @@ public class RelicDamageTracker : MonoBehaviour
 
     private void OnEnable()
     {
-        _relic.OnDamaged += HandleDamaged;
+        _relic.OnDamaged     += HandleDamaged;
+        _relic.OnRelicBroken += HandleBroken;
     }
 
     private void OnDisable()
     {
-        _relic.OnDamaged -= HandleDamaged;
+        _relic.OnDamaged     -= HandleDamaged;
+        _relic.OnRelicBroken -= HandleBroken;
+    }
+
+    // ── 破壊の帰責（GDD §12.3 — 遺物破壊 -50pt/個） ──────────
+    private void HandleBroken(RelicBase relic)
+    {
+        // 運搬中ダメージを最も与えたプレイヤーへ破壊ペナルティを帰責する。
+        // 純粋な環境破壊（誰も運搬中にダメージを与えていない）なら帰責者なし＝ペナルティなし。
+        int topId = GetTopDamageDealer();
+        if (topId < 0) return;
+        GameServices.Score?.RecordRelicDestroyed(topId);
     }
 
     // ── ダメージ記録 ─────────────────────────────────────────

@@ -163,7 +163,37 @@ public static class Stage01MapBuilder
         if (go.GetComponent<PPAudioManager>() == null) go.AddComponent<PPAudioManager>();
         if (go.GetComponent<ItemGameplayBootstrap>() == null) go.AddComponent<ItemGameplayBootstrap>();
         if (go.GetComponent<GameplaySceneHostBootstrap>() == null) go.AddComponent<GameplaySceneHostBootstrap>();
+        if (go.GetComponent<EnemySpawner>() == null) go.AddComponent<EnemySpawner>();
+        if (go.GetComponent<HintManager>() == null) go.AddComponent<HintManager>();
+        if (go.GetComponent<SceneServiceInstaller>() == null) go.AddComponent<SceneServiceInstaller>();
+        EnsureChildNetworkService(go, "NetworkExpeditionSync", typeof(NetworkExpeditionSync));
+        EnsureChildNetworkService(go, "NetworkWorldPlacementsSync", typeof(NetworkWorldPlacementsSync));
+        EnsureChildNetworkService(go, "NetworkSpawnAuthoringSync", typeof(NetworkSpawnAuthoringSync));
+        EnsureHelicopterController();
         return go;
+    }
+
+    private static void EnsureChildNetworkService(GameObject parent, string childName, System.Type componentType)
+    {
+        var childTr = parent.transform.Find(childName);
+        var childGo = childTr != null ? childTr.gameObject : new GameObject(childName);
+        if (childTr == null)
+            childGo.transform.SetParent(parent.transform, false);
+
+        if (childGo.GetComponent<Unity.Netcode.NetworkObject>() == null)
+            childGo.AddComponent<Unity.Netcode.NetworkObject>();
+        if (childGo.GetComponent(componentType) == null)
+            childGo.AddComponent(componentType);
+    }
+
+    private static void EnsureHelicopterController()
+    {
+        if (Object.FindFirstObjectByType<HelicopterController>() != null)
+            return;
+
+        var heli = new GameObject("HelicopterController");
+        heli.AddComponent<Unity.Netcode.NetworkObject>();
+        heli.AddComponent<HelicopterController>();
     }
 
     private static void BuildItemLockerNearShop(Transform shopTransform)

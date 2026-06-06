@@ -34,6 +34,10 @@ public class ExplorerCameraLook : MonoBehaviour
              "通常の高速旋回は許容しつつ極端なスパイクだけを切る値にする。")]
     [SerializeField] private float _maxLookDeltaPerFrame = 10f;
 
+    [Header("設定連動 (GDD §6.3 / §14.7)")]
+    [Tooltip("設定画面のマウス感度(0.5〜10.0)の基準値。この値のとき実効感度は素のまま。")]
+    [SerializeField] private float _settingsSensitivityReference = 3f;
+
     [Header("感度ライブ調整")]
     [Tooltip("プレイ中に [ / ] キーで感度を増減する際のステップ量。")]
     [SerializeField] private float _sensitivityStep = 0.5f;
@@ -59,6 +63,7 @@ public class ExplorerCameraLook : MonoBehaviour
     private bool _localCoopHuman;
     private int _inputSlot;
     private Rigidbody _rb;
+    private ISettingsService _settings;   // GDD §6.3 — マウス感度/Y反転を設定から取得
     private readonly List<RendererState> _hiddenRenderers = new();
 
     private struct RendererState
@@ -167,8 +172,13 @@ public class ExplorerCameraLook : MonoBehaviour
             _smoothedLookDelta = lookDelta;
         }
 
-        float lookX = lookDelta.x * _sensitivityX;
-        float lookY = lookDelta.y * _sensitivityY;
+        // GDD §6.3 / §14.7 — 設定画面のマウス感度・Y反転を反映する。
+        // 基準値(3.0)のとき実効感度は素のまま（既存の手触りを保つ）。スライダーが効くようになる。
+        float settingsScale = ResolveSettingsSensitivityScale();
+        float invertY = ResolveInvertY() ? -1f : 1f;
+
+        float lookX = lookDelta.x * _sensitivityX * settingsScale;
+        float lookY = lookDelta.y * _sensitivityY * settingsScale * invertY;
 
         _yaw += lookX;
         _pitch = Mathf.Clamp(_pitch - lookY, _minPitch, _maxPitch);
@@ -230,6 +240,21 @@ public class ExplorerCameraLook : MonoBehaviour
         _sensitivityX = Mathf.Clamp(_sensitivityX + step, _minSensitivity, _maxSensitivity);
         _sensitivityY = Mathf.Clamp(_sensitivityY + step, _minSensitivity, _maxSensitivity);
         Debug.Log($"[ExplorerCameraLook] 視点感度 = {_sensitivityX:0.##}");
+    }
+
+    /// <summary>設定画面のマウス感度(0.5〜10.0)を基準値(3.0)で正規化した倍率。設定が無ければ 1.0。</summary>
+    private float ResolveSettingsSensitivityScale()
+    {
+        _settings ??= GameServices.Settings;
+        if (_settings == null || _settingsSensitivityReference <= 0f) return 1f;
+        return _settings.MouseSensitivity / _settingsSensitivityReference;
+    }
+
+    /// <summary>設定画面の Y 軸反転フラグ（GDD §14.7）。設定が無ければ false。</summary>
+    private bool ResolveInvertY()
+    {
+        _settings ??= GameServices.Settings;
+        return _settings != null && _settings.InvertY;
     }
 
     private void OnDisable()

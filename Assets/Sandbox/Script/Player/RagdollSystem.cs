@@ -43,6 +43,9 @@ public class RagdollSystem : MonoBehaviour
     // ── プロパティ ───────────────────────────────────────────
     public bool IsRagdoll => _stateMachine != null && _stateMachine.IsRagdoll;
 
+    /// <summary>Ragdoll が発動する衝突速度の閾値 (m/s)。PlayerHealthSystem が二重ダメージ回避に参照する。</summary>
+    public float VelocityThreshold => _config != null ? _config.VelocityThreshold : 15f;
+
     // ── ライフサイクル ────────────────────────────────────────
     private void Awake()
     {

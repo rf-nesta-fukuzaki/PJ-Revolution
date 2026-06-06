@@ -46,10 +46,13 @@ public class ScoreTracker : MonoBehaviour, IScoreService
         public int    GhostPinsPlaced;
         public int    TeammateFallsCaused;
         public int    ShoutCount;           // 歌う壺ボイチャ妨害による「叫び」回数
+        public int    RelicsDestroyed;      // 持っていた遺物を破壊した回数 (GDD §12.3)
     }
 
     private readonly Dictionary<int, PlayerStats> _stats          = new();
     private readonly List<RelicBase>              _collectedRelics = new();
+
+    public int CollectedRelicCount => _collectedRelics.Count;
 
     private void Awake()
     {
@@ -136,6 +139,12 @@ public class ScoreTracker : MonoBehaviour, IScoreService
         s.ShoutCount++;
     }
 
+    public void RecordRelicDestroyed(int playerId)
+    {
+        if (!TryGetStats(playerId, out var s)) return;
+        s.RelicsDestroyed++;
+    }
+
     // ── 遺物収集 ─────────────────────────────────────────────
     public void RegisterCollectedRelic(RelicBase relic)
     {
@@ -172,20 +181,17 @@ public class ScoreTracker : MonoBehaviour, IScoreService
             Relics           = new List<RelicBase>(_collectedRelics)
         };
 
-        // チームスコア（ScoreConfigSO の値を使用）
-        int teamScore = 0;
+        // GDD §12.1 — チームスコア = Σ(遺物価値 × 状態係数) × 生還ボーナス。
+        // relic.CurrentValue は既に baseValue × 状態係数。生還ボーナスは「乗算」(1.2 / 1.0)。
+        int relicTotal = 0;
         foreach (var relic in _collectedRelics)
-        {
-            teamScore += relic.CurrentValue;
-            if (relic.Condition == RelicCondition.Perfect)
-                teamScore += cfg.RelicIntactBonus;
-        }
-        if (allSurvived)
-            teamScore += cfg.TeamSurvivalBonus;
+            relicTotal += relic.CurrentValue;
 
+        float survivalBonus = allSurvived ? cfg.SurvivalBonusMultiplier : 1.0f;
+        int teamScore = Mathf.RoundToInt(relicTotal * survivalBonus);
         data.TeamScore = teamScore;
 
-        // 個人スコア
+        // 個人スコア（GDD §12.2 / §12.3）
         foreach (var kv in _stats)
         {
             var s  = kv.Value;
@@ -196,7 +202,8 @@ public class ScoreTracker : MonoBehaviour, IScoreService
 
             // ペナルティ
             ps -= (int)(s.RelicDamageDealt * cfg.RelicDamagePenaltyRate);
-            ps -= s.ItemsLost * cfg.ItemLostPenalty;
+            ps -= s.ItemsLost        * cfg.ItemLostPenalty;
+            ps -= s.RelicsDestroyed  * cfg.RelicDestroyedPenalty;
             ps  = Mathf.Max(0, ps);
 
             data.PlayerScores.Add(new PlayerScore
@@ -215,10 +222,39 @@ public class ScoreTracker : MonoBehaviour, IScoreService
             });
         }
 
+        // GDD §12.4 — 報酬配分。各自の rawScore 比でチームスコアを配分。最低保証 share あり。
+        DistributeRewards(data, cfg);
+
         data.PlayerScores = data.PlayerScores.OrderByDescending(p => p.IndividualScore).ToList();
 
         Debug.Log($"[Score] チームスコア: {data.TeamScore}pt  遺物: {_collectedRelics.Count}個  タイム: {clearTime:F0}s");
         return data;
+    }
+
+    /// <summary>
+    /// GDD §12.4 — チームスコアを各プレイヤーへ配分する。
+    ///   share = floor + (1 - N×floor) × (rawScore / Σraw)
+    ///   全員 raw=0 のときは均等配分（各 1/N）。floor は最低保証比率（4人で各10%）。
+    /// </summary>
+    private static void DistributeRewards(ScoreData data, ScoreConfigSO cfg)
+    {
+        int n = data.PlayerScores.Count;
+        if (n == 0) return;
+
+        // 最低保証比率は N×floor ≤ 1 になるようクランプ（少人数で 1 を超えないように）。
+        float floor    = Mathf.Clamp(cfg.MinRewardShare, 0f, 1f / n);
+        float meritPot = 1f - floor * n;          // 実力で分配される残り
+
+        long totalRaw = 0;
+        foreach (var p in data.PlayerScores) totalRaw += Mathf.Max(0, p.IndividualScore);
+
+        foreach (var p in data.PlayerScores)
+        {
+            float merit = totalRaw > 0 ? Mathf.Max(0, p.IndividualScore) / (float)totalRaw : 1f / n;
+            float share = floor + meritPot * merit;
+            p.RewardShare  = share;
+            p.PlayerReward = Mathf.RoundToInt(data.TeamScore * share);
+        }
     }
 
     // ── ヘルパー ─────────────────────────────────────────────

@@ -76,10 +76,12 @@ public sealed class RelicDurabilityModel
         return true;
     }
 
+    // GDD §5.2 — 5段階の状態しきい値。完品100% / 軽傷70-99% / 損傷50-69% / 大破1-49% / 破壊0%。
     public static RelicCondition EvaluateCondition(float currentHp, float maxHp)
     {
         float percent = maxHp > 0f ? currentHp / maxHp * 100f : 0f;
         if (percent >= 100f) return RelicCondition.Perfect;
+        if (percent >= 70f)  return RelicCondition.LightlyDamaged;
         if (percent >= 50f)  return RelicCondition.Damaged;
         if (percent >= 1f)   return RelicCondition.HeavilyDamaged;
         return RelicCondition.Destroyed;

@@ -54,14 +54,19 @@ public class ExpeditionManager : MonoBehaviour, IExpeditionService
 
     private void Start()
     {
-        _spawnManager?.RunAllLayers();
-
         // BasecampShop がある場合は OnDepart ボタンから StartExpedition() を呼ぶ。
         // ショップが存在しない場合（テストシーン等）は即時開始する。
         if (_basecampShop == null)
             _basecampShop = Object.FindFirstObjectByType<BasecampShop>();
 
-        if (_basecampShop == null)
+        // 無効化された在シーンショップ（外部ショップシーンへ移譲済み）は「無し」扱いにする。
+        if (_basecampShop != null && !_basecampShop.isActiveAndEnabled)
+            _basecampShop = null;
+
+        // ロビー/ショップ（独立シーン）から来た場合は GameFlow が自動出発を要求する。
+        // その場合は在シーンショップの有無に関わらず即時開始する（持ち越し装備は
+        // RunLoadoutApplier が遠征開始イベントで付与する）。
+        if (GameFlow.ConsumeAutoStart() || _basecampShop == null)
             StartExpedition();
     }
 
@@ -79,7 +84,7 @@ public class ExpeditionManager : MonoBehaviour, IExpeditionService
 
         // GDD §5.2 — BivouacTent「1遠征1個」制限をここで解除。
         // 新しい遠征の開始＝前回までの設置記録をクリアする唯一の正当なタイミング。
-        BivouacTentItem.ResetExpeditionFlag();
+        NetworkWorldPlacementsSync.ResetExpeditionState();
 
         TransitionPhase(ExpeditionPhase.Climbing);
         ExpeditionEvents.RaiseExpeditionStarted();
@@ -159,7 +164,25 @@ public class ExpeditionManager : MonoBehaviour, IExpeditionService
             clearTime = 0f;
 
         var score = scoreService.BuildResultData(clearTime, allSurvived);
+        BroadcastResultIfNetworked(score, allSurvived);
         StartCoroutine(ShowResultAfterFade(score));
+    }
+
+    private static void BroadcastResultIfNetworked(ScoreData score, bool allSurvived)
+    {
+        var sync = NetworkExpeditionSync.Instance;
+        var nm   = Unity.Netcode.NetworkManager.Singleton;
+        if (sync == null || nm == null || !nm.IsServer)
+            return;
+
+        sync.UpdateTeamScoreServerRpc(score.TeamScore);
+        sync.ShowResultClientRpc(new ResultPayload
+        {
+            TeamScore        = score.TeamScore,
+            ClearTimeSeconds = score.ClearTimeSeconds,
+            AllSurvived      = allSurvived,
+            RelicCount       = score.Relics?.Count ?? 0,
+        });
     }
 
     private IEnumerator ShowResultAfterFade(ScoreData score)
@@ -200,7 +223,20 @@ public class ExpeditionManager : MonoBehaviour, IExpeditionService
             return;
         }
 
+        NotifyDeathIfNetworked(player);
         Debug.Log($"[Expedition] {player.name} が死亡 (ゴーストモード移行)");
+    }
+
+    private static void NotifyDeathIfNetworked(PlayerHealthSystem player)
+    {
+        if (player == null) return;
+
+        var netObj = player.GetComponent<Unity.Netcode.NetworkObject>();
+        var sync   = NetworkExpeditionSync.Instance;
+        if (netObj == null || sync == null || !netObj.IsSpawned)
+            return;
+
+        sync.NotifyPlayerDeathServerRpc(netObj.OwnerClientId);
     }
 
     /// <summary>
@@ -243,12 +279,35 @@ public class ExpeditionManager : MonoBehaviour, IExpeditionService
             }
         }
 
-        if (!anyAlive)
+        if (anyAlive) return;
+
+        // GDD §7.5 — 全滅 = 全員死亡(幽霊含む) かつ 復活の可能性がゼロ。
+        // 「未復活の幽霊」かつ「使用可能な祠」が残っていれば復活し得るので全滅にしない。
+        // （GDD 文言は「使用可能な祠がゼロ」だが、全員復活済みなら祠が残っていても
+        //   誰も使えずソフトロックになるため、復活可能性で判定する。）
+        if (RevivalStillPossible()) return;
+
+        Debug.Log("[Expedition] 全員死亡かつ復活不能（未復活幽霊×使用可能な祠なし）。遺物ゼロで帰還。");
+        StartCoroutine(PlayWipeoutSequence());
+        ReturnToBase(false);
+    }
+
+    /// <summary>未復活の幽霊が居て、かつ使用可能な祠が残っているか（GDD §7.3 / §7.5）。</summary>
+    private static bool RevivalStillPossible()
+    {
+        bool anyShrineAvailable = false;
+        foreach (var shrine in ReviveShrine.RegisteredShrines)
         {
-            Debug.Log("[Expedition] 全員死亡。遺物ゼロで帰還。");
-            StartCoroutine(PlayWipeoutSequence());
-            ReturnToBase(false);
+            if (shrine != null && shrine.IsAvailable) { anyShrineAvailable = true; break; }
         }
+        if (!anyShrineAvailable) return false;
+
+        foreach (var p in PlayerHealthSystem.RegisteredPlayers)
+        {
+            var ghost = p.GetComponent<GhostSystem>();
+            if (ghost != null && !ghost.HasRevived) return true;
+        }
+        return false;
     }
 
     /// <summary>

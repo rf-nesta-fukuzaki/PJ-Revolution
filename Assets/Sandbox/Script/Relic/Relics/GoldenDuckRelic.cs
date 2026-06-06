@@ -21,8 +21,8 @@ public class GoldenDuckRelic : RelicBase
         // base.Awake() が RelicDurabilityModel を生成するため、
         // フィールドは必ず先に設定する。
         _relicName        = "黄金のアヒル像";
-        _baseValue        = 80;
-        _maxHp            = 100f;
+        _baseValue        = 300;    // GDD §9.4 #1
+        _maxHp            = 120f;   // GDD §9.4 #1
         _damageMultiplier = 0.5f;   // 壊れにくい
         _impactThreshold  = 3f;
 

@@ -35,24 +35,118 @@ public sealed class PlayerShopRopeNetworkBridge : NetworkBehaviour
         return true;
     }
 
-    public bool RequestAttachToRelic(LongRopeItem rope, RelicBase relic, float length, Vector3 fromPosition)
+    public bool RequestAttachToRelic(
+        IShopRopeItem rope,
+        RelicBase relic,
+        float length,
+        Vector3 fromPosition,
+        float breakForce)
     {
         if (rope == null || relic == null || rope.IsConnected) return false;
 
         var relicNet = relic.GetComponent<NetworkObject>();
         if (!IsSpawned || relicNet == null || !relicNet.IsSpawned)
-            return rope.TryAttachToRelicLocal(relic, PlayerScoreId.FromMember(this), fromPosition, length, ShopRopeConstants.LongRopeBreakForce);
+            return TryAttachRelicLocal(rope, relic, fromPosition, length, breakForce);
 
         if (!ValidateRelicAttach(relic, fromPosition)) return false;
 
         if (IsServer)
         {
-            BroadcastAttachRelicClientRpc(OwnerClientId, new NetworkObjectReference(relicNet), length);
+            BroadcastAttachRelicClientRpc(OwnerClientId, new NetworkObjectReference(relicNet), length, breakForce);
             return true;
         }
 
-        RequestAttachRelicServerRpc(new NetworkObjectReference(relicNet), length, fromPosition);
+        RequestAttachRelicServerRpc(new NetworkObjectReference(relicNet), length, fromPosition, breakForce);
         return true;
+    }
+
+    public bool RequestConnectToAnchor(
+        IShopRopeItem rope,
+        Transform anchor,
+        int playerId,
+        Vector3 fromPosition,
+        float length,
+        float breakForce)
+    {
+        if (rope == null || anchor == null || rope.IsConnected) return false;
+        if (Vector3.Distance(fromPosition, anchor.position) > ShopRopeConstants.AnchorConnectRange)
+            return false;
+
+        if (!IsSpawned || NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening)
+            return ApplyAnchorConnectLocal(rope, anchor, playerId, length, breakForce);
+
+        if (IsServer)
+        {
+            BroadcastConnectAnchorClientRpc(OwnerClientId, anchor.position, length, breakForce);
+            return true;
+        }
+
+        RequestConnectAnchorServerRpc(anchor.position, length, breakForce);
+        return true;
+    }
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void RequestConnectAnchorServerRpc(
+        Vector3 anchorPosition,
+        float length,
+        float breakForce,
+        RpcParams rpcParams = default)
+    {
+        if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
+        BroadcastConnectAnchorClientRpc(OwnerClientId, anchorPosition, length, breakForce);
+    }
+
+    [Rpc(SendTo.Everyone, InvokePermission = RpcInvokePermission.Everyone)]
+    private void BroadcastConnectAnchorClientRpc(
+        ulong ownerClientId,
+        Vector3 anchorPosition,
+        float length,
+        float breakForce)
+    {
+        var anchor = FindAnchorNear(anchorPosition);
+        var ownerRb = FindPlayerRbByClientId(ownerClientId);
+        if (anchor == null || ownerRb == null) return;
+
+        int playerId = PlayerScoreId.FromMember(ownerRb);
+        var durability = IsOwner && ownerClientId == OwnerClientId
+            ? FindHandShopRope() as ItemBase
+            : null;
+
+        GameServices.Ropes?.DisconnectPlayerAnchor(playerId);
+        GameServices.Ropes?.ConnectPlayerToAnchor(playerId, anchor, length, breakForce, durability);
+
+        if (IsOwner && ownerClientId == OwnerClientId)
+            FindHandShopRope()?.ApplyAnchorConnectState(anchor, playerId);
+    }
+
+    private static bool ApplyAnchorConnectLocal(
+        IShopRopeItem rope,
+        Transform anchor,
+        int playerId,
+        float length,
+        float breakForce)
+    {
+        if (GameServices.Ropes == null) return false;
+        if (!GameServices.Ropes.ConnectPlayerToAnchor(playerId, anchor, length, breakForce, rope as ItemBase))
+            return false;
+
+        rope.ApplyAnchorConnectState(anchor, playerId);
+        return true;
+    }
+
+    private static Transform FindAnchorNear(Vector3 position)
+    {
+        const float tolerance = 0.75f;
+        float tolSqr = tolerance * tolerance;
+
+        foreach (var go in Object.FindObjectsByType<Transform>(FindObjectsSortMode.None))
+        {
+            if (go == null || !go.name.Contains("AnchorBolt_Placed")) continue;
+            if ((go.position - position).sqrMagnitude <= tolSqr)
+                return go;
+        }
+
+        return null;
     }
 
     public void RequestDisconnectShopRope(IShopRopeItem rope)
@@ -149,6 +243,7 @@ public sealed class PlayerShopRopeNetworkBridge : NetworkBehaviour
         NetworkObjectReference relicRef,
         float length,
         Vector3 fromPosition,
+        float breakForce,
         RpcParams rpcParams = default)
     {
         if (rpcParams.Receive.SenderClientId != OwnerClientId) return;
@@ -157,22 +252,23 @@ public sealed class PlayerShopRopeNetworkBridge : NetworkBehaviour
         var relic = relicNet.GetComponent<RelicBase>();
         if (relic == null || !ValidateRelicAttach(relic, fromPosition)) return;
 
-        BroadcastAttachRelicClientRpc(OwnerClientId, relicRef, length);
+        BroadcastAttachRelicClientRpc(OwnerClientId, relicRef, length, breakForce);
     }
 
     [Rpc(SendTo.Everyone, InvokePermission = RpcInvokePermission.Everyone)]
     private void BroadcastAttachRelicClientRpc(
         ulong playerClientId,
         NetworkObjectReference relicRef,
-        float length)
+        float length,
+        float breakForce)
     {
         if (!relicRef.TryGet(out var relicNet)) return;
         var relic = relicNet.GetComponent<RelicBase>();
 
-        ApplyRelicConnection(playerClientId, relicNet, length);
+        ApplyRelicConnection(playerClientId, relicNet, length, breakForce);
 
         if (IsOwner && playerClientId == OwnerClientId && relic != null)
-            FindHandLongRope()?.ApplyRelicAttachState(relic, PlayerScoreId.FromMember(this));
+            FindHandShopRope()?.ApplyRelicAttachState(relic, PlayerScoreId.FromMember(this));
     }
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
@@ -193,7 +289,11 @@ public sealed class PlayerShopRopeNetworkBridge : NetworkBehaviour
             FindHandShopRope()?.CutRopeLocalOnly();
     }
 
-    private static void ApplyRelicConnection(ulong playerClientId, NetworkObject relicNet, float length)
+    private static void ApplyRelicConnection(
+        ulong playerClientId,
+        NetworkObject relicNet,
+        float length,
+        float breakForce)
     {
         var relicRb = relicNet.GetComponent<Rigidbody>();
         if (relicRb == null) return;
@@ -209,7 +309,7 @@ public sealed class PlayerShopRopeNetworkBridge : NetworkBehaviour
 
         int playerId = PlayerScoreId.FromMember(playerRb);
         ropes.DisconnectPlayerRelic(playerId);
-        ropes.ConnectPlayerToRelic(playerId, relicRb, length, ShopRopeConstants.LongRopeBreakForce, null);
+        ropes.ConnectPlayerToRelic(playerId, relicRb, length, breakForce, null);
     }
 
     private static void ApplyDisconnectForClient(ulong clientId)
@@ -221,13 +321,31 @@ public sealed class PlayerShopRopeNetworkBridge : NetworkBehaviour
         GameServices.Ropes?.DisconnectAllForPlayer(playerId);
     }
 
+    private static bool TryAttachRelicLocal(
+        IShopRopeItem rope,
+        RelicBase relic,
+        Vector3 fromPosition,
+        float length,
+        float breakForce)
+    {
+        if (rope is ShortRopeItem shortRope)
+            return shortRope.TryAttachToRelicLocal(
+                relic, PlayerScoreId.FromMember(shortRope), fromPosition, length, breakForce);
+
+        if (rope is LongRopeItem longRope)
+            return longRope.TryAttachToRelicLocal(
+                relic, PlayerScoreId.FromMember(longRope), fromPosition, length, breakForce);
+
+        return false;
+    }
+
     private bool ValidateRelicAttach(RelicBase relic, Vector3 fromPosition)
     {
         if (relic == null) return false;
 
         var grab = relic.GetComponent<RelicGrabPoint>();
         if (grab != null && !grab.IsWithinAttachRange(fromPosition)) return false;
-        if (grab == null && Vector3.Distance(fromPosition, relic.transform.position) > LongRopeItem.RelicAttachRange)
+        if (grab == null && Vector3.Distance(fromPosition, relic.transform.position) > ShopRopeConstants.ConnectRange)
             return false;
 
         var carrier = relic.GetComponent<RelicCarrier>();
@@ -238,12 +356,6 @@ public sealed class PlayerShopRopeNetworkBridge : NetworkBehaviour
     {
         var inv = GetComponent<PlayerInventory>();
         return inv?.HandItem as IShopRopeItem;
-    }
-
-    private LongRopeItem FindHandLongRope()
-    {
-        var inv = GetComponent<PlayerInventory>();
-        return inv?.HandItem as LongRopeItem;
     }
 
     private static Rigidbody FindPlayerRbByClientId(ulong clientId)

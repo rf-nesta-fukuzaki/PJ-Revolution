@@ -1,3 +1,4 @@
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -21,6 +22,10 @@ public sealed class ItemGameplayBootstrap : MonoBehaviour
     {
         EnsureEventSystem();
         EnsureInventoryHud();
+        EnsureGhostHud();
+        EnsureHintManager();
+        EnsureEnemySpawner();
+        EnsureNetworkGameplayServices();
         StartCoroutine(EnsureBasecampItemLockerWhenReady());
         EnsureAllPlayerItemComponents();
     }
@@ -28,8 +33,10 @@ public sealed class ItemGameplayBootstrap : MonoBehaviour
     private void Start()
     {
         EnsureShopRuntimeUi();
+        EnsureNetworkGameplayServices();
         EnsureAllPlayerItemComponents();
         StartCoroutine(DeferredWire());
+        StartCoroutine(EnsureNetworkServicesWhenReady());
     }
 
     private System.Collections.IEnumerator DeferredWire()
@@ -62,6 +69,12 @@ public sealed class ItemGameplayBootstrap : MonoBehaviour
             root.AddComponent<ItemHandController>();
         if (root.GetComponent<PlayerShopRopeNetworkBridge>() == null)
             root.AddComponent<PlayerShopRopeNetworkBridge>();
+        if (root.GetComponent<HintTriggerDriver>() == null)
+            root.AddComponent<HintTriggerDriver>();
+        if (root.GetComponent<ProximityVoiceChat>() == null)
+            root.AddComponent<ProximityVoiceChat>();
+        if (root.GetComponent<NetworkGrapplingHookSync>() == null)
+            root.AddComponent<NetworkGrapplingHookSync>();
 
         var interaction = root.GetComponent<PlayerInteraction>();
         if (interaction != null && !interaction.enabled)
@@ -86,6 +99,9 @@ public sealed class ItemGameplayBootstrap : MonoBehaviour
         if (InventoryHud.Instance != null) return;
         new GameObject("InventoryHud").AddComponent<InventoryHud>();
     }
+
+    // GDD §14.4 — 死亡・幽霊 UI（死亡フラッシュ/幽霊オーバーレイ/範囲制限警告/復活チャネリングバー）。
+    private static void EnsureGhostHud() => GhostHud.EnsureExists();
 
     private static System.Collections.IEnumerator EnsureBasecampItemLockerWhenReady()
     {
@@ -144,5 +160,76 @@ public sealed class ItemGameplayBootstrap : MonoBehaviour
         var go = new GameObject("EventSystem");
         go.AddComponent<EventSystem>();
         go.AddComponent<InputSystemUIInputModule>();
+    }
+
+    private static void EnsureEnemySpawner()
+    {
+        var gm = GameObject.Find("GameManager");
+        if (gm == null) return;
+        if (gm.GetComponent<EnemySpawner>() != null) return;
+
+        gm.AddComponent<EnemySpawner>();
+        Debug.Log("[ItemGameplayBootstrap] GameManager に EnemySpawner を追加しました。");
+    }
+
+    private static void EnsureHintManager()
+    {
+        if (Object.FindFirstObjectByType<HintManager>() != null) return;
+
+        var gm = GameObject.Find("GameManager");
+        var host = gm != null ? gm : new GameObject("GameManager");
+        host.AddComponent<HintManager>();
+        Debug.Log("[ItemGameplayBootstrap] HintManager を追加しました。");
+    }
+
+    public static void EnsureNetworkGameplayServices()
+    {
+        var gm = GameObject.Find("GameManager");
+        if (gm != null && gm.GetComponent<SceneServiceInstaller>() == null)
+            gm.AddComponent<SceneServiceInstaller>();
+
+        EnsureChildNetworkService<NetworkExpeditionSync>("NetworkExpeditionSync", gm);
+        EnsureChildNetworkService<NetworkSpawnAuthoringSync>("NetworkSpawnAuthoringSync", gm);
+        NetworkWorldPlacementsSync.EnsureExists();
+
+        if (Object.FindFirstObjectByType<HelicopterController>() == null)
+        {
+            var heli = new GameObject("HelicopterController");
+            heli.AddComponent<NetworkObject>();
+            heli.AddComponent<HelicopterController>();
+            Debug.Log("[ItemGameplayBootstrap] HelicopterController を追加しました。");
+        }
+    }
+
+    private static System.Collections.IEnumerator EnsureNetworkServicesWhenReady()
+    {
+        for (int i = 0; i < 120; i++)
+        {
+            var nm = NetworkManager.Singleton;
+            if (nm != null && nm.IsListening)
+            {
+                EnsureNetworkGameplayServices();
+                yield break;
+            }
+
+            yield return null;
+        }
+    }
+
+    private static void EnsureChildNetworkService<T>(string childName, GameObject parent) where T : Component
+    {
+        if (Object.FindFirstObjectByType<T>() != null)
+            return;
+
+        GameObject host = parent != null ? parent : new GameObject("GameManager");
+        var childTr = host.transform.Find(childName);
+        var childGo = childTr != null ? childTr.gameObject : new GameObject(childName);
+        if (childTr == null)
+            childGo.transform.SetParent(host.transform, false);
+
+        if (childGo.GetComponent<NetworkObject>() == null)
+            childGo.AddComponent<NetworkObject>();
+        if (childGo.GetComponent<T>() == null)
+            childGo.AddComponent<T>();
     }
 }

@@ -22,8 +22,8 @@ namespace Sandbox.World.Environment
         [Header("Elevation Bands (terrain shader globals)")]
         [SerializeField] private float shoreLine = 4f;   // grass パッチ下限のみに使用（水際の土）
         [SerializeField] private float shoreBlend = 6f;
-        [SerializeField] private float grassLine = 10f;  // 水際から上は緑の草地
-        [SerializeField] private float grassBlend = 16f;
+        [SerializeField] private float grassLine = 12f;  // 砂浜の上端（海面基準で固定）。これより上が緑の草地
+        [SerializeField] private float grassBlend = 7f;   // 砂浜→草地の遷移幅（狭め＝はっきりした渚）
         [SerializeField] private float rockLine  = 200f; // 中腹から上が岩肌
         [SerializeField] private float rockBlend = 60f;
         [SerializeField] private float snowLine  = 330f; // 山頂部の冠雪
@@ -40,14 +40,14 @@ namespace Sandbox.World.Environment
         [Header("Elevation Band Auto-Scale")]
         [Tooltip("ON: 観測山頂(MountainProfile.SummitY)に合わせて grass/rock/snow 線を比例スケールする。")]
         [SerializeField] private bool autoScaleBandsToSummit = true;
-        [Tooltip("草地の開始高（海面0→山頂1の割合）。水際のすぐ上から緑にする。")]
-        [Range(0f, 0.3f)] [SerializeField] private float grassFraction = 0.03f;
         [Tooltip("岩肌の開始高（割合）。実証済みの旧プロポーション(~0.41)を踏襲。")]
         [Range(0.1f, 0.8f)] [SerializeField] private float rockFraction = 0.42f;
         [Tooltip("冠雪の開始高（割合）。実証済みの旧プロポーション(~0.68)を踏襲。")]
         [Range(0.3f, 0.95f)] [SerializeField] private float snowFraction = 0.66f;
 
-        [SerializeField] private Color colShore = new Color(0.42f, 0.39f, 0.30f, 1f); // 水際の土（稀にしか見えない）
+        // 水際〜島の縁（grass 線より下）を砂浜の色にする。海に囲まれた島の波打ち際が砂浜として読めるよう、
+        // 茶土ではなく明るい暖色の砂へ。biome テクスチャの Sand(0.85,0.80,0.55)とも整合し、 band 主体(92%)でも砂浜になる。
+        [SerializeField] private Color colShore = new Color(0.80f, 0.74f, 0.56f, 1f); // 砂浜（島の渚）
         // (0.29,0.60,0.17) は彩度が高すぎ、+32 サチュレーションと相まってネオン緑に見えていた。
         // やや黄緑寄り・彩度控えめの自然な高山草地へ（スタイライズドの鮮やかさは残しつつ毒々しさを除く）。
         [SerializeField] private Color colGrass = new Color(0.34f, 0.52f, 0.22f, 1f); // 自然な高山草地
@@ -220,20 +220,21 @@ namespace Sandbox.World.Environment
         }
 
         /// <summary>
-        /// 観測山頂に合わせて標高バンド（grass/rock/snow 線とブレンド幅）を比例再配置する。
-        /// 海面(seaY, 既定0)→山頂(summitY)の割合で各境界を置き、どの手続き山高でも tiered な
-        /// 配色を保つ。shore は水際の土なので絶対値のまま据え置く。autoScaleBandsToSummit=false なら無視。
-        /// CombinedTerrainConformer が MountainProfile.IsReady 後に一度だけ呼ぶ。
+        /// 観測山頂に合わせて標高バンド（rock/snow 線とブレンド幅）を比例再配置する。
+        /// rock/snow を海面(seaY)→山頂(summitY)の割合で置き、どの手続き山高でも tiered な配色を保つ。
+        /// shore(砂浜)と grass(砂浜の上端)は海面基準の固定値（波打ち際は山高に依らず seaLevel 付近のため）。
+        /// autoScaleBandsToSummit=false なら無視。CombinedTerrainConformer が MountainProfile.IsReady 後に一度だけ呼ぶ。
         /// </summary>
         public void ApplyBandsForElevation(float seaY, float summitY)
         {
             if (!autoScaleBandsToSummit) return;
             float span = Mathf.Max(1f, summitY - seaY);
-            grassLine = seaY + span * grassFraction;
+            // 砂浜の上端(grassLine/grassBlend)は海面基準の固定値のまま残す。波打ち際は山高に依らず
+            // seaLevel 付近にあるため、ここを summit 比例にすると高い山ほど砂色が裾野まで広がり
+            // 「乾いた島」に見える。砂浜を水際の帯に保ち、その上を緑の草地にする。
+            // 岩/雪線のみ summit 比例で tiered 配色（緑の裾野→灰の岩肌→冠雪）を維持する。
             rockLine  = seaY + span * rockFraction;
             snowLine  = seaY + span * snowFraction;
-            // ブレンド幅も山高に比例（境界が硬すぎず・潰れすぎずの中庸）。
-            grassBlend = span * 0.06f;
             rockBlend  = span * 0.12f;
             snowBlend  = span * 0.10f;
             ApplyBands();
