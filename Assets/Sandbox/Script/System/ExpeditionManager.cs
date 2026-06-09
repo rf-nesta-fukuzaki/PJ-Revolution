@@ -164,8 +164,9 @@ public class ExpeditionManager : MonoBehaviour, IExpeditionService
             clearTime = 0f;
 
         var score = scoreService.BuildResultData(clearTime, allSurvived);
+        GameFlowSessionState.RecordExpeditionResult(score, allSurvived);
         BroadcastResultIfNetworked(score, allSurvived);
-        StartCoroutine(ShowResultAfterFade(score));
+        StartCoroutine(ShowResultAfterFade(score, allSurvived));
     }
 
     private static void BroadcastResultIfNetworked(ScoreData score, bool allSurvived)
@@ -185,14 +186,26 @@ public class ExpeditionManager : MonoBehaviour, IExpeditionService
         });
     }
 
-    private IEnumerator ShowResultAfterFade(ScoreData score)
+    private IEnumerator ShowResultAfterFade(ScoreData score, bool allSurvived)
     {
-        yield return StartCoroutine(Fade(0f, 1f));
-        yield return new WaitForSeconds(0.5f);
-        yield return StartCoroutine(Fade(1f, 0f));
+        // IrisTransition があれば統一演出、なければ従来 CanvasGroup フェード。
+        var iris = Sandbox.UI.IrisTransition.Instance;
+        if (iris != null)
+        {
+            bool irisOutDone = false;
+            iris.IrisOut(0.45f, () => irisOutDone = true);
+            while (!irisOutDone) yield return null;
+            yield return new WaitForSecondsRealtime(0.25f);
+        }
+        else if (_fadeCanvas != null)
+        {
+            yield return StartCoroutine(Fade(0f, 1f));
+            yield return new WaitForSeconds(0.5f);
+            yield return StartCoroutine(Fade(1f, 0f));
+        }
 
         TransitionPhase(ExpeditionPhase.Result);
-        _resultScreen?.Show(score);
+        _resultScreen?.Show(score, allSurvived);
     }
 
     private void TransitionPhase(ExpeditionPhase next)

@@ -51,10 +51,14 @@ public static class GameFlow
         Load(TitleScene);
     }
 
-    /// <summary>
-    /// インゲーム（本編）を開始/再開する。ロビー出発・ショップ出発・リザルトのリトライから呼ぶ。
-    /// 到着後に ExpeditionManager が <see cref="ConsumeAutoStart"/> を見て自動出発する。
-    /// </summary>
+    /// <summary>Co-op ホストがゲーム開始する直前に呼ぶ。全クライアントの遠征自動開始用。</summary>
+    public static void PrepareCoopDeparture()
+    {
+        _autoStartPending = true;
+        Time.timeScale = 1f;
+    }
+
+    /// <summary>インゲーム（本編）を開始/再開する。ロビー出発・ショップ出発・リザルトのリトライから呼ぶ。</summary>
     public static void GoToInGame()
     {
         _autoStartPending = true;
@@ -93,6 +97,7 @@ public static class GameFlow
         _autoStartPending = false;
         RunCount = 0;
         RunLoadout.Clear();
+        GameFlowSessionState.Clear();
     }
 
     // ── 内部: フェード付きロード ─────────────────────────────

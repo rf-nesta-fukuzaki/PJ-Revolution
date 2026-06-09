@@ -31,6 +31,7 @@ namespace PeakPlunder.EditorTools
         public static class Network
         {
             public const string BuildRuntimeItemPrefabs = Root + "/Network/Build Runtime Item Prefabs";
+            public const string SanitizeNetworkPrefabs = Root + "/Network/Sanitize Network Prefabs";
         }
 
         public static class Bootstrap

@@ -1,4 +1,5 @@
 using System;
+using Sandbox.UI;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -6,10 +7,10 @@ using UnityEngine.UI;
 public sealed class ShopItemRow : MonoBehaviour
 {
     private const float ROW_HEIGHT     = 56f;
-    private const float NAME_WIDTH     = 460f;
-    private const float COST_WIDTH     = 88f;
-    private const float COUNT_WIDTH    = 64f;
-    private const float BUTTON_WIDTH   = 92f;
+    private const float NAME_WIDTH     = 150f;
+    private const float COST_WIDTH     = 80f;
+    private const float COUNT_WIDTH    = 56f;
+    private const float BUTTON_WIDTH   = 88f;
     private const float BUTTON_HEIGHT  = 40f;
 
     public string ItemId { get; private set; }
@@ -43,7 +44,7 @@ public sealed class ShopItemRow : MonoBehaviour
         if (_item == null) return;
 
         if (_nameLabel != null)
-            _nameLabel.text = $"{_item.DisplayName}  [{_item.Cost}pt / 重{_item.Weight} / 枠{_item.Slots}]";
+            _nameLabel.text = $"{_item.DisplayName}  <size=80%><color=#9aa6b2>重{_item.Weight}/枠{_item.Slots}</color></size>";
 
         if (_costLabel != null)
             _costLabel.text = $"{_item.Cost}pt";
@@ -84,10 +85,10 @@ public sealed class ShopItemRow : MonoBehaviour
             _countLabel = CreateFallbackLabel("CountLabel", "×0", COUNT_WIDTH, TextAlignmentOptions.Center);
 
         if (_buyButton == null)
-            _buyButton = CreateFallbackButton("BuyButton", "購入", new Color(0.17f, 0.45f, 0.21f, 0.95f));
+            _buyButton = CreateFallbackButton("BuyButton", "購入", MenuUiKit.BtnPrimary);
 
         if (_refundButton == null)
-            _refundButton = CreateFallbackButton("RefundButton", "返品", new Color(0.35f, 0.19f, 0.19f, 0.95f));
+            _refundButton = CreateFallbackButton("RefundButton", "返品", MenuUiKit.BtnDanger);
 
         if (_buyButton != null)
         {
@@ -110,7 +111,9 @@ public sealed class ShopItemRow : MonoBehaviour
 
         layout.spacing = 8f;
         layout.childAlignment = TextAnchor.MiddleLeft;
-        layout.childControlWidth = false;
+        // childControlWidth=true で各列の LayoutElement 幅を尊重させる。
+        // false のままだと子の RectTransform 幅が未定義のまま潰れ、名前が読めなくなる。
+        layout.childControlWidth = true;
         layout.childControlHeight = true;
         layout.childScaleWidth = false;
         layout.childScaleHeight = false;
@@ -129,7 +132,19 @@ public sealed class ShopItemRow : MonoBehaviour
         var background = GetComponent<Image>();
         if (background == null)
             background = gameObject.AddComponent<Image>();
-        background.color = new Color(0.09f, 0.13f, 0.18f, 0.92f);
+        background.color = new Color(0.06f, 0.08f, 0.11f, 0.92f);
+
+        var border = new GameObject("RowBorder");
+        border.transform.SetParent(transform, false);
+        var brt = border.AddComponent<RectTransform>();
+        brt.anchorMin = Vector2.zero;
+        brt.anchorMax = Vector2.one;
+        brt.offsetMin = Vector2.zero;
+        brt.offsetMax = Vector2.zero;
+        var borderImg = border.AddComponent<Image>();
+        borderImg.color = FlowUiTheme.TerminalBorder;
+        borderImg.raycastTarget = false;
+        border.transform.SetAsFirstSibling();
     }
 
     private TextMeshProUGUI CreateFallbackLabel(string objectName, string text, float preferredWidth, TextAlignmentOptions alignment)
@@ -153,7 +168,8 @@ public sealed class ShopItemRow : MonoBehaviour
         tmp.alignment = alignment;
         tmp.textWrappingMode = TextWrappingModes.NoWrap;
         tmp.overflowMode = TextOverflowModes.Ellipsis;
-        tmp.margin = new Vector4(6f, 2f, 6f, 2f);
+        tmp.color = UiPalette.Cream;
+        FlowUiTheme.StyleReadable(tmp, 0.1f);
         return tmp;
     }
 
@@ -192,8 +208,9 @@ public sealed class ShopItemRow : MonoBehaviour
         tmp.fontSize = 18f;
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.textWrappingMode = TextWrappingModes.NoWrap;
-        tmp.color = Color.white;
+        tmp.color = UiPalette.Cream;
         tmp.raycastTarget = false;
+        FlowUiTheme.StyleReadable(tmp, 0.1f);
 
         return button;
     }

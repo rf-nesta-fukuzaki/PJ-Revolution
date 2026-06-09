@@ -6,7 +6,7 @@ using UnityEngine;
 
 /// <summary>
 /// 横断ガードレール: 新規 Singleton（static Instance）の増殖を Test Runner で凍結する「ラチェット」。
-/// 横断サービスは GameServices 経由に一本化する方針。詳細は Assets/Doc/ServiceLocatorPolicy.md。
+/// 横断サービスは GameServices 経由に一本化する方針。詳細は docs/architecture/service-locator-policy.md。
 /// </summary>
 public sealed class ServiceLocatorPolicyTest
 {
@@ -17,7 +17,7 @@ public sealed class ServiceLocatorPolicyTest
     /// </summary>
     private const int SingletonBaseline = 36;
 
-    // Bash 計測（Assets/Doc/ServiceLocatorPolicy.md）と同一の宣言パターン。
+    // Bash 計測（docs/architecture/service-locator-policy.md）と同一の宣言パターン。
     private static readonly Regex SingletonDecl =
         new Regex(@"static\s+[A-Za-z_][A-Za-z0-9_<>.]*\s+Instance\s*(=>|[{;=])", RegexOptions.Compiled);
 
@@ -37,7 +37,7 @@ public sealed class ServiceLocatorPolicyTest
 
         Assert.That(total, Is.LessThanOrEqualTo(SingletonBaseline),
             $"新規 Singleton (static Instance) を検出: {total} 個（上限 {SingletonBaseline}）。\n" +
-            "横断サービスは GameServices 経由に一本化してください（Assets/Doc/ServiceLocatorPolicy.md 参照）。\n" +
+            "横断サービスは GameServices 経由に一本化してください（docs/architecture/service-locator-policy.md 参照）。\n" +
             "どうしても増やす場合は SingletonBaseline を更新し、理由を PR に明記すること。\n" +
             "現在 static Instance を宣言している型:\n  " +
             string.Join("\n  ", declaringFiles.Select(x => x.name)));

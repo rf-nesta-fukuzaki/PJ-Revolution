@@ -24,6 +24,15 @@ public static class MountainProfile
     /// <summary>地形から実測値を取得済みか。未準備時は各システムが絶対値フォールバックを使う。</summary>
     public static bool IsReady { get; private set; }
 
+    /// <summary>登攀ルートの起点 XZ（拠点中心）。HasRoute=true のとき有効。</summary>
+    public static Vector2 BaseXZ { get; private set; }
+
+    /// <summary>登攀ルートの終点 XZ（観測山頂）。HasRoute=true のとき有効。</summary>
+    public static Vector2 SummitXZ { get; private set; }
+
+    /// <summary>基地→山頂のルート XZ が確定済みか（敵/オブジェクトのゾーン配置に使う）。</summary>
+    public static bool HasRoute { get; private set; }
+
     // 基地と山頂が「意味のある差」になるまで Ready にしない（原点近傍の低ピーク誤認を避ける）。
     private const float MinMeaningfulSpread = 80f;
 
@@ -51,6 +60,42 @@ public static class MountainProfile
     public static float WorldYAtFraction(float fraction01)
         => Mathf.Lerp(BaseY, SummitY, Mathf.Clamp01(fraction01));
 
+    // 観測山頂 XZ は地形ベイク進行に伴い「近傍の低ピーク → 真の山頂」へ飛ぶ。XZ が一定時間動かなく
+    // なって初めて HasRoute=true にする（DistributeClimbCourse の climbSummitStableSeconds と同じ考え方）。
+    // これをしないと、収束途中の短いルート上に敵が低地へ固まってしまう。
+    private static Vector2 _routeStableSummit;
+    private static float   _routeStableTimer;
+    private const float    RouteStableSeconds = 1.5f;
+    private const float    RouteStableMove    = 5f;  // m。これ以上動いたら未確定へ戻す
+
+    /// <summary>
+    /// 登攀ルートの XZ アンカー（基地→観測山頂）を公開する。CombinedTerrainConformer が
+    /// 毎フレーム最新値で呼ぶ（DistributeClimbCourse と同じ起点・終点）。これにより EnemySpawner 等が
+    /// 「ゾーン(標高ステージ)に対応した位置」を実山に沿って解決できる。山頂 XZ が安定するまで
+    /// HasRoute は false のまま（早すぎる確定で敵が低地に固まるのを防ぐ）。
+    /// </summary>
+    public static void PublishRoute(Vector2 baseXZ, Vector2 summitXZ)
+    {
+        BaseXZ   = baseXZ;
+        SummitXZ = summitXZ;
+
+        if ((summitXZ - _routeStableSummit).sqrMagnitude > RouteStableMove * RouteStableMove)
+        {
+            _routeStableSummit = summitXZ;
+            _routeStableTimer  = 0f;
+            HasRoute           = false;
+            return;
+        }
+
+        _routeStableTimer += Time.deltaTime;
+        if (_routeStableTimer >= RouteStableSeconds && (summitXZ - baseXZ).sqrMagnitude > 2500f) // 山頂が基地から ≥50m
+            HasRoute = true;
+    }
+
+    /// <summary>ルート上の XZ アンカー。0=基地, 1=山頂。HasRoute=false 時は BaseXZ を返す。</summary>
+    public static Vector2 RoutePointXZ(float fraction01)
+        => Vector2.Lerp(BaseXZ, SummitXZ, Mathf.Clamp01(fraction01));
+
     // Play 開始時に必ず初期状態へ戻す（Enter Play Mode で domain reload を切っていても安全に）。
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetStatics()
@@ -58,5 +103,10 @@ public static class MountainProfile
         BaseY = 50f;
         SummitY = 460f;
         IsReady = false;
+        BaseXZ = Vector2.zero;
+        SummitXZ = Vector2.zero;
+        HasRoute = false;
+        _routeStableSummit = Vector2.zero;
+        _routeStableTimer = 0f;
     }
 }

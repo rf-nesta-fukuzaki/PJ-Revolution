@@ -98,6 +98,10 @@ InitTestScene*.unity*
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
 
+# Unity editor scene recovery backups
+/[Aa]ssets/_Recovery/
+/[Aa]ssets/_Recovery.meta
+
 # TextMesh Pro large SDF font assets
 Assets/TextMesh Pro/Fonts/*.asset
 

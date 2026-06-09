@@ -17720,6 +17720,7 @@ GameObject:
   - component: {fileID: 1187870298}
   - component: {fileID: 1187870297}
   - component: {fileID: 1187870301}
+  - component: {fileID: 1187870302}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -17805,7 +17806,7 @@ MonoBehaviour:
   NetworkConfig:
     ProtocolVersion: 0
     NetworkTransport: {fileID: 1187870298}
-    PlayerPrefab: {fileID: 0}
+    PlayerPrefab: {fileID: 7854537658936286442, guid: ab3c28f267e3d4c5c9a45a3827708b5a, type: 3}
     Prefabs:
       NetworkPrefabsLists:
       - {fileID: 11400000, guid: 27009328d1c64438699afb425e777fff, type: 2}
@@ -17831,6 +17832,18 @@ MonoBehaviour:
     OldPrefabList: []
   RunInBackground: 1
   LogLevel: 1
+--- !u!114 &1187870302
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1187870296}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8c4f2a16d3e4759b8b7c6d5e4f3a2bc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Sandbox.Runtime::NetworkManagerConfigGuard
 --- !u!21 &1189218282
 Material:
   serializedVersion: 8
@@ -26682,6 +26695,7 @@ MonoBehaviour:
   _arrowRadius: 60
   _pinDisplayMaxDistance: 500
   _autoBuildFace: 1
+  _faceScale: 0.68
 --- !u!1 &1892788406
 GameObject:
   m_ObjectHideFlags: 0

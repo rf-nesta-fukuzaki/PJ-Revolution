@@ -65,6 +65,8 @@ public class ExplorerCameraLook : MonoBehaviour
     private Rigidbody _rb;
     private ISettingsService _settings;   // GDD §6.3 — マウス感度/Y反転を設定から取得
     private readonly List<RendererState> _hiddenRenderers = new();
+    private Camera _ownCamera;
+    private int _knownBodyRendererCount = -1;   // 子レンダラー数の変化検知（コスメ装着等で再走査）
 
     private struct RendererState
     {
@@ -109,11 +111,17 @@ public class ExplorerCameraLook : MonoBehaviour
     private void Start()
     {
         RefreshLocalOwnerState();
+
+        // 一人称ボディ隠蔽は入力オーナー判定とは独立に「このカメラがローカル視点か」で行う。
+        // （オーナー判定が遅延・失敗しても自分の頭部がカメラを覆わないようにするため。）
+        if (ShouldHideLocalBody())
+            EnforceFirstPersonLocalVisuals();
+
         if (!_isLocalOwner) return;
 
         GameplayCursorPolicy.SetGameplayMode();
         DisableRedundantAudioListener();
-        ApplyFirstPersonLocalVisuals();
+        EnforceFirstPersonLocalVisuals();
 
         Vector3 euler = transform.rotation.eulerAngles;
         _yaw = euler.y;
@@ -139,10 +147,12 @@ public class ExplorerCameraLook : MonoBehaviour
         // 入力スロットは毎フレーム再解決（Awake 時点は未構成で -1 になり得る）。
         _inputSlot = LocalCoopPartyMember.ResolveInputSlot(this);
         RefreshLocalOwnerState();
-        if (!_isLocalOwner) return;
 
-        if (_hideLocalBody && _hiddenRenderers.Count == 0)
-            ApplyFirstPersonLocalVisuals();
+        // ボディ隠蔽はオーナー判定の前（＝入力権限が無くてもローカル視点なら隠す）。
+        if (ShouldHideLocalBody())
+            EnforceFirstPersonLocalVisuals();
+
+        if (!_isLocalOwner) return;
 
         GameplayCursorPolicy.Enforce();
         HandleCursorToggleWhenNoPauseMenu();
@@ -267,43 +277,87 @@ public class ExplorerCameraLook : MonoBehaviour
     private void OnEnable()
     {
         RefreshLocalOwnerState();
-        if (_isLocalOwner && _hideLocalBody)
-            ApplyFirstPersonLocalVisuals();
+        if (ShouldHideLocalBody())
+            EnforceFirstPersonLocalVisuals();
     }
 
-    private void ApplyFirstPersonLocalVisuals()
+    /// <summary>
+    /// このプレイヤーが「ローカル視点（自分の画面を描画しているカメラの持ち主）」かを判定する。
+    /// 入力オーナー判定（_isLocalOwner）とは独立。リモート/NPC のカメラは無効なので対象外になる。
+    /// </summary>
+    private bool ShouldHideLocalBody()
+    {
+        if (!_hideLocalBody)
+            return false;
+        if (_isLocalOwner)
+            return true;
+
+        if (_ownCamera == null)
+        {
+            _ownCamera = _cameraRig != null
+                ? _cameraRig.GetComponentInChildren<Camera>(true)
+                : GetComponentInChildren<Camera>(true);
+        }
+        return _ownCamera != null && _ownCamera.isActiveAndEnabled && _ownCamera == Camera.main;
+    }
+
+    /// <summary>
+    /// 自分のボディメッシュを自カメラから隠す（影は維持）。冪等。
+    /// コスメ装着などで子レンダラー数が変化したら自動的に再走査・再適用する。
+    /// </summary>
+    private void EnforceFirstPersonLocalVisuals()
     {
         if (!_hideLocalBody)
             return;
 
-        _hiddenRenderers.Clear();
         Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
-        for (int i = 0; i < renderers.Length; i++)
+
+        // レンダラー数が前回と同じなら、キャッシュ済みを再適用するだけで十分（毎フレーム軽量）。
+        bool needsRescan = renderers.Length != _knownBodyRendererCount || _hiddenRenderers.Count == 0;
+        if (needsRescan)
         {
-            Renderer renderer = renderers[i];
+            _knownBodyRendererCount = renderers.Length;
+            _hiddenRenderers.Clear();
+
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                Renderer renderer = renderers[i];
+                if (renderer == null)
+                    continue;
+
+                if (_cameraRig != null && renderer.transform.IsChildOf(_cameraRig))
+                    continue;
+
+                if (renderer is not MeshRenderer && renderer is not SkinnedMeshRenderer)
+                    continue;
+
+                bool isBodyRenderer = renderer.gameObject == gameObject
+                                      || (_visualRoot != null && renderer.transform.IsChildOf(_visualRoot));
+                if (!isBodyRenderer)
+                    continue;
+
+                _hiddenRenderers.Add(new RendererState(renderer));
+            }
+        }
+
+        // キャッシュ済みボディレンダラーを毎回確実に隠す（コスメがマテリアルを差し替えても維持）。
+        for (int i = 0; i < _hiddenRenderers.Count; i++)
+        {
+            Renderer renderer = _hiddenRenderers[i].Renderer;
             if (renderer == null)
                 continue;
 
-            if (renderer.transform.IsChildOf(_cameraRig))
-                continue;
-
-            if (renderer is not MeshRenderer && renderer is not SkinnedMeshRenderer)
-                continue;
-
-            bool isBodyRenderer = renderer.gameObject == gameObject
-                                  || (_visualRoot != null && renderer.transform.IsChildOf(_visualRoot));
-            if (!isBodyRenderer)
-                continue;
-
-            _hiddenRenderers.Add(new RendererState(renderer));
-            if (_preserveBodyShadows)
+            // ルートのデバッグ Capsule は ShadowOnly でも端末によって映るため完全非表示。
+            bool isRootPrimitive = renderer.gameObject == gameObject;
+            if (isRootPrimitive || !_preserveBodyShadows)
             {
-                renderer.enabled = true;
-                renderer.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
+                if (renderer.enabled) renderer.enabled = false;
             }
             else
             {
-                renderer.enabled = false;
+                if (!renderer.enabled) renderer.enabled = true;
+                if (renderer.shadowCastingMode != ShadowCastingMode.ShadowsOnly)
+                    renderer.shadowCastingMode = ShadowCastingMode.ShadowsOnly;
             }
         }
     }

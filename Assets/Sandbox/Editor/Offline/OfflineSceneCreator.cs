@@ -229,6 +229,7 @@ public static class OfflineSceneCreator
         }
 
         // OfflineTestBootstrapper（起動 + デバッグUI）
+        go.AddComponent<NetworkManagerConfigGuard>();
         go.AddComponent<OfflineTestBootstrapper>();
 
         // NetworkPlayerSpawner（in-scene NetworkObject）
@@ -817,66 +818,91 @@ public static class OfflineSceneCreator
         rsGo.transform.SetParent(uiRoot, false);
         var rs = rsGo.AddComponent<ResultScreen>();
 
-        // パネル
+        // パネル + CanvasGroup（フェードイン用）
         var panel = new GameObject("Panel");
         panel.transform.SetParent(rsGo.transform, false);
         var panelBg = panel.AddComponent<Image>();
-        panelBg.color = new Color(0f, 0f, 0f, 0.85f);
+        panelBg.color = new Color(0.02f, 0.03f, 0.06f, 0.92f);
         StretchFull(panel.GetComponent<RectTransform>());
+        panel.AddComponent<CanvasGroup>();
         panel.SetActive(false);
 
-        // チームスコア
-        var teamScoreTf = CreateTmpText(panel.transform, "TeamScoreLabel", "TEAM SCORE: 0",
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-            new Vector2(500f, 60f), new Vector2(0f, -60f), 36);
+        // 段階コンテナ
+        var stageTeam    = CreateStageGroup(panel.transform, "StageTeamScore");
+        var stageRelics  = CreateStageGroup(panel.transform, "StageRelics");
+        var stagePlayers = CreateStageGroup(panel.transform, "StagePlayers");
+        var stageTitles  = CreateStageGroup(panel.transform, "StageTitles");
+        var stageCosmetic= CreateStageGroup(panel.transform, "StageCosmetic");
+        var stageButtons = CreateStageGroup(panel.transform, "StageButtons");
 
-        var relicSumTf = CreateTmpText(panel.transform, "RelicSummaryLabel", "遺物: 0個",
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-            new Vector2(400f, 40f), new Vector2(0f, -115f), 22);
+        // Stage 1: チームスコア
+        var teamScoreTf = CreateTmpText(stageTeam.transform, "TeamScoreLabel", "チームスコア: 0 pt",
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(600f, 60f), Vector2.zero, 36);
 
-        var clearTimeTf = CreateTmpText(panel.transform, "ClearTimeLabel", "タイム: 00:00",
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
-            new Vector2(400f, 40f), new Vector2(0f, -155f), 20);
+        // Stage 2: 遺物 + タイム
+        var relicSumTf = CreateTmpText(stageRelics.transform, "RelicSummaryLabel", "遺物: 0個",
+            new Vector2(0.5f, 0.6f), new Vector2(0.5f, 0.6f),
+            new Vector2(500f, 40f), Vector2.zero, 22);
+        var clearTimeTf = CreateTmpText(stageRelics.transform, "ClearTimeLabel", "タイム: 00:00",
+            new Vector2(0.5f, 0.4f), new Vector2(0.5f, 0.4f),
+            new Vector2(500f, 40f), Vector2.zero, 20);
 
-        // 個人スコア行の親
+        // Stage 3: 個人スコア行
         var playerRowParent = new GameObject("PlayerRowParent");
-        playerRowParent.transform.SetParent(panel.transform, false);
+        playerRowParent.transform.SetParent(stagePlayers.transform, false);
         var prRt = playerRowParent.AddComponent<RectTransform>();
-        prRt.anchorMin = new Vector2(0.5f, 0.5f);
-        prRt.anchorMax = new Vector2(0.5f, 0.5f);
-        prRt.sizeDelta = new Vector2(500f, 200f);
-        prRt.anchoredPosition = new Vector2(0f, 30f);
-        playerRowParent.AddComponent<VerticalLayoutGroup>();
+        StretchFull(prRt);
+        prRt.offsetMin = new Vector2(40f, 20f);
+        prRt.offsetMax = new Vector2(-40f, -20f);
+        playerRowParent.AddComponent<VerticalLayoutGroup>().spacing = 6f;
+        var playerRowPrefab = BuildPlayerResultRowPrefab(rsGo.transform);
 
-        // 称号行の親
+        // Stage 4: 称号行
         var titleRowParent = new GameObject("TitleRowParent");
-        titleRowParent.transform.SetParent(panel.transform, false);
+        titleRowParent.transform.SetParent(stageTitles.transform, false);
         var trRt = titleRowParent.AddComponent<RectTransform>();
-        trRt.anchorMin = new Vector2(0.5f, 0f);
-        trRt.anchorMax = new Vector2(0.5f, 0f);
-        trRt.sizeDelta = new Vector2(500f, 100f);
-        trRt.anchoredPosition = new Vector2(0f, 120f);
-        titleRowParent.AddComponent<VerticalLayoutGroup>();
+        StretchFull(trRt);
+        trRt.offsetMin = new Vector2(40f, 20f);
+        trRt.offsetMax = new Vector2(-40f, -20f);
+        titleRowParent.AddComponent<VerticalLayoutGroup>().spacing = 4f;
+        var titleRowPrefab = BuildTitleRowPrefab(rsGo.transform);
 
-        // Retry / ReturnBase ボタン
-        var retryBtn  = BuildButton(panel.transform, "RetryButton",  "もう一度",
-            new Vector2(-80f, 50f),  new Vector2(0.5f, 0f));
-        var returnBtn = BuildButton(panel.transform, "ReturnButton", "メニューへ",
-            new Vector2(80f, 50f),   new Vector2(0.5f, 0f));
+        // Stage 5: コスメ
+        var cosmeticGroup = new GameObject("CosmeticGroup");
+        cosmeticGroup.transform.SetParent(stageCosmetic.transform, false);
+        StretchFull(cosmeticGroup.AddComponent<RectTransform>());
+        var cosmeticTf = CreateTmpText(cosmeticGroup.transform, "CosmeticLabel", "",
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(600f, 120f), Vector2.zero, 18);
 
-        // ResultScreen の fields を設定
+        // Stage 6: ボタン
+        var retryBtn  = BuildButton(stageButtons.transform, "RetryButton",  "もう一度",
+            new Vector2(-130f, 0f), new Vector2(0.5f, 0.5f));
+        var returnBtn = BuildButton(stageButtons.transform, "ReturnBaseButton", "ベースに戻る",
+            new Vector2(130f, 0f), new Vector2(0.5f, 0.5f));
+
         var rsSo = new SerializedObject(rs);
         SetProp(rsSo, "_panel",             panel);
         SetProp(rsSo, "_teamScoreLabel",    teamScoreTf.GetComponent<TextMeshProUGUI>());
         SetProp(rsSo, "_relicSummaryLabel", relicSumTf.GetComponent<TextMeshProUGUI>());
         SetProp(rsSo, "_clearTimeLabel",    clearTimeTf.GetComponent<TextMeshProUGUI>());
         SetProp(rsSo, "_playerRowParent",   playerRowParent.transform);
+        SetProp(rsSo, "_playerRowPrefab",   playerRowPrefab);
         SetProp(rsSo, "_titleRowParent",    titleRowParent.transform);
+        SetProp(rsSo, "_titleRowPrefab",    titleRowPrefab);
+        SetProp(rsSo, "_cosmeticGroup",     cosmeticGroup);
+        SetProp(rsSo, "_cosmeticLabel",     cosmeticTf.GetComponent<TextMeshProUGUI>());
         SetProp(rsSo, "_retryButton",       retryBtn);
         SetProp(rsSo, "_returnBaseButton",  returnBtn);
+        SetProp(rsSo, "_stageTeamScore",    stageTeam);
+        SetProp(rsSo, "_stageRelics",       stageRelics);
+        SetProp(rsSo, "_stagePlayers",      stagePlayers);
+        SetProp(rsSo, "_stageTitles",       stageTitles);
+        SetProp(rsSo, "_stageCosmetic",     stageCosmetic);
+        SetProp(rsSo, "_stageButtons",      stageButtons);
         rsSo.ApplyModifiedPropertiesWithoutUndo();
 
-        // ExpeditionManager に ResultScreen を設定
         var emList = Object.FindObjectsByType<ExpeditionManager>(FindObjectsSortMode.None);
         if (emList.Length > 0)
         {
@@ -884,6 +910,66 @@ public static class OfflineSceneCreator
             var rsProp = emSo.FindProperty("_resultScreen");
             if (rsProp != null) { rsProp.objectReferenceValue = rs; emSo.ApplyModifiedPropertiesWithoutUndo(); }
         }
+    }
+
+    private static GameObject CreateStageGroup(Transform parent, string name)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        StretchFull(go.AddComponent<RectTransform>());
+        return go;
+    }
+
+    private static GameObject BuildPlayerResultRowPrefab(Transform parent)
+    {
+        var go = new GameObject("PlayerResultRowPrefab");
+        go.transform.SetParent(parent, false);
+        go.SetActive(false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(0f, 52f);
+        go.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.06f);
+        var row = go.AddComponent<PlayerResultRow>();
+
+        var nameTf = CreateTmpText(go.transform, "Name", "Player",
+            new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(180f, 40f), Vector2.zero, 18);
+        nameTf.GetComponent<TextMeshProUGUI>().alignment = TextAlignmentOptions.Left;
+        var scoreTf = CreateTmpText(go.transform, "Score", "0 pt",
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(120f, 40f), Vector2.zero, 18);
+        var detailTf = CreateTmpText(go.transform, "Detail", "",
+            new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(280f, 40f), Vector2.zero, 14);
+        detailTf.GetComponent<TextMeshProUGUI>().alignment = TextAlignmentOptions.Right;
+
+        var rowSo = new SerializedObject(row);
+        SetProp(rowSo, "_nameLabel",  nameTf.GetComponent<TextMeshProUGUI>());
+        SetProp(rowSo, "_scoreLabel", scoreTf.GetComponent<TextMeshProUGUI>());
+        SetProp(rowSo, "_detailLabel", detailTf.GetComponent<TextMeshProUGUI>());
+        rowSo.ApplyModifiedPropertiesWithoutUndo();
+        return go;
+    }
+
+    private static GameObject BuildTitleRowPrefab(Transform parent)
+    {
+        var go = new GameObject("TitleRowPrefab");
+        go.transform.SetParent(parent, false);
+        go.SetActive(false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(0f, 44f);
+        go.AddComponent<Image>().color = new Color(1f, 1f, 1f, 0.06f);
+        var entry = go.AddComponent<TitleRowEntry>();
+
+        var playerTf = CreateTmpText(go.transform, "Player", "Player",
+            new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(160f, 36f), Vector2.zero, 16);
+        playerTf.GetComponent<TextMeshProUGUI>().alignment = TextAlignmentOptions.Left;
+        var titleTf = CreateTmpText(go.transform, "Title", "「称号」",
+            new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(320f, 36f), Vector2.zero, 16);
+        titleTf.GetComponent<TextMeshProUGUI>().alignment = TextAlignmentOptions.Right;
+        titleTf.GetComponent<TextMeshProUGUI>().color = new Color(1f, 0.92f, 0.6f);
+
+        var entrySo = new SerializedObject(entry);
+        SetProp(entrySo, "_playerLabel", playerTf.GetComponent<TextMeshProUGUI>());
+        SetProp(entrySo, "_titleLabel",  titleTf.GetComponent<TextMeshProUGUI>());
+        entrySo.ApplyModifiedPropertiesWithoutUndo();
+        return go;
     }
 
     private static void BuildBasecampShopUI(Transform uiRoot)

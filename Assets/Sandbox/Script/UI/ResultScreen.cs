@@ -68,6 +68,20 @@ public class ResultScreen : MonoBehaviour
     private Coroutine             _sequenceRoutine;
     private bool                  _skipRequested;
     private bool                  _subscribedToUnlock;
+    private GameObject            _skipHint;
+
+    private void Awake()
+    {
+        ResultScreenRuntimeBuilder.EnsureStructure(this);
+        ResolveSkipHint();
+    }
+
+    private void ResolveSkipHint()
+    {
+        if (_panel == null) return;
+        var hint = _panel.transform.Find("SkipHint");
+        if (hint != null) _skipHint = hint.gameObject;
+    }
 
     private void Start()
     {
@@ -98,6 +112,9 @@ public class ResultScreen : MonoBehaviour
     public void Show(ScoreData score, bool allSurvived = false)
     {
         Debug.Assert(score != null, "[Contract] ResultScreen.Show: score が null です");
+        ResultScreenRuntimeBuilder.EnsureStructure(this);
+        ResolveSkipHint();
+        GameplayUiPolish.SuppressGameplayHud(true);
         if (_panel != null) _panel.SetActive(true);
 
         PopulateTeamScore(score);
@@ -120,6 +137,7 @@ public class ResultScreen : MonoBehaviour
     // ── 6段階シーケンス (GDD §14.6) ───────────────────────────
     private IEnumerator PlayResultSequence(ScoreData score)
     {
+        SetSkipHintVisible(true);
         yield return FadePanelIn();
 
         // 初期状態: 全ステージ非表示
@@ -131,19 +149,19 @@ public class ResultScreen : MonoBehaviour
         SetStageVisible(_stageButtons,   false);
 
         // Stage 1: チームスコア（0→TeamScore カウントアップ）
-        SetStageVisible(_stageTeamScore, true);
+        yield return RevealStage(_stageTeamScore);
         yield return CountUpTeamScore(score.TeamScore, _stageTeamDuration);
 
         // Stage 2: 遺物一覧
-        SetStageVisible(_stageRelics, true);
+        yield return RevealStage(_stageRelics);
         yield return WaitSkippable(_stageRelicsDuration);
 
         // Stage 3: 個人スコアボード
-        SetStageVisible(_stagePlayers, true);
+        yield return RevealStage(_stagePlayers);
         yield return WaitSkippable(_stagePlayersDuration);
 
         // Stage 4: 称号授与
-        SetStageVisible(_stageTitles, true);
+        yield return RevealStage(_stageTitles);
         // GDD §15.2 — result_title（称号ステージ開始のファンファーレ）
         GameServices.Audio?.PlaySE2D(SoundId.ResultTitle);
         yield return WaitSkippable(_stageTitlesDuration);
@@ -151,17 +169,23 @@ public class ResultScreen : MonoBehaviour
         // Stage 5: コスメ解放（アンロックがあれば表示、なければスキップ）
         if (_unlockedThisResult.Count > 0)
         {
-            SetStageVisible(_stageCosmetic, true);
+            yield return RevealStage(_stageCosmetic);
             RefreshCosmeticLabel();
             yield return WaitSkippable(_stageCosmeticDuration);
         }
 
         // Stage 6: ボタン表示
-        SetStageVisible(_stageButtons, true);
+        yield return RevealStage(_stageButtons);
         // コントローラで即「もう一度」を押せるよう初期フォーカスを当てる。
         UiFocus.Select(_retryButton, _stageButtons);
         UnsubscribeFromCosmetics();
+        SetSkipHintVisible(false);
         _sequenceRoutine = null;
+    }
+
+    private void SetSkipHintVisible(bool visible)
+    {
+        if (_skipHint != null) _skipHint.SetActive(visible);
     }
 
     /// <summary>
@@ -202,6 +226,9 @@ public class ResultScreen : MonoBehaviour
         }
         _teamScoreLabel.text = $"チームスコア: {target} pt";
         _skipRequested = false;
+
+        if (_teamScoreLabel.rectTransform != null && isActiveAndEnabled && gameObject.activeInHierarchy)
+            StartCoroutine(UiJuice.Punch(_teamScoreLabel.rectTransform, 0.14f, 0.24f));
     }
 
     // ── 各セクションの内容埋め ─────────────────────────────────
@@ -237,9 +264,22 @@ public class ResultScreen : MonoBehaviour
         foreach (var ps in score.PlayerScores)
         {
             var go  = Instantiate(_playerRowPrefab, _playerRowParent);
+            go.SetActive(true); // プレハブ原本は非アクティブ保持のため、複製を明示的に有効化する
             var row = go.GetComponent<PlayerResultRow>();
             row?.Populate(ps);
         }
+
+        RebuildRowLayout(_playerRowParent);
+    }
+
+    /// <summary>
+    /// VerticalLayoutGroup は行を実行時 Instantiate しただけでは幅 0 のまま再ビルドされないことがある。
+    /// 行追加後に明示的にレイアウトを再構築して、行を親バンド幅いっぱいへ広げる。
+    /// </summary>
+    private static void RebuildRowLayout(Transform parent)
+    {
+        if (parent is RectTransform rt)
+            LayoutRebuilder.ForceRebuildLayoutImmediate(rt);
     }
 
     private void PopulateTitles(ScoreData score)
@@ -253,9 +293,12 @@ public class ResultScreen : MonoBehaviour
         foreach (var t in titles)
         {
             var go  = Instantiate(_titleRowPrefab, _titleRowParent);
+            go.SetActive(true); // プレハブ原本は非アクティブ保持のため、複製を明示的に有効化する
             var row = go.GetComponent<TitleRowEntry>();
             row?.Set(t.playerName, t.title);
         }
+
+        RebuildRowLayout(_titleRowParent);
     }
 
     // ── コメディ称号割り当て（GDD §12.5）──────────────────────
@@ -400,6 +443,17 @@ public class ResultScreen : MonoBehaviour
         if (stage != null) stage.SetActive(visible);
     }
 
+    private static IEnumerator RevealStage(GameObject stage)
+    {
+        if (stage == null) yield break;
+        stage.SetActive(true);
+        var rt = stage.GetComponent<RectTransform>();
+        if (rt == null) yield break;
+        var cg = stage.GetComponent<CanvasGroup>();
+        if (cg == null) cg = stage.AddComponent<CanvasGroup>();
+        yield return UiJuice.PopIn(rt, cg);
+    }
+
     // ── フェードイン ─────────────────────────────────────────
     private IEnumerator FadePanelIn()
     {
@@ -408,10 +462,12 @@ public class ResultScreen : MonoBehaviour
 
         cg.alpha = 0f;
         float t = 0f;
-        while (t < 1f)
+        const float duration = 0.55f;
+        while (t < duration)
         {
-            t         += Time.unscaledDeltaTime * 2f;
-            cg.alpha   = t;
+            t += Time.unscaledDeltaTime;
+            float p = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / duration));
+            cg.alpha = p;
             yield return null;
         }
         cg.alpha = 1f;
@@ -422,6 +478,58 @@ public class ResultScreen : MonoBehaviour
     private void OnRetry()       => GameFlow.GoToInGame();
     // 「ベースに戻る」= ショップ（ベースキャンプ準備）へ。次の遠征の買い物導線。
     private void OnReturnBase()  => GameFlow.GoToShop();
+
+#if UNITY_EDITOR
+    /// <summary>エディタキャプチャ用：指定ステージまで表示した状態に固定する。</summary>
+    public void EditorCaptureAtStage(int stageIndex, ScoreData score)
+    {
+        if (score == null) return;
+
+        foreach (var pause in Object.FindObjectsByType<PauseMenu>(FindObjectsSortMode.None))
+            pause.EditorForceHideForCapture();
+
+        ResultScreenRuntimeBuilder.EnsureStructure(this);
+        ResolveSkipHint();
+        GameplayUiPolish.SuppressGameplayHud(true);
+        if (_panel != null) _panel.SetActive(true);
+
+        PopulateTeamScore(score);
+        PopulatePlayerRows(score);
+        PopulateTitles(score);
+
+        if (_sequenceRoutine != null) StopCoroutine(_sequenceRoutine);
+        _sequenceRoutine = null;
+        SetSkipHintVisible(false);
+
+        SetStageVisible(_stageTeamScore, stageIndex >= 1);
+        SetStageVisible(_stageRelics,    stageIndex >= 2);
+        SetStageVisible(_stagePlayers,   stageIndex >= 3);
+        SetStageVisible(_stageTitles,    stageIndex >= 4);
+        SetStageVisible(_stageCosmetic,  false);
+        SetStageVisible(_stageButtons,   stageIndex >= 6);
+
+        // RevealStage の PopIn が途中の CanvasGroup/scale を残していても、
+        // キャプチャ時は確実に可視へスナップする。
+        ForceStageFullyVisible(_stageTeamScore);
+        ForceStageFullyVisible(_stageRelics);
+        ForceStageFullyVisible(_stagePlayers);
+        ForceStageFullyVisible(_stageTitles);
+
+        if (_teamScoreLabel != null)
+            _teamScoreLabel.text = $"チームスコア: {score.TeamScore} pt";
+
+        var cg = _panel != null ? _panel.GetComponent<CanvasGroup>() : null;
+        if (cg != null) cg.alpha = 1f;
+    }
+
+    private static void ForceStageFullyVisible(GameObject stage)
+    {
+        if (stage == null || !stage.activeSelf) return;
+        var sg = stage.GetComponent<CanvasGroup>();
+        if (sg != null) sg.alpha = 1f;
+        stage.transform.localScale = Vector3.one;
+    }
+#endif
 }
 
 // ScoreData と PlayerScore は Assets/Sandbox/Script/System/ScoreData.cs に移動済み

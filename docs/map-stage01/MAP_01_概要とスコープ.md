@@ -1,9 +1,9 @@
 # Stage 01 「Mountain01」 MAP設計書 — 概要とスコープ
 
-**対象シーン:** `Assets/Sandbox/Scenes/Gameplay.unity`（または新規作成 `Mountain01.unity`）
+**対象シーン:** `Assets/Sandbox/Scenes/Gameplay.unity`（Stage01 MAP 開発用・本番フロー未登録）
+**ビルド/検証:** `Peak Plunder > Stage01 > Build Gameplay Scene` / `Validate Gameplay Scene`
 **実装ツール:** Cursor（Unity エディター操作 + C# スクリプト補完）
 **参考タイトル:** PEAK（Landfall Games）Stage 1 の登攀体験
-**作業ブランチ:** `claude/map-development-peak-vfBva`
 
 ---
 

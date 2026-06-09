@@ -77,6 +77,7 @@ public class ExpeditionHUD : MonoBehaviour
 
         EnsureFullScreenRoot();
         EnforceTopMostOverlay();
+        GameplayUiPolish.ApplyExpeditionHudCleanup(transform);
         HideLegacyStaminaWidgets();
         EnsureVitalsBars();
         EnsureRopeIndicator();
@@ -97,11 +98,28 @@ public class ExpeditionHUD : MonoBehaviour
         if (_staminaBar != null) _staminaBar.gameObject.SetActive(false);
         if (_checkpointLabel != null) _checkpointLabel.gameObject.SetActive(false);
 
+        // シーン直保存版（SandboxOfflineCombined 等）はレガシーウィジェットの参照が
+        // 未配線、かつアンカーが中央寄りのため、Play 時に画面中央へ灰色のバーや
+        // 白い四角として残ってしまう。バイタルは左上 VitalsBar、方角は MiniCompass、
+        // タイマー/CP はトーストへ一本化済みなので、名前一致する旧ウィジェットを
+        // 参照の有無に依らず実行時に確実に隠す（非破壊・シーンは書き換えない）。
+        HideChildByName("StaminaBar");
+        HideChildByName("TimerLabel");
+        HideChildByName("CheckpointLabel");
+
         // 旧バージョンが生成した中央リングが残っていれば名前で探して隠す（再生成は行わない）。
         var ring  = transform.Find("StaminaRing");
         if (ring  != null) ring.gameObject.SetActive(false);
         var track = transform.Find("StaminaRingTrack");
         if (track != null) track.gameObject.SetActive(false);
+    }
+
+    /// <summary>直下の子を名前一致で非表示にする（存在しなければ無視）。非破壊。</summary>
+    private void HideChildByName(string childName)
+    {
+        var child = transform.Find(childName);
+        if (child != null && child.gameObject.activeSelf)
+            child.gameObject.SetActive(false);
     }
 
     /// <summary>
@@ -112,11 +130,11 @@ public class ExpeditionHUD : MonoBehaviour
     {
         if (_healthVitals != null && _staminaVitals != null) return;
 
-        const float originX = 26f;   // 旧タイマーと同じ左マージン
-        const float originY = -20f;  // 旧タイマーと同じ上マージン
-        const float width   = 300f;
-        const float barH    = 24f;
-        const float gap     = 10f;
+        const float originX = 24f;   // 左マージン
+        const float originY = -18f;  // 上マージン
+        const float width   = 236f;  // 大ぶりだった旧 300 から引き締めて画面占有を抑える
+        const float barH    = 18f;   // 旧 24 から細くしてミニマルに
+        const float gap     = 8f;
         const float row     = barH + 4f; // VitalsBar の行高（アイコン分を含む）
 
         _healthVitals  = VitalsBar.Create(transform, new Vector2(originX, originY),
@@ -176,6 +194,29 @@ public class ExpeditionHUD : MonoBehaviour
         }
         if (root.sortingOrder < _hudSortingOrder)
             root.sortingOrder = _hudSortingOrder;
+
+        RefreshRootCanvasScaler(root);
+    }
+
+    /// <summary>
+    /// ルート Canvas の CanvasScaler が起動時に適用されず、RectTransform がシーン保存値
+    /// （例: 535×301）のまま縮退する事象を自己修復する。スケーラを一度トグルして論理解像度
+    /// （ref 1600×900 等）へ再計算させると、配下の全 HUD 要素（標高ピル・コンパス・遺物等）が
+    /// アンカー相対で正位置へ流れる。シーンアセットは書き換えない（非破壊）。
+    /// </summary>
+    private static void RefreshRootCanvasScaler(Canvas root)
+    {
+        if (root == null) return;
+        var scaler = root.GetComponent<CanvasScaler>();
+        if (scaler == null || !scaler.enabled) return;
+
+        var rt = root.transform as RectTransform;
+        // 想定論理幅より明らかに小さい（縮退）場合のみ再適用する。
+        if (rt != null && rt.rect.width >= scaler.referenceResolution.x * 0.5f) return;
+
+        scaler.enabled = false;
+        scaler.enabled = true;
+        Canvas.ForceUpdateCanvases();
     }
 
     /// <summary>
@@ -240,8 +281,9 @@ public class ExpeditionHUD : MonoBehaviour
         var rt = _ropeIndicator.rectTransform;
         rt.anchorMin = rt.anchorMax = new Vector2(0f, 1f);
         rt.pivot = new Vector2(0f, 1f);
-        rt.sizeDelta = new Vector2(26f, 26f);
-        rt.anchoredPosition = new Vector2(30f, -104f); // 体力/気力ゲージの下に逃がす
+        rt.sizeDelta = new Vector2(24f, 24f);
+        // バイタルバー縮小（barH18/row22/gap8）に合わせて真下へ寄せ、中央トーストとの重なりを避ける。
+        rt.anchoredPosition = new Vector2(26f, -80f);
 
         if (_ropeLabel == null)
         {

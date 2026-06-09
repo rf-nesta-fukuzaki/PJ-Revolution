@@ -5,7 +5,7 @@ using UnityEngine;
 /// 消費側は <c>.Instance</c> ではなく本クラス経由で依存関係を解決する。
 ///
 /// 【横断ガードレール】新規の横断サービスに <c>static Instance</c>（Singleton）を追加せず、
-/// ここにスロットを足して取得を一本化する。手順と背景は Assets/Doc/ServiceLocatorPolicy.md。
+/// ここにスロットを足して取得を一本化する。手順と背景は docs/architecture/service-locator-policy.md。
 /// Singleton の増殖は EditMode テスト ServiceLocatorPolicyTest が Test Runner で凍結する。
 /// </summary>
 public static class GameServices

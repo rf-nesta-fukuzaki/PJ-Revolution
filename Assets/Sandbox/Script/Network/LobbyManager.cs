@@ -133,9 +133,11 @@ public class LobbyManager : MonoBehaviour
     }
 
     // ── ゲーム開始（ホストのみ）────────────────────────────────────
-    public async Task StartGameAsync(string gameSceneName = "Mountain01")
+    public async Task StartGameAsync(string gameSceneName = null)
     {
         if (!IsHost) return;
+        if (string.IsNullOrEmpty(gameSceneName))
+            gameSceneName = GameFlow.InGameScene;
 
         try
         {

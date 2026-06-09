@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.Audio;
 using UnityEngine.UI;
 using TMPro;
+using Sandbox.UI;
 
 /// <summary>
 /// GDD §14.7 — 設定画面。Esc キーから遷移。4 タブ構成。
@@ -29,6 +30,13 @@ public class SettingsManager : MonoBehaviour, ISettingsService
     // ── Inspector ─────────────────────────────────────────────
     [Header("パネル")]
     [SerializeField] private GameObject _settingsPanel;
+
+    // 暗幕（SettingsDim）と設定用シーン背景は SettingsPanel の兄弟として生成されるが、
+    // パネル開閉と連動していないと閉じている間も画面を黒く覆ってしまう。
+    // パネルの兄弟から実行時に解決し、開閉に同期させる（非破壊）。
+    private GameObject _dimOverlay;
+    private GameObject _sceneBackdrop;
+    private bool _overlaySiblingsResolved;
 
     [Header("タブボタン")]
     [SerializeField] private Button _tabGraphics;
@@ -104,19 +112,57 @@ public class SettingsManager : MonoBehaviour, ISettingsService
 
     private void Start()
     {
+        SettingsRuntimeUiBuilder.EnsureThemed(this);
+
         Settings = _viewModel.Load(Application.persistentDataPath);
         ApplyAll(Settings);
         _viewModel.ApplyGameplaySnapshotToProfile();
         BindUI();
         PopulateUI(Settings);
         ShowTab(0);
-        _settingsPanel?.SetActive(false);
+        SetPanelVisible(false);
+    }
+
+    /// <summary>
+    /// パネルの兄弟にある暗幕(SettingsDim)と設定用シーン背景を一度だけ解決する。
+    /// これらはパネルと別オブジェクトのため、開閉に同期させないと閉じている間も
+    /// ゲーム画面を黒く覆ってしまう（実行時のみ・非破壊）。
+    /// </summary>
+    private void ResolveOverlaySiblings()
+    {
+        if (_overlaySiblingsResolved) return;
+        _overlaySiblingsResolved = true;
+        if (_settingsPanel == null) return;
+        var parent = _settingsPanel.transform.parent;
+        if (parent == null) return;
+
+        var dim = parent.Find("SettingsDim");
+        if (dim != null) _dimOverlay = dim.gameObject;
+
+        // 設定用のシーン背景（FlowUiTheme.CreateSceneBackdrop が生成）も連動させる。
+        foreach (Transform c in parent)
+        {
+            if (c == _settingsPanel.transform) continue;
+            if (c.name.IndexOf("Backdrop", System.StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                _sceneBackdrop = c.gameObject;
+                break;
+            }
+        }
+    }
+
+    private void SetPanelVisible(bool visible)
+    {
+        ResolveOverlaySiblings();
+        _settingsPanel?.SetActive(visible);
+        if (_dimOverlay != null)   _dimOverlay.SetActive(visible);
+        if (_sceneBackdrop != null) _sceneBackdrop.SetActive(visible);
     }
 
     // ── 開閉 ─────────────────────────────────────────────────
     public void Open()
     {
-        _settingsPanel?.SetActive(true);
+        SetPanelVisible(true);
         PopulateUI(Settings);
         ShowTab(0);
     }
@@ -124,7 +170,7 @@ public class SettingsManager : MonoBehaviour, ISettingsService
     public void Close()
     {
         Save(Settings);
-        _settingsPanel?.SetActive(false);
+        SetPanelVisible(false);
     }
     private void ShowTab(int index)
     {
@@ -132,6 +178,7 @@ public class SettingsManager : MonoBehaviour, ISettingsService
         _panelAudio?.SetActive(index        == 1);
         _panelControls?.SetActive(index     == 2);
         _panelAccessibility?.SetActive(index == 3);
+        SettingsRuntimeUiBuilder.HighlightTab(this, index);
     }
 
     // ── UI バインド ───────────────────────────────────────────

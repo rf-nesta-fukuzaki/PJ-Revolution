@@ -421,6 +421,16 @@ public class BasecampShop : MonoBehaviour
 
     private void RefreshInfoBoard()
     {
+        if (_standaloneSceneMode)
+        {
+            // 独立ショップシーン: 前回遠征のコンテキストを表示（サービス不在でも意味のある情報）。
+            if (_weatherLabel != null)
+                _weatherLabel.text = $"次の遠征の天気予報: {GameFlowSessionState.LastWeatherDisplay}";
+            if (_routeStatusLabel != null)
+                _routeStatusLabel.text = GameFlowSessionState.LastRouteSummary;
+            return;
+        }
+
         var weather = GameServices.Weather;
         if (_weatherLabel != null)
             _weatherLabel.text = $"今日の天気: {GetWeatherDisplay(weather)}";

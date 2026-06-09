@@ -1,3 +1,4 @@
+using Sandbox.UI;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -41,9 +42,66 @@ public class ShopTutorialOverlay : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
 
+        if (_root == null)
+            BuildRuntimeUiIfMissing();
+
         if (_root != null) _root.SetActive(false);
         if (_nextButton != null) _nextButton.onClick.AddListener(OnNextClicked);
         if (_skipButton != null) _skipButton.onClick.AddListener(OnSkipClicked);
+    }
+
+    /// <summary>Shop シーン等、Inspector 未配線時にオーバーレイ UI を生成する。</summary>
+    private void BuildRuntimeUiIfMissing()
+    {
+        var canvasGo = new GameObject("ShopTutorialCanvas");
+        canvasGo.transform.SetParent(transform, false);
+        var canvas = canvasGo.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 200;
+        canvasGo.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        canvasGo.AddComponent<GraphicRaycaster>();
+
+        _root = new GameObject("TutorialRoot");
+        _root.transform.SetParent(canvasGo.transform, false);
+        var rootRt = _root.AddComponent<RectTransform>();
+        FlowUiTheme.Stretch(rootRt);
+        var dim = _root.AddComponent<Image>();
+        dim.color = new Color(0f, 0f, 0f, 0.72f);
+
+        var panel = FlowUiTheme.CreateTerminalPanel(_root.transform, "TutorialPanel",
+            new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            new Vector2(-360f, -180f), new Vector2(360f, 180f));
+
+        MenuUiKit.CreateTitleText(panel, "TutorialHeader", "BASE CAMP GUIDE", 32,
+            new Vector2(0.5f, 0.82f), FlowUiTheme.TerminalAccent);
+
+        _stepLabel = CreateTutorialLabel(panel, "StepLabel", "", 22,
+            new Vector2(0.5f, 0.52f), new Vector2(620f, 140f));
+        _counterLabel = CreateTutorialLabel(panel, "Counter", "1/4", 18,
+            new Vector2(0.5f, 0.22f), new Vector2(200f, 32f), UiPalette.Amber);
+
+        _nextButton = CreateTutorialButton(panel, "Next", "次へ",
+            new Vector2(120f, -130f), MenuUiKit.BtnPrimary);
+        _skipButton = CreateTutorialButton(panel, "Skip", "スキップ",
+            new Vector2(-120f, -130f), MenuUiKit.BtnNeutral);
+    }
+
+    private static TextMeshProUGUI CreateTutorialLabel(Transform parent, string name, string text,
+        int size, Vector2 anchor, Vector2 boxSize, Color? color = null)
+    {
+        var tmp = MenuUiKit.CreateBodyText(parent, name, text, size, anchor, color ?? UiPalette.Cream);
+        tmp.rectTransform.sizeDelta = boxSize;
+        tmp.alignment = TextAlignmentOptions.Center;
+        return tmp;
+    }
+
+    private static Button CreateTutorialButton(Transform parent, string name, string label,
+        Vector2 pos, Color fill)
+    {
+        var btn = MenuUiKit.CreateMenuButton(parent, name, label,
+            new Vector2(0.5f, 0.5f), new Vector2(180f, 52f), fill, null);
+        btn.GetComponent<RectTransform>().anchoredPosition = pos;
+        return btn;
     }
 
     private void OnDestroy()

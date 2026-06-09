@@ -38,7 +38,11 @@ public class MainMenuManager : MonoBehaviour
 
     // ── 定数 ────────────────────────────────────────────────────
     private const string DEFAULT_PLAYER_NAME = "Explorer";
-    private const string SCENE_GAME          = "Mountain01";
+
+    private void Awake()
+    {
+        MainMenuRuntimeUiBuilder.EnsureThemed(this);
+    }
 
     // ── ライフサイクル ────────────────────────────────────────────
     private void Start()
@@ -84,18 +88,18 @@ public class MainMenuManager : MonoBehaviour
     {
         ShowPanel(_topPanel);
         SetStatus($"エラー: {message}");
-        _createRoomButton.interactable = false;
-        _joinRoomButton.interactable   = false;
+        if (_createRoomButton != null) _createRoomButton.interactable = false;
+        if (_joinRoomButton != null)   _joinRoomButton.interactable   = false;
     }
 
     // ── ボタンバインド ────────────────────────────────────────────
     private void BindButtons()
     {
-        _createRoomButton.onClick.AddListener(OnCreateRoom);
-        _joinRoomButton.onClick.AddListener(OnJoinRoom);
-        _quitButton.onClick.AddListener(OnQuit);
-        _startGameButton.onClick.AddListener(OnStartGame);
-        _leaveRoomButton.onClick.AddListener(OnLeaveRoom);
+        _createRoomButton?.onClick.AddListener(OnCreateRoom);
+        _joinRoomButton?.onClick.AddListener(OnJoinRoom);
+        _quitButton?.onClick.AddListener(OnQuit);
+        _startGameButton?.onClick.AddListener(OnStartGame);
+        _leaveRoomButton?.onClick.AddListener(OnLeaveRoom);
     }
 
     private void BindLobbyEvents()
@@ -159,8 +163,9 @@ public class MainMenuManager : MonoBehaviour
         if (LobbyManager.Instance == null || !LobbyManager.Instance.IsHost) return;
 
         SetLobbyStatus("ゲーム開始中...");
-        _startGameButton.interactable = false;
-        await LobbyManager.Instance.StartGameAsync(SCENE_GAME);
+        if (_startGameButton != null) _startGameButton.interactable = false;
+        GameFlow.PrepareCoopDeparture();
+        await LobbyManager.Instance.StartGameAsync(GameFlow.InGameScene);
     }
 
     private void OnLeaveRoom()
@@ -191,9 +196,12 @@ public class MainMenuManager : MonoBehaviour
     private void OnRoomCreated(string roomCode)
     {
         ShowPanel(_lobbyPanel);
-        _roomCodeDisplay.text = $"ルームコード：{roomCode}";
-        _startGameButton.gameObject.SetActive(true);
-        _startGameButton.interactable = true;
+        _roomCodeDisplay.text = roomCode;
+        if (_startGameButton != null)
+        {
+            _startGameButton.gameObject.SetActive(true);
+            _startGameButton.interactable = true;
+        }
         SetLobbyStatus("メンバーを待っています...");
         RefreshLobbyPanel();
         UiFocus.Select(_startGameButton, _lobbyPanel);
@@ -202,7 +210,7 @@ public class MainMenuManager : MonoBehaviour
     private void OnRoomJoined()
     {
         ShowPanel(_lobbyPanel);
-        _startGameButton.gameObject.SetActive(false);
+        if (_startGameButton != null) _startGameButton.gameObject.SetActive(false);
         SetLobbyStatus("ホストのゲーム開始を待っています...");
         RefreshLobbyPanel();
         // ゲストは開始ボタンが無いので、退出ボタンを初期フォーカスにする。
@@ -248,8 +256,8 @@ public class MainMenuManager : MonoBehaviour
 
     private void SetInteractable(bool value)
     {
-        _createRoomButton.interactable = value;
-        _joinRoomButton.interactable   = value;
+        if (_createRoomButton != null) _createRoomButton.interactable = value;
+        if (_joinRoomButton != null)   _joinRoomButton.interactable   = value;
     }
 
     private void SetStatus(string message)

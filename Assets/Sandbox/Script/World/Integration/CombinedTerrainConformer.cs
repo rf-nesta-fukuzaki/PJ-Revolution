@@ -518,6 +518,14 @@ namespace Sandbox.World.Integration
             float summitY = _bootstrap.ColliderBaker.GlobalMaxY;
             if (summitY < _padTopY + 1f) return; // まだ基地より高い山頂を観測できていない
             MountainProfile.Publish(_padTopY, summitY);
+
+            // 登攀ルートの XZ（拠点 → 観測山頂）も公開する。DistributeClimbCourse と同じ起点・終点を
+            // 使い、EnemySpawner 等が「ゾーン(標高ステージ)に対応した位置」を実山に沿って解決できる。
+            // 山頂チャンクが原点近傍の低ピークの間は magnitude が小さいので確定させない。
+            Vector3 summit = _bootstrap.ColliderBaker.GlobalMaxPos;
+            Vector2 summitXZ = new Vector2(summit.x, summit.z);
+            if (summitXZ.magnitude >= 50f)
+                MountainProfile.PublishRoute(probeXZ, summitXZ);
         }
 
         /// <summary>

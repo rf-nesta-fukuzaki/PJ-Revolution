@@ -7,28 +7,29 @@ using TMPro;
 namespace Sandbox.UI
 {
     /// <summary>
-    /// 独立した「ショップシーン（ベースキャンプ準備）」をランタイムで構築するコントローラ。
-    /// シーンにはこのコンポーネントを 1 つ置くだけでよい（外部アセット不要）。
-    ///
-    /// 役割:
-    ///   - カメラ / AudioListener / EventSystem を保証
-    ///   - <see cref="BasecampShop"/> を「独立シーンモード」で生成し、開いた状態で表示
-    ///       「出発」 → 購入内容を <see cref="RunLoadout"/> に記録して <see cref="GameFlow.GoToInGame"/>
-    ///   - 常時表示の「タイトルへ戻る」ボタンを用意（<see cref="GameFlow.GoToTitle"/>）
+    /// R.E.P.O. 風ベースキャンプ準備シーン + PEAK 天気ボード。
     /// </summary>
     public sealed class ShopSceneController : MonoBehaviour
     {
-        [SerializeField] private string _header = "ベースキャンプ — 出発準備";
+        [SerializeField] private string _header = "BASE CAMP — EXPEDITION PREP";
+
+        private void Awake()
+        {
+            MenuSceneBootstrap.EnsureForActiveScene(transform);
+        }
 
         private void Start()
         {
             EnsureCamera();
             EnsureEventSystem();
+            ShopSceneDiegeticSet.Ensure(transform);
             GameplayCursorPolicy.SetMenuMode();
-
             BuildOverlay();
             EnsureShop();
+            EnsureShopTutorial();
         }
+
+        public void GoToTitleFromShop() => GameFlow.GoToTitle();
 
         private void EnsureShop()
         {
@@ -39,60 +40,123 @@ namespace Sandbox.UI
                 go.transform.SetParent(transform, false);
                 shop = go.AddComponent<BasecampShop>();
             }
-
-            // Awake は AddComponent 時に同期実行されるが、Start はまだ。
-            // ここで独立シーンモード（出発＝次の遠征へ）と開いた状態を設定しておく。
             shop.ConfigureForStandaloneScene();
+        }
+
+        private void EnsureShopTutorial()
+        {
+            if (Object.FindFirstObjectByType<ShopTutorialOverlay>() != null) return;
+            var go = new GameObject("ShopTutorialOverlay");
+            go.transform.SetParent(transform, false);
+            go.AddComponent<ShopTutorialOverlay>();
         }
 
         private void BuildOverlay()
         {
-            var canvasGo = new GameObject("ShopScene_Overlay");
-            canvasGo.transform.SetParent(transform, false);
-            var canvas = canvasGo.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = -10; // ショップ UI より背面（背景・ヘッダ用）
-            var scaler = canvasGo.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            canvasGo.AddComponent<GraphicRaycaster>();
+            var canvas = MenuUiKit.CreateOverlayCanvas(transform, "ShopScene_Overlay", -10);
+            BuildShopOverlay(canvas.transform);
 
-            var bg = NewRect("BG", canvas.transform);
-            Stretch(bg);
-            bg.gameObject.AddComponent<Image>().color = new Color(0.07f, 0.09f, 0.13f, 1f);
+            // 左の商品パネル（幅 760px）に被らないよう、見出し・掲示板は右側へ寄せる。
+            MenuUiKit.CreateTitleText(canvas.transform, "Header", _header, 46, new Vector2(0.68f, 0.93f));
 
-            var header = CreateText("Header", canvas.transform, _header, 48, new Vector2(0.5f, 0.92f));
-            header.fontStyle = FontStyles.Bold;
-            header.color = new Color(1f, 0.92f, 0.6f);
+            // R.E.P.O. 風掲示板 — 前回遠征 + 天気 + ルート
+            var board = FlowUiTheme.CreateTerminalPanel(canvas.transform, "ExpeditionBoard",
+                new Vector2(0.70f, 0.81f), new Vector2(0.70f, 0.81f),
+                new Vector2(-470f, -104f), new Vector2(470f, 104f));
 
-            CreateText("Hint", canvas.transform,
-                "B: ショップ開閉 / 「出発」で遠征へ", 24, new Vector2(0.5f, 0.05f));
+            string runLine = GameFlow.RunCount > 0
+                ? $"RUN #{GameFlow.RunCount + 1}   ·   {GameFlowSessionState.GetLastRunSummaryLine()}"
+                : "RUN #1   ·   FIRST DEPARTURE";
+            MenuUiKit.CreateBulletinLine(board, "RunSummary", runLine, 26,
+                new Vector2(0.5f, 0.74f), UiPalette.Amber, FontStyles.Bold).alignment =
+                TextAlignmentOptions.Center;
+            MenuUiKit.CreateBulletinLine(board, "WeatherInfo",
+                $"WEATHER FORECAST :  {GameFlowSessionState.LastWeatherDisplay}",
+                22, new Vector2(0.5f, 0.44f), FlowUiTheme.TerminalAccent).alignment =
+                TextAlignmentOptions.Center;
+            MenuUiKit.CreateBulletinLine(board, "RouteInfo",
+                GameFlowSessionState.LastRouteSummary.ToUpperInvariant(),
+                19, new Vector2(0.5f, 0.16f), new Color(UiPalette.Cream.r, UiPalette.Cream.g, UiPalette.Cream.b, 0.92f)).alignment =
+                TextAlignmentOptions.Center;
 
-            // 常時表示の「タイトルへ戻る」ボタン（最前面オーバーレイ）
-            var topCanvasGo = new GameObject("ShopScene_TopOverlay");
-            topCanvasGo.transform.SetParent(transform, false);
-            var topCanvas = topCanvasGo.AddComponent<Canvas>();
-            topCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            topCanvas.sortingOrder = 100;
-            var topScaler = topCanvasGo.AddComponent<CanvasScaler>();
-            topScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            topScaler.referenceResolution = new Vector2(1920f, 1080f);
-            topCanvasGo.AddComponent<GraphicRaycaster>();
+            // フッターのヒント帯
+            var hintBar = MenuUiKit.NewRect("HintBar", canvas.transform);
+            hintBar.anchorMin = hintBar.anchorMax = new Vector2(0.68f, 0.05f);
+            hintBar.sizeDelta = new Vector2(1000f, 46f);
+            hintBar.anchoredPosition = Vector2.zero;
+            FlowUiTheme.AddSprite(hintBar, UiSprite.RoundedRect(18), new Color(0.05f, 0.05f, 0.07f, 0.55f));
+            MenuUiKit.CreateBodyText(hintBar, "Hint",
+                "[B] ショップを開く    ·    [出発] 次の遠征へ    ·    予算100ptはチーム共有（R.E.P.O.式）",
+                20, new Vector2(0.5f, 0.5f), UiPalette.Cream);
 
-            CreateButton("BackToTitleButton", topCanvas.transform, "タイトルへ戻る",
-                new Vector2(0f, 1f), new Vector2(150f, -54f), new Vector2(240f, 64f),
-                new Color(0.45f, 0.22f, 0.22f), GameFlow.GoToTitle);
+            var topCanvas = MenuUiKit.CreateOverlayCanvas(transform, "ShopScene_TopOverlay", 100);
+            var backBtn = MenuUiKit.CreateMenuButton(topCanvas.transform, "BackToTitleButton", "← タイトル",
+                new Vector2(0f, 1f), new Vector2(248f, 58f), MenuUiKit.BtnDanger, GoToTitleFromShop);
+            var backRt = backBtn.GetComponent<RectTransform>();
+            backRt.anchorMin = backRt.anchorMax = new Vector2(0f, 1f);
+            backRt.pivot = new Vector2(0f, 1f);
+            backRt.anchoredPosition = new Vector2(20f, -20f);
+        }
+
+        /// <summary>
+        /// 3D 基地を背後に見せる軽いシェード。シアン MonitorGlow は使わず、暖色グロー＋ビネットのみ。
+        /// </summary>
+        private static void BuildShopOverlay(Transform parent)
+        {
+            var shade = FlowUiTheme.NewRect("DiegeticShade", parent);
+            FlowUiTheme.Stretch(shade);
+            // 暗転を弱めて木材・夕景の質感を見せる（沈み込みを抑える）。
+            var grad = FlowUiTheme.AddSprite(shade, UiSprite.VerticalGradient3(
+                new Color(0.02f, 0.03f, 0.05f, 0.22f),
+                new Color(0.02f, 0.03f, 0.05f, 0.0f),
+                new Color(0.02f, 0.03f, 0.06f, 0.42f),
+                0.5f), Color.white, Image.Type.Simple);
+            grad.raycastTarget = false;
+
+            var warmGlow = FlowUiTheme.NewRect("WarmGlow", parent);
+            warmGlow.anchorMin = warmGlow.anchorMax = new Vector2(0.5f, 0.88f);
+            warmGlow.sizeDelta = new Vector2(1100f, 420f);
+            var wg = FlowUiTheme.AddSprite(warmGlow, UiSprite.RadialGlow(2.2f),
+                new Color(UiPalette.Amber.r, UiPalette.Amber.g, UiPalette.Amber.b, 0.045f), Image.Type.Simple);
+            wg.raycastTarget = false;
+
+            FlowUiTheme.CreateScanlineOverlay(parent, 5, 0.04f);
+            FlowUiTheme.CreateVignette(parent, 0.26f);
+            FlowUiTheme.CreateGrain(parent, 0.011f);
         }
 
         private static void EnsureCamera()
         {
-            if (Camera.main != null) return;
-            var go = new GameObject("ShopCamera") { tag = "MainCamera" };
-            var cam = go.AddComponent<Camera>();
+            var cam = Camera.main;
+            if (cam == null)
+            {
+                var go = new GameObject("ShopCamera") { tag = "MainCamera" };
+                cam = go.AddComponent<Camera>();
+                if (go.GetComponent<AudioListener>() == null)
+                    go.AddComponent<AudioListener>();
+            }
+
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.05f, 0.07f, 0.11f, 1f);
-            if (go.GetComponent<AudioListener>() == null)
-                go.AddComponent<AudioListener>();
+            // SkyBackdrop が背後を覆うが、隙間用フォールバックも暖かい夕空色にする
+            cam.backgroundColor = new Color(0.40f, 0.25f, 0.27f, 1f);
+            // 開放的な屋外キャンプを引きで捉える（カウンター手前・遠景の峰と夕空を背景に）
+            cam.transform.position = new Vector3(0f, 2.5f, -3.6f);
+            cam.transform.rotation = Quaternion.Euler(6f, 0f, 0f);
+            cam.fieldOfView = 56f;
+            if (cam.TryGetComponent(out UnityEngine.Rendering.Universal.UniversalAdditionalCameraData camData))
+                camData.renderPostProcessing = true;
+
+            // 暖かい夕景の環境光（黒く沈ませない・PEAK の温かみ）
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor    = new Color(0.66f, 0.56f, 0.62f);
+            RenderSettings.ambientEquatorColor = new Color(0.58f, 0.44f, 0.42f);
+            RenderSettings.ambientGroundColor  = new Color(0.30f, 0.23f, 0.20f);
+            // 薄い夕霧で遠景に空気感（峰は霧の手前に置くため end は遠めに）
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogColor = new Color(0.42f, 0.28f, 0.30f);
+            RenderSettings.fogStartDistance = 24f;
+            RenderSettings.fogEndDistance = 70f;
         }
 
         private static void EnsureEventSystem()
@@ -101,58 +165,6 @@ namespace Sandbox.UI
             var go = new GameObject("EventSystem");
             go.AddComponent<EventSystem>();
             go.AddComponent<InputSystemUIInputModule>();
-        }
-
-        // ── UI helpers ──
-        private static RectTransform NewRect(string name, Transform parent)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            return go.AddComponent<RectTransform>();
-        }
-
-        private static void Stretch(RectTransform rt)
-        {
-            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-            rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
-        }
-
-        private static TextMeshProUGUI CreateText(string name, Transform parent, string text, int size, Vector2 anchor)
-        {
-            var rt = NewRect(name, parent);
-            rt.anchorMin = rt.anchorMax = anchor;
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(1600f, size * 1.6f);
-            rt.anchoredPosition = Vector2.zero;
-            var tmp = rt.gameObject.AddComponent<TextMeshProUGUI>();
-            tmp.text = text; tmp.fontSize = size; tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color = Color.white;
-            if (tmp.font == null && TMP_Settings.defaultFontAsset != null)
-                tmp.font = TMP_Settings.defaultFontAsset;
-            return tmp;
-        }
-
-        private static void CreateButton(string name, Transform parent, string label,
-            Vector2 anchor, Vector2 anchoredPos, Vector2 size, Color color,
-            UnityEngine.Events.UnityAction onClick)
-        {
-            var rt = NewRect(name, parent);
-            rt.anchorMin = rt.anchorMax = anchor;
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = size;
-            rt.anchoredPosition = anchoredPos;
-            var img = rt.gameObject.AddComponent<Image>();
-            img.color = color;
-            var btn = rt.gameObject.AddComponent<Button>();
-            btn.onClick.AddListener(onClick);
-
-            var tRt = NewRect("Text", rt);
-            Stretch(tRt);
-            var tmp = tRt.gameObject.AddComponent<TextMeshProUGUI>();
-            tmp.text = label; tmp.fontSize = 28; tmp.fontStyle = FontStyles.Bold;
-            tmp.alignment = TextAlignmentOptions.Center; tmp.color = Color.white;
-            if (tmp.font == null && TMP_Settings.defaultFontAsset != null)
-                tmp.font = TMP_Settings.defaultFontAsset;
         }
     }
 }

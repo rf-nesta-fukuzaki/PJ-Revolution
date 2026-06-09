@@ -19,17 +19,8 @@ namespace Sandbox.UI
     /// </summary>
     public sealed class PauseMenuView
     {
-        // ── パレット ─────────────────────────────────────────────
-        private static readonly Color Backdrop   = new(0.04f, 0.05f, 0.08f, 0.82f);
-        private static readonly Color CardBg      = new(0.10f, 0.12f, 0.17f, 0.98f);
-        private static readonly Color ConfirmBg   = new(0.08f, 0.09f, 0.13f, 0.99f);
-        private static readonly Color Accent      = new(0.96f, 0.80f, 0.38f, 1f);
-        private static readonly Color TextMain    = new(0.96f, 0.97f, 1f, 1f);
-        private static readonly Color TextDim     = new(0.62f, 0.68f, 0.78f, 1f);
-
-        private static readonly Color BtnPrimary  = new(0.18f, 0.46f, 0.42f, 1f);
-        private static readonly Color BtnNeutral  = new(0.18f, 0.22f, 0.31f, 1f);
-        private static readonly Color BtnDanger   = new(0.46f, 0.20f, 0.22f, 1f);
+        // ── パレット（FlowUiTheme / UiPalette へ統合） ─────────────
+        private static Color Backdrop => new Color(UiPalette.Ink.r, UiPalette.Ink.g, UiPalette.Ink.b, 0.88f);
 
         // ── 参照 ─────────────────────────────────────────────────
         public GameObject Root { get; private set; }
@@ -69,10 +60,17 @@ namespace Sandbox.UI
             view.Root = canvasGo;
             view.Group = canvasGo.GetComponent<CanvasGroup>();
 
-            // 背景の暗転（クリックをブロックして裏のゲームに触らせない）
+            // PEAK 風の暗い山岳オーバーレイ（没入感 + 可読性）
+            var backdropRoot = new GameObject("PauseBackdrop", typeof(RectTransform));
+            backdropRoot.transform.SetParent(canvasGo.transform, false);
+            Stretch((RectTransform)backdropRoot.transform);
+            FlowUiTheme.CreatePauseBackdrop(backdropRoot.transform);
+
+            // 追加の暗転（クリックをブロックして裏のゲームに触らせない）
             var backdrop = NewImage("Backdrop", canvasGo.transform, Backdrop);
             Stretch(backdrop.rectTransform);
             backdrop.raycastTarget = true;
+            backdrop.transform.SetSiblingIndex(backdropRoot.transform.GetSiblingIndex() + 1);
 
             view.BuildMenuCard(canvasGo.transform);
             view.BuildConfirmCard(canvasGo.transform);
@@ -83,101 +81,107 @@ namespace Sandbox.UI
         // ── ルートメニュー ───────────────────────────────────────
         private void BuildMenuCard(Transform canvas)
         {
-            var card = NewImage("MenuCard", canvas, CardBg);
-            CardTransform = card.rectTransform;
-            CardTransform.anchorMin = CardTransform.anchorMax = new Vector2(0.5f, 0.5f);
-            CardTransform.pivot = new Vector2(0.5f, 0.5f);
-            CardTransform.sizeDelta = new Vector2(480f, 460f);
-            CardTransform.anchoredPosition = Vector2.zero;
-            MenuCard = card.gameObject;
+            var cardRt = FlowUiTheme.CreateTerminalPanel(canvas, "MenuCard",
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(-250f, -240f), new Vector2(250f, 240f));
+            CardTransform = cardRt;
+            MenuCard = cardRt.gameObject;
 
-            // アクセントバー
-            var accent = NewImage("Accent", card.transform, Accent);
-            accent.rectTransform.anchorMin = new Vector2(0f, 1f);
-            accent.rectTransform.anchorMax = new Vector2(1f, 1f);
-            accent.rectTransform.pivot = new Vector2(0.5f, 1f);
-            accent.rectTransform.sizeDelta = new Vector2(0f, 6f);
-            accent.rectTransform.anchoredPosition = Vector2.zero;
-
-            var title = CreateText("Title", card.transform, "一時停止", 52, new Vector2(0.5f, 1f));
+            var title = CreateText("Title", cardRt, "一時停止", 48, new Vector2(0.5f, 0.82f));
             title.fontStyle = FontStyles.Bold;
-            title.color = Accent;
-            title.rectTransform.sizeDelta = new Vector2(440f, 70f);
-            title.rectTransform.anchoredPosition = new Vector2(0f, -54f);
+            title.color = UiPalette.Amber;
+            FlowUiTheme.StyleReadable(title, 0.18f);
 
-            var sub = CreateText("Subtitle", card.transform, "P A U S E D", 18, new Vector2(0.5f, 1f));
-            sub.color = TextDim;
-            sub.characterSpacing = 6f;
-            sub.rectTransform.sizeDelta = new Vector2(440f, 26f);
-            sub.rectTransform.anchoredPosition = new Vector2(0f, -104f);
+            var divider = FlowUiTheme.NewRect("TitleDivider", cardRt);
+            divider.anchorMin = new Vector2(0.12f, 0.74f);
+            divider.anchorMax = new Vector2(0.88f, 0.74f);
+            divider.sizeDelta = new Vector2(0f, 2f);
+            FlowUiTheme.AddSprite(divider, UiSprite.RoundedRect(2),
+                new Color(UiPalette.Amber.r, UiPalette.Amber.g, UiPalette.Amber.b, 0.45f));
 
-            // ボタン列（VerticalLayoutGroup で等間隔）
+            var sub = CreateText("Subtitle", cardRt, "E X P E D I T I O N  P A U S E D", 16, new Vector2(0.5f, 0.66f));
+            sub.color = FlowUiTheme.TerminalAccent;
+            sub.characterSpacing = 4f;
+
             var listGo = new GameObject("Buttons", typeof(RectTransform), typeof(VerticalLayoutGroup));
-            listGo.transform.SetParent(card.transform, false);
+            listGo.transform.SetParent(cardRt, false);
             var listRt = (RectTransform)listGo.transform;
-            listRt.anchorMin = new Vector2(0.5f, 0f);
-            listRt.anchorMax = new Vector2(0.5f, 1f);
-            listRt.pivot = new Vector2(0.5f, 0.5f);
-            listRt.sizeDelta = new Vector2(360f, 0f);
-            listRt.anchoredPosition = new Vector2(0f, -16f);
-            listRt.offsetMin = new Vector2(listRt.offsetMin.x, 70f);
-            listRt.offsetMax = new Vector2(listRt.offsetMax.x, -150f);
+            listRt.anchorMin = new Vector2(0.1f, 0.12f);
+            listRt.anchorMax = new Vector2(0.9f, 0.62f);
+            listRt.offsetMin = listRt.offsetMax = Vector2.zero;
 
             var layout = listGo.GetComponent<VerticalLayoutGroup>();
-            layout.spacing = 16f;
+            layout.spacing = 14f;
             layout.childAlignment = TextAnchor.MiddleCenter;
             layout.childControlWidth = true;
             layout.childControlHeight = false;
             layout.childForceExpandWidth = true;
-            layout.childForceExpandHeight = false;
 
-            ResumeButton   = CreateButton("ResumeButton",   listGo.transform, "ゲームに戻る",   BtnPrimary);
-            SettingsButton = CreateButton("SettingsButton", listGo.transform, "設定",           BtnNeutral);
-            LeaveButton    = CreateButton("LeaveButton",    listGo.transform, "タイトルへ戻る", BtnDanger);
+            ResumeButton   = CreateThemedButton(listGo.transform, "ResumeButton", "ゲームに戻る", MenuUiKit.BtnPrimary);
+            SettingsButton = CreateThemedButton(listGo.transform, "SettingsButton", "設定", MenuUiKit.BtnSecondary);
+            LeaveButton    = CreateThemedButton(listGo.transform, "LeaveButton", "タイトルへ戻る", MenuUiKit.BtnDanger);
 
-            var hint = CreateText("Hint", card.transform,
-                "Esc：戻る  ・  ↑↓ + Enter：選択", 16, new Vector2(0.5f, 0f));
-            hint.color = TextDim;
-            hint.rectTransform.sizeDelta = new Vector2(440f, 24f);
-            hint.rectTransform.anchoredPosition = new Vector2(0f, 22f);
+            var hint = CreateText("Hint", cardRt, "Esc：戻る  ·  ↑↓ + Enter：選択", 15, new Vector2(0.5f, 0.06f));
+            hint.color = UiPalette.CreamDim;
         }
 
-        // ── 離脱確認 ─────────────────────────────────────────────
         private void BuildConfirmCard(Transform canvas)
         {
-            var card = NewImage("ConfirmCard", canvas, ConfirmBg);
-            var rt = card.rectTransform;
-            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(520f, 240f);
-            rt.anchoredPosition = Vector2.zero;
-            ConfirmCard = card.gameObject;
+            var cardRt = FlowUiTheme.CreateTerminalPanel(canvas, "ConfirmCard",
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                new Vector2(-300f, -150f), new Vector2(300f, 150f));
+            ConfirmCard = cardRt.gameObject;
 
-            var accent = NewImage("Accent", card.transform, BtnDanger);
-            accent.rectTransform.anchorMin = new Vector2(0f, 1f);
-            accent.rectTransform.anchorMax = new Vector2(1f, 1f);
-            accent.rectTransform.pivot = new Vector2(0.5f, 1f);
-            accent.rectTransform.sizeDelta = new Vector2(0f, 6f);
-            accent.rectTransform.anchoredPosition = Vector2.zero;
+            var warnStripe = FlowUiTheme.NewRect("WarnStripe", cardRt);
+            warnStripe.anchorMin = new Vector2(0f, 1f);
+            warnStripe.anchorMax = new Vector2(1f, 1f);
+            warnStripe.pivot = new Vector2(0.5f, 1f);
+            warnStripe.sizeDelta = new Vector2(0f, 6f);
+            warnStripe.anchoredPosition = Vector2.zero;
+            FlowUiTheme.AddSprite(warnStripe, UiSprite.RoundedRect(3),
+                new Color(UiPalette.Amber.r, UiPalette.Amber.g, UiPalette.Amber.b, 0.85f));
 
-            var title = CreateText("Title", card.transform, "タイトルへ戻りますか？", 30, new Vector2(0.5f, 1f));
+            var tag = CreateText("Tag", cardRt, "EXPEDITION ABORT", 14, new Vector2(0.5f, 0.86f));
+            tag.color = FlowUiTheme.TerminalAccent;
+            tag.characterSpacing = 3f;
+
+            var title = CreateText("Title", cardRt, "タイトルへ戻りますか？", 30, new Vector2(0.5f, 0.66f));
             title.fontStyle = FontStyles.Bold;
-            title.color = TextMain;
-            title.rectTransform.sizeDelta = new Vector2(480f, 44f);
-            title.rectTransform.anchoredPosition = new Vector2(0f, -44f);
+            title.color = UiPalette.Cream;
+            FlowUiTheme.StyleReadable(title, 0.16f);
 
-            var msg = CreateText("Message", card.transform,
-                "進行中の探索の記録は失われます。", 18, new Vector2(0.5f, 1f));
-            msg.color = TextDim;
-            msg.rectTransform.sizeDelta = new Vector2(480f, 40f);
-            msg.rectTransform.anchoredPosition = new Vector2(0f, -96f);
+            var divider = FlowUiTheme.NewRect("Divider", cardRt);
+            divider.anchorMin = new Vector2(0.1f, 0.52f);
+            divider.anchorMax = new Vector2(0.9f, 0.52f);
+            divider.sizeDelta = new Vector2(0f, 2f);
+            FlowUiTheme.AddSprite(divider, UiSprite.RoundedRect(2),
+                new Color(FlowUiTheme.TerminalBorder.r, FlowUiTheme.TerminalBorder.g,
+                    FlowUiTheme.TerminalBorder.b, 0.55f));
 
-            // 安全側（いいえ）を右に配置して初期フォーカスにする。
-            ConfirmYesButton = CreateButton("ConfirmYes", card.transform, "離脱する", BtnDanger);
-            SetButtonRect(ConfirmYesButton, new Vector2(0.5f, 0f), new Vector2(-110f, 44f), new Vector2(190f, 64f));
+            var msg = CreateText("Message", cardRt,
+                "進行中の探索記録は失われます。\n本当に離脱しますか？", 18, new Vector2(0.5f, 0.36f));
+            msg.color = UiPalette.CreamDim;
+            msg.lineSpacing = -4f;
+            msg.rectTransform.sizeDelta = new Vector2(520f, 58f);
 
-            ConfirmNoButton = CreateButton("ConfirmNo", card.transform, "戻る", BtnNeutral);
-            SetButtonRect(ConfirmNoButton, new Vector2(0.5f, 0f), new Vector2(110f, 44f), new Vector2(190f, 64f));
+            ConfirmYesButton = CreateThemedButton(cardRt, "ConfirmYes", "離脱する", MenuUiKit.BtnDanger);
+            SetButtonRect(ConfirmYesButton, new Vector2(0.5f, 0.12f), new Vector2(-118f, 0f), new Vector2(200f, 54f));
+
+            ConfirmNoButton = CreateThemedButton(cardRt, "ConfirmNo", "戻る", MenuUiKit.BtnNeutral);
+            SetButtonRect(ConfirmNoButton, new Vector2(0.5f, 0.12f), new Vector2(118f, 0f), new Vector2(200f, 54f));
+        }
+
+        private static Button CreateThemedButton(Transform parent, string name, string label, Color fill)
+        {
+            var btn = MenuUiKit.CreateMenuButton(parent, name, label,
+                new Vector2(0.5f, 0.5f), new Vector2(360f, 58f), fill, null);
+            var le = btn.gameObject.GetComponent<LayoutElement>();
+            if (le == null) le = btn.gameObject.AddComponent<LayoutElement>();
+            le.preferredHeight = 58f;
+            le.minHeight = 58f;
+            if (btn.gameObject.GetComponent<UiHoverSfx>() == null)
+                btn.gameObject.AddComponent<UiHoverSfx>();
+            return btn;
         }
 
         // ── 生成ヘルパー ─────────────────────────────────────────
@@ -212,48 +216,18 @@ namespace Sandbox.UI
             tmp.text = text;
             tmp.fontSize = size;
             tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color = TextMain;
+            tmp.color = UiPalette.Cream;
             tmp.raycastTarget = false;
             if (tmp.font == null && TMP_Settings.defaultFontAsset != null)
                 tmp.font = TMP_Settings.defaultFontAsset;
+            FlowUiTheme.StyleReadable(tmp, 0.12f);
             return tmp;
         }
 
+        // legacy CreateButton — MenuUiKit へ移行済み。互換のため残す。
         private static Button CreateButton(string name, Transform parent, string label, Color baseColor)
         {
-            var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
-            go.transform.SetParent(parent, false);
-
-            var rt = (RectTransform)go.transform;
-            rt.sizeDelta = new Vector2(360f, 64f);
-
-            var le = go.GetComponent<LayoutElement>();
-            le.preferredHeight = 64f;
-            le.minHeight = 64f;
-
-            var img = go.GetComponent<Image>();
-            img.color = baseColor;
-
-            var btn = go.GetComponent<Button>();
-            btn.targetGraphic = img;
-            btn.transition = Selectable.Transition.ColorTint;
-            var colors = btn.colors;
-            colors.normalColor      = Color.white;
-            colors.highlightedColor = new Color(1.18f, 1.18f, 1.18f, 1f);
-            colors.pressedColor     = new Color(0.82f, 0.82f, 0.82f, 1f);
-            colors.selectedColor    = new Color(1.18f, 1.18f, 1.18f, 1f);
-            colors.disabledColor    = new Color(0.5f, 0.5f, 0.5f, 0.5f);
-            colors.fadeDuration     = 0.08f;
-            colors.colorMultiplier  = 1f;
-            btn.colors = colors;
-
-            go.AddComponent<UiHoverSfx>();
-
-            var labelTmp = CreateText("Label", go.transform, label, 28, new Vector2(0.5f, 0.5f));
-            labelTmp.fontStyle = FontStyles.Bold;
-            Stretch(labelTmp.rectTransform);
-
-            return btn;
+            return CreateThemedButton(parent, name, label, baseColor);
         }
 
         private static void SetButtonRect(Button button, Vector2 anchor, Vector2 anchoredPos, Vector2 size)

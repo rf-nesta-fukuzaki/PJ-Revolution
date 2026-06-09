@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
 /// オフラインテスト用 NPC コントローラー。
@@ -17,8 +18,13 @@ public class NPCController : MonoBehaviour
     [SerializeField] private float _waypointTolerance = 1.35f;
     [SerializeField] private float _exploreRadius = 22f;
     [SerializeField] private float _retargetDistance = 2.2f;
-    [Tooltip("他エージェント(NPC/最寄りプレイヤー)とこの距離[m]以内で反発し間隔を空ける（拠点等で重ならない）。")]
-    [SerializeField] private float _separationRadius = 2.0f;
+    [Tooltip("他 NPC とこの距離[m]以内で反発し間隔を空ける（拠点等で団子にならない）。")]
+    [SerializeField] private float _separationRadius = 2.2f;
+    [Tooltip("最寄りプレイヤー(一人称カメラ)からはこの距離[m]まで離れる。NPC 同士より広くして『巨大な顔』で画面を覆うのを防ぐ。")]
+    [SerializeField] private float _playerPersonalSpace = 3.2f;
+    [Tooltip("ローカルカメラからこの距離[m]より近いと、自分のボディ描画を一時的に隠す（影は維持）。" +
+             "至近で重なって『巨大な顔』が視界を覆うのを防ぐ。中距離では仲間として通常表示。")]
+    [SerializeField] private float _cameraHardClearance = 1.8f;
     [SerializeField] private float _separationStrength = 1.1f;
 
     [Header("メタAI")]
@@ -84,6 +90,10 @@ public class NPCController : MonoBehaviour
     private RelicCarrier _carriedRelic;
     private RelicBase _targetRelicBase;
     private Transform _nearestAllyTf; // 分離ステアリング用にキャッシュした最寄りプレイヤー
+    private Transform _localCameraTf; // ローカル一人称カメラ。NPC がこの視界を覆わないよう反発／至近フェードに使う。
+    private readonly List<Renderer> _bodyRenderers = new(); // 至近フェード対象のボディ描画（影は維持）
+    private bool _bodyHiddenForCamera; // 現在カメラ至近フェードでボディを隠しているか
+    private int _knownRendererCount = -1; // 子レンダラー数の変化検知（コスメ装着等で再走査）
 
     // 全 NPC の登録簿（分離ステアリングで互いの位置を参照。FindObjectsByType の毎フレーム呼び出しを避ける）。
     private static readonly List<NPCController> s_all = new List<NPCController>();
@@ -171,9 +181,25 @@ public class NPCController : MonoBehaviour
         if (_isDead)
             return;
 
+        StepBehaviour();
+    }
+
+    private void StepBehaviour()
+    {
         if (!_hasGoalPosition)
         {
-            _isMoving = false;
+            // 目標が無いアイドル状態でも、近接する他エージェント/プレイヤーからは押し離す。
+            // これが無いと、仲間 NPC が一人称カメラの至近に居座り「巨大な顔」で画面を覆う。
+            Vector3 idleSep = ComputeSeparationPush();
+            if (idleSep.sqrMagnitude > 0.0001f)
+            {
+                _rb.MovePosition(_rb.position + idleSep.normalized * (_moveSpeed * 0.5f * Time.fixedDeltaTime));
+                _isMoving = true;
+            }
+            else
+            {
+                _isMoving = false;
+            }
             return;
         }
 
@@ -221,6 +247,75 @@ public class NPCController : MonoBehaviour
     }
 
     /// <summary>
+    /// ローカル一人称カメラの至近（_cameraHardClearance 未満）にいる間は、自分のボディ描画を
+    /// 一時的に隠す（影は維持）。物理で押し出すと追従ゴールとの綱引きで境界に整列して
+    /// 「壁」になるため、押さずに『重なって視界を覆うときだけ消す』方式にする。
+    /// 仲間として見たい中距離(クリアランス以遠)では通常表示に戻す。冪等。
+    /// </summary>
+    private void UpdateCameraOcclusionFade()
+    {
+        if (_cameraHardClearance <= 0f) return;
+
+        // フェード判定はローカル一人称カメラ（＝Game View を描画している Camera.main）を毎フレーム直接参照する。
+        // センサー用にキャッシュした _localCameraTf は他カメラを指す場合があり、ここでは使わない。
+        var cam = Camera.main;
+        if (cam == null) return;
+
+        Vector3 d = _rb.position - cam.transform.position; d.y = 0f;
+        bool shouldHide = d.sqrMagnitude < _cameraHardClearance * _cameraHardClearance;
+
+        // 近接中は毎フレーム再適用する（コスメ装着で char1 が後から子に追加されても確実に隠すため）。
+        // 遠ざかったときだけ一度復帰させる。状態変化が無く遠方なら何もしない（軽量）。
+        if (shouldHide)
+        {
+            EnsureBodyRendererCache();
+            ApplyBodyShadowMode(ShadowCastingMode.ShadowsOnly);
+            _bodyHiddenForCamera = true;
+        }
+        else if (_bodyHiddenForCamera)
+        {
+            EnsureBodyRendererCache();
+            ApplyBodyShadowMode(ShadowCastingMode.On);
+            _bodyHiddenForCamera = false;
+        }
+    }
+
+    private void ApplyBodyShadowMode(ShadowCastingMode mode)
+    {
+        for (int i = 0; i < _bodyRenderers.Count; i++)
+        {
+            var r = _bodyRenderers[i];
+            if (r != null && r.shadowCastingMode != mode)
+                r.shadowCastingMode = mode;
+        }
+    }
+
+    /// <summary>
+    /// ボディレンダラー一覧を取得・キャッシュする。子レンダラー数が変化したら再走査する
+    /// （NPC は起動時はルートのプリミティブのみで、char1 等のモデルが後から子に追加されるため）。
+    /// </summary>
+    private void EnsureBodyRendererCache()
+    {
+        var found = GetComponentsInChildren<Renderer>(true);
+        if (found.Length == _knownRendererCount && _bodyRenderers.Count > 0) return;
+
+        _knownRendererCount = found.Length;
+        _bodyRenderers.Clear();
+        for (int i = 0; i < found.Length; i++)
+        {
+            var r = found[i];
+            if (r is MeshRenderer || r is SkinnedMeshRenderer)
+                _bodyRenderers.Add(r);
+        }
+    }
+
+    private void LateUpdate()
+    {
+        if (_isDead) return;
+        UpdateCameraOcclusionFade();
+    }
+
+    /// <summary>
     /// 近接する他エージェント(他NPC＋最寄りプレイヤー)から離れる XZ 反発ベクトルを返す（重なり防止のステアリング）。
     /// _separationRadius 以内の相手ごとに「離れる向き×近さ」を加算。0=近接相手なし。
     /// 共有ゴール（拠点/ReturnZone 等）に集まっても _waypointTolerance の範囲で互いを押し離し、団子状の重なりを防ぐ。
@@ -240,12 +335,22 @@ public class NPCController : MonoBehaviour
             if (dist > 0.001f && dist < r)
                 push += d / dist * (1f - dist / r);
         }
-        if (_nearestAllyTf != null)
+        // ローカル一人称カメラからは NPC 同士より広い個人空間を確保する（「巨大な顔」で画面を覆うのを防ぐ）。
+        // RegisteredPlayers には他 NPC も含まれ最寄り＝人間とは限らないため、カメラ位置を直接の反発源にする。
+        float pr = Mathf.Max(r, _playerPersonalSpace);
+        if (_localCameraTf != null)
+        {
+            Vector3 d = me - _localCameraTf.position; d.y = 0f;
+            float dist = d.magnitude;
+            if (dist > 0.001f && dist < pr)
+                push += d / dist * (1f - dist / pr) * 1.6f; // カメラ前は強めに押し出す
+        }
+        else if (_nearestAllyTf != null)
         {
             Vector3 d = me - _nearestAllyTf.position; d.y = 0f;
             float dist = d.magnitude;
-            if (dist > 0.001f && dist < r)
-                push += d / dist * (1f - dist / r);
+            if (dist > 0.001f && dist < pr)
+                push += d / dist * (1f - dist / pr);
         }
         return push;
     }
@@ -257,6 +362,12 @@ public class NPCController : MonoBehaviour
         ShelterZone nearestShelter = FindNearestShelter();
         PlayerHealthSystem nearestAlly = FindNearestAlivePlayer();
         _nearestAllyTf = nearestAlly != null ? nearestAlly.transform : null; // 分離用にキャッシュ
+        // ローカル一人称カメラを更新（無効化されたら取り直す）。NPC がこの視界を覆わないようにする。
+        if (_localCameraTf == null || !_localCameraTf.gameObject.activeInHierarchy)
+        {
+            var cam = Camera.main;
+            _localCameraTf = cam != null ? cam.transform : null;
+        }
         bool allyInDanger = nearestAlly != null && nearestAlly.HpPercent <= 0.45f;
 
         float nearestCarrierDistance = nearestRelic != null ? Vector3.Distance(transform.position, nearestRelic.transform.position) : Mathf.Infinity;

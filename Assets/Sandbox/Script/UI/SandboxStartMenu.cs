@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
 using TMPro;
@@ -8,121 +7,198 @@ using TMPro;
 namespace Sandbox.UI
 {
     /// <summary>
-    /// UGS/NGO 非依存のシンプルな単機用スタートメニュー。
-    /// 既存 MainMenuManager はネットワークロビー（Co-op 用・後回し）なので、単機ビルド導線として別途用意する。
-    /// UI は runtime 生成（外部アセット不要）。シーンにはこのコンポーネントを 1 つ置くだけでよい。
-    ///  - PLAY → gameSceneName をロード
-    ///  - QUIT → アプリ終了（Editor では Play 停止）
+    /// PEAK 風タイトル + ソロ/Co-op ロビー導線。
     /// </summary>
     public sealed class SandboxStartMenu : MonoBehaviour
     {
-        [Tooltip("空欄なら GameFlow.InGameScene（SandboxOfflineCombined）を使用する。")]
         [SerializeField] private string gameSceneName = "";
         [SerializeField] private string title = "PEAK IDIOTS";
         [SerializeField] private string subtitle = "ドタバタ山岳 Co-op ロープアクション";
+        [SerializeField] private string tagline = "登るのは簡単。運ぶと全員バカになる。";
 
         private GameObject _titlePanel;
-        private GameObject _lobbyPanel;
+        private GameObject _soloLobbyPanel;
+        private TextMeshProUGUI _lobbyRunLabel;
+        private CoopLobbyController _coopLobby;
+        private Transform _canvasRoot;
+
+        private void Awake()
+        {
+            MenuSceneBootstrap.EnsureForActiveScene(transform);
+            _coopLobby = GetComponent<CoopLobbyController>();
+            if (_coopLobby == null)
+                _coopLobby = gameObject.AddComponent<CoopLobbyController>();
+        }
 
         private void Start()
         {
             EnsureEventSystem();
             BuildUI();
             GameplayCursorPolicy.SetMenuMode();
-
-            // タイトルに戻った時点でラン横断状態（持ち越し買い物等）を初期化する。
             GameFlow.ResetRun();
-
             ShowTitle();
         }
 
         private void BuildUI()
         {
-            var canvasGo = new GameObject("StartMenu_Canvas");
-            canvasGo.transform.SetParent(transform, false);
-            var canvas = canvasGo.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            var scaler = canvasGo.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1920f, 1080f);
-            canvasGo.AddComponent<GraphicRaycaster>();
-
-            // 背景
-            var bg = NewRect("BG", canvas.transform);
-            Stretch(bg);
-            bg.gameObject.AddComponent<Image>().color = new Color(0.06f, 0.08f, 0.12f, 1f);
+            var canvas = MenuUiKit.CreateOverlayCanvas(transform, "StartMenu_Canvas");
+            _canvasRoot = canvas.transform;
+            FlowUiTheme.CreateSceneBackdrop(canvas.transform, FlowUiTheme.SceneFlavor.TitlePeak);
 
             BuildTitlePanel(canvas.transform);
-            BuildLobbyPanel(canvas.transform);
+            BuildSoloLobbyPanel(canvas.transform);
         }
 
-        // ── タイトルパネル ───────────────────────────────────
         private void BuildTitlePanel(Transform parent)
         {
-            var panel = NewRect("TitlePanel", parent);
-            Stretch(panel);
+            var panel = MenuUiKit.NewRect("TitlePanel", parent);
+            MenuUiKit.Stretch(panel);
             _titlePanel = panel.gameObject;
 
-            var t = CreateText("Title", panel, title, 96, new Vector2(0.5f, 0.72f));
-            t.fontStyle = FontStyles.Bold;
-            t.color = new Color(1f, 0.92f, 0.6f);
-            var st = CreateText("Subtitle", panel, subtitle, 34, new Vector2(0.5f, 0.62f));
-            st.color = new Color(0.85f, 0.9f, 1f);
+            // ── PEAK 風ロゴ ───────────────────────────────────────────
+            // 重い端末枠箱をやめ、背面のソフトグロー＋淡いスクリム＋強い影で
+            // 夕景の空に映える軽快なエンブレムにする（PEAK 優先）。
+            var titleAnchor = new Vector2(0.5f, 0.775f);
 
-            CreateButton("PlayButton", panel, "PLAY", new Vector2(0.5f, 0.42f),
-                new Color(0.2f, 0.55f, 0.25f), OnPlay);
-            CreateButton("QuitButton", panel, "QUIT", new Vector2(0.5f, 0.30f),
-                new Color(0.5f, 0.2f, 0.2f), OnQuit);
+            // 背面の柔らかい暗グロー（文字を空から浮かせる芯）
+            var glow = MenuUiKit.NewRect("TitleGlow", panel);
+            glow.anchorMin = glow.anchorMax = titleAnchor;
+            glow.sizeDelta = new Vector2(1500f, 760f);
+            glow.anchoredPosition = new Vector2(0f, -10f);
+            FlowUiTheme.AddSprite(glow, UiSprite.RadialGlow(2.1f),
+                new Color(0.03f, 0.02f, 0.05f, 0.5f), UnityEngine.UI.Image.Type.Simple).raycastTarget = false;
 
-            CreateText("Hint", panel,
-                "WASD: 移動 / Space: ジャンプ / 左クリック: ロープ / R: 解放", 24, new Vector2(0.5f, 0.12f));
+            // 上下が透けるソフトスクリム帯（枠なし・縦グラデで中央のみ僅かに沈める）
+            var scrim = MenuUiKit.NewRect("TitleScrim", panel);
+            scrim.anchorMin = scrim.anchorMax = titleAnchor;
+            scrim.sizeDelta = new Vector2(1000f, 250f);
+            scrim.anchoredPosition = Vector2.zero;
+            FlowUiTheme.AddSprite(scrim, UiSprite.VerticalGradient3(
+                new Color(0.05f, 0.04f, 0.07f, 0f),
+                new Color(0.05f, 0.04f, 0.07f, 0.5f),
+                new Color(0.05f, 0.04f, 0.07f, 0f), 0.5f),
+                Color.white, UnityEngine.UI.Image.Type.Simple).raycastTarget = false;
+
+            var titleTmp = MenuUiKit.CreateTitleText(panel, "Title", title, 96, titleAnchor);
+            titleTmp.characterSpacing = 6f;
+            FlowUiTheme.StyleReadable(titleTmp, 0.32f);
+
+            // タイトル下のアンバー区切り線
+            var divider = MenuUiKit.NewRect("Divider", panel);
+            divider.anchorMin = divider.anchorMax = new Vector2(0.5f, 0.725f);
+            divider.sizeDelta = new Vector2(560f, 2f);
+            divider.anchoredPosition = Vector2.zero;
+            FlowUiTheme.AddSprite(divider, UiSprite.RoundedRect(2),
+                new Color(UiPalette.Amber.r, UiPalette.Amber.g, UiPalette.Amber.b, 0.75f));
+
+            MenuUiKit.CreateBodyText(panel, "Subtitle", subtitle, 27, new Vector2(0.5f, 0.70f),
+                UiPalette.Cream).characterSpacing = 4f;
+
+            // タグライン（暖色・控えめなソフトプレートで可読性確保）
+            var taglinePlate = MenuUiKit.NewRect("TaglinePlate", panel);
+            taglinePlate.anchorMin = taglinePlate.anchorMax = new Vector2(0.5f, 0.575f);
+            taglinePlate.sizeDelta = new Vector2(740f, 54f);
+            taglinePlate.anchoredPosition = Vector2.zero;
+            FlowUiTheme.AddSprite(taglinePlate, UiSprite.RoundedRect(22), new Color(0.06f, 0.05f, 0.07f, 0.5f));
+            MenuUiKit.CreateBodyText(taglinePlate, "Tagline", tagline, 26, new Vector2(0.5f, 0.5f),
+                UiPalette.Amber).fontStyle = FontStyles.Italic;
+
+            // PEAK 暖色基調のボタン配色（緑の濁りをやめ、アンバー系で統一）
+            Color soloFill = new Color(0.50f, 0.32f, 0.15f, 0.96f);   // 暖かい琥珀ブラウン
+            Color coopFill = new Color(0.14f, 0.30f, 0.36f, 0.96f);   // 補色の冷たいティール（R.E.P.O. 寄せ）
+            MenuUiKit.CreateMenuButton(panel, "PlayButton", "▶  ソロ遠征",
+                new Vector2(0.5f, 0.40f), new Vector2(440f, 80f), soloFill, OnPlaySolo,
+                UiPalette.Amber);
+            MenuUiKit.CreateMenuButton(panel, "CoopButton", "▶  Co-op（2〜4人）",
+                new Vector2(0.5f, 0.295f), new Vector2(440f, 80f), coopFill, OnPlayCoop,
+                FlowUiTheme.TerminalAccent);
+            MenuUiKit.CreateMenuButton(panel, "QuitButton", "終了",
+                new Vector2(0.5f, 0.19f), new Vector2(300f, 58f), MenuUiKit.BtnNeutral, OnQuit);
+
+            // フッター（操作ヒント帯）
+            var hintBar = MenuUiKit.NewRect("HintBar", panel);
+            hintBar.anchorMin = new Vector2(0.5f, 0.065f);
+            hintBar.anchorMax = new Vector2(0.5f, 0.065f);
+            hintBar.sizeDelta = new Vector2(1180f, 44f);
+            hintBar.anchoredPosition = Vector2.zero;
+            FlowUiTheme.AddSprite(hintBar, UiSprite.RoundedRect(18), new Color(0.05f, 0.05f, 0.07f, 0.5f));
+            MenuUiKit.CreateBodyText(hintBar,  "Hint",
+                "WASD 移動    SPACE ジャンプ    左クリック ロープ    R 解放    Co-op はプロキシミティ VC",
+                20, new Vector2(0.5f, 0.5f), UiPalette.Cream).characterSpacing = 1f;
+
+            MenuUiKit.CreateBodyText(panel, "Version", "EARLY ACCESS  ·  Stage01 Loop",
+                16, new Vector2(0.985f, 0.028f), UiPalette.CreamDim).alignment = TextAlignmentOptions.Right;
         }
 
-        // ── ロビーパネル（ソロ用の出発確認）─────────────────
-        private void BuildLobbyPanel(Transform parent)
+        private void BuildSoloLobbyPanel(Transform parent)
         {
-            var panel = NewRect("LobbyPanel", parent);
-            Stretch(panel);
-            _lobbyPanel = panel.gameObject;
+            var panel = MenuUiKit.NewRect("SoloLobbyPanel", parent);
+            MenuUiKit.Stretch(panel);
+            _soloLobbyPanel = panel.gameObject;
 
-            var h = CreateText("LobbyHeader", panel, "ロビー", 72, new Vector2(0.5f, 0.74f));
-            h.fontStyle = FontStyles.Bold;
-            h.color = new Color(1f, 0.92f, 0.6f);
+            var board = FlowUiTheme.CreateTerminalPanel(panel, "SoloBoard",
+                new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.55f),
+                new Vector2(-440f, -160f), new Vector2(440f, 160f));
 
-            CreateText("LobbyInfo", panel,
-                "ソロで出発します。準備ができたら「ゲーム開始」を押してください。",
-                30, new Vector2(0.5f, 0.6f));
+            MenuUiKit.CreateTitleText(board, "LobbyHeader", "ソロ出発確認", 48, new Vector2(0.5f, 0.78f));
+            MenuUiKit.CreateBodyText(board, "LobbyInfo",
+                "ベースキャンプで装備を整え、山頂を目指す。\n初回はショップをスキップして即出発。",
+                24, new Vector2(0.5f, 0.52f));
 
-            CreateButton("StartGameButton", panel, "ゲーム開始", new Vector2(0.5f, 0.42f),
-                new Color(0.2f, 0.55f, 0.25f), OnStartGame);
-            CreateButton("BackButton", panel, "戻る", new Vector2(0.5f, 0.30f),
-                new Color(0.35f, 0.35f, 0.4f), ShowTitle);
+            _lobbyRunLabel = MenuUiKit.CreateBodyText(board, "LobbyRunInfo",
+                "遠征 #1", 22, new Vector2(0.5f, 0.28f), UiPalette.Amber);
+
+            MenuUiKit.CreateMenuButton(panel, "StartGameButton", "出発する",
+                new Vector2(0.5f, 0.22f), new Vector2(380f, 80f), MenuUiKit.BtnPrimary, OnStartGame,
+                UiPalette.Amber);
+            MenuUiKit.CreateMenuButton(panel, "BackButton", "戻る",
+                new Vector2(0.5f, 0.12f), new Vector2(260f, 56f), MenuUiKit.BtnNeutral, ShowTitle);
         }
+
+        public void ShowTitlePublic() => ShowTitle();
 
         private void ShowTitle()
         {
             _titlePanel?.SetActive(true);
-            _lobbyPanel?.SetActive(false);
+            _soloLobbyPanel?.SetActive(false);
+            _coopLobby?.Deactivate();
         }
 
-        private void OnPlay()
+        private void OnPlaySolo()
         {
-            // タイトル → ロビー
             _titlePanel?.SetActive(false);
-            _lobbyPanel?.SetActive(true);
+            _soloLobbyPanel?.SetActive(true);
+            _coopLobby?.Deactivate();
+            RefreshLobbyInfo();
         }
 
-        private void OnStartGame()
+        private void OnPlayCoop()
         {
-            // ロビー → インゲーム（遠征は到着後に自動開始）
+            _titlePanel?.SetActive(false);
+            _soloLobbyPanel?.SetActive(false);
+            _coopLobby?.ActivatePanel(_canvasRoot);
+        }
+
+        public void OnPlay() => OnPlaySolo();
+
+        public void OnStartGame()
+        {
             if (!string.IsNullOrEmpty(gameSceneName) && gameSceneName != "Sandbox")
             {
                 GameplayCursorPolicy.SetGameplayMode();
                 SceneManager.LoadScene(gameSceneName);
                 return;
             }
-
             GameFlow.GoToInGame();
+        }
+
+        private void RefreshLobbyInfo()
+        {
+            if (_lobbyRunLabel == null) return;
+            int nextRun = GameFlow.RunCount + 1;
+            _lobbyRunLabel.text = nextRun <= 1
+                ? "遠征 #1 — 初回出発（装備持ち込みなし）"
+                : $"遠征 #{nextRun} — 前回の装備をベースキャンプで確認";
         }
 
         private void OnQuit()
@@ -132,53 +208,6 @@ namespace Sandbox.UI
 #else
             Application.Quit();
 #endif
-        }
-
-        // ── UI helpers ──
-        private static RectTransform NewRect(string name, Transform parent)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            return go.AddComponent<RectTransform>();
-        }
-
-        private static void Stretch(RectTransform rt)
-        {
-            rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-            rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
-        }
-
-        private static TextMeshProUGUI CreateText(string name, Transform parent, string text, int size, Vector2 anchor)
-        {
-            var rt = NewRect(name, parent);
-            rt.anchorMin = rt.anchorMax = anchor;
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(1400f, size * 1.6f);
-            rt.anchoredPosition = Vector2.zero;
-            var tmp = rt.gameObject.AddComponent<TextMeshProUGUI>();
-            tmp.text = text; tmp.fontSize = size; tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color = Color.white;
-            return tmp;
-        }
-
-        private void CreateButton(string name, Transform parent, string label, Vector2 anchor,
-            Color color, UnityEngine.Events.UnityAction onClick)
-        {
-            var rt = NewRect(name, parent);
-            rt.anchorMin = rt.anchorMax = anchor;
-            rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(360f, 90f);
-            rt.anchoredPosition = Vector2.zero;
-            var img = rt.gameObject.AddComponent<Image>();
-            img.color = color;
-            var btn = rt.gameObject.AddComponent<Button>();
-            btn.onClick.AddListener(onClick);
-
-            var tRt = NewRect("Text", rt);
-            Stretch(tRt);
-            var tmp = tRt.gameObject.AddComponent<TextMeshProUGUI>();
-            tmp.text = label; tmp.fontSize = 40; tmp.fontStyle = FontStyles.Bold;
-            tmp.alignment = TextAlignmentOptions.Center; tmp.color = Color.white;
         }
 
         private static void EnsureEventSystem()

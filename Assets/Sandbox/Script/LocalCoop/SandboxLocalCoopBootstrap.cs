@@ -507,7 +507,8 @@ public sealed class SandboxLocalCoopBootstrap : MonoBehaviour
         for (int i = 0; i < npcCount; i++)
         {
             int slot = humans + i;
-            SpawnNpcCompanion(slot, i);
+            Vector3 pos = GetCompanionFormationPosition(hostPlayerRoot, i, npcCount);
+            SpawnNpcCompanionAt(slot, i, pos);
         }
 
         _roster.SyncHumanCountSetting();
@@ -539,12 +540,42 @@ public sealed class SandboxLocalCoopBootstrap : MonoBehaviour
         return instance;
     }
 
-    private void SpawnNpcCompanion(int partySlot, int npcNameIndex)
+    private void SpawnNpcCompanionAt(int partySlot, int npcNameIndex, Vector3 pos)
     {
         string name = ResolveNpcName(npcNameIndex);
         Color color = ResolveNpcColor(npcNameIndex);
-        Vector3 pos = GetSpawnPosition(partySlot);
         SpawnNpcAt(partySlot, pos, name, color);
+    }
+
+    /// <summary>
+    /// 仲間 NPC をホストプレイヤーの背後・側方へ扇状に配置する。
+    /// 一人称カメラの初期視界（前方）に NPC が割り込んで「巨大な顔」で画面を覆うのを防ぐ。
+    /// ホストの向きを基準にし、後方 2.6〜4.2m に左右へ広げる。地面高さはホストに合わせる。
+    /// </summary>
+    private Vector3 GetCompanionFormationPosition(GameObject host, int formationIndex, int total)
+    {
+        if (host == null)
+            return GetSpawnPosition(formationIndex + 1);
+
+        Transform t = host.transform;
+        Vector3 forward = t.forward;
+        forward.y = 0f;
+        if (forward.sqrMagnitude < 0.0001f) forward = Vector3.forward;
+        forward.Normalize();
+        Vector3 right = Vector3.Cross(Vector3.up, forward); // forward の右手側
+
+        // 後方の基準距離と、左右に広げる扇の量
+        const float backBase = 2.6f;   // 直近の仲間でもこの距離は後方に置く
+        const float backStep = 0.7f;   // 列が増えるごとに少し奥へ
+        const float lateralStep = 1.9f; // 隣同士の左右間隔
+
+        // -(total-1)/2 .. +(total-1)/2 で左右対称に並べる
+        float lateral = (formationIndex - (total - 1) * 0.5f) * lateralStep;
+        float back = backBase + Mathf.Abs(lateral) * 0.15f + backStep * (formationIndex % 2);
+
+        Vector3 pos = t.position - forward * back + right * lateral;
+        pos.y = t.position.y; // ホストと同じ接地高さ
+        return pos;
     }
 
     private void ConfigureHuman(GameObject root, int slot, string displayName, Gamepad gamepad)

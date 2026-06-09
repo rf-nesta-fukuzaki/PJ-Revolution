@@ -18,10 +18,10 @@ namespace Sandbox.UI
         public static readonly Color DefaultShadow  = new Color(0f, 0f, 0f, 0.85f);
         public static readonly Color DefaultOutline = new Color(0f, 0f, 0f, 0.9f);
 
-        public const float DefaultOutlineWidth   = 0.18f;
-        public const float DefaultShadowOffset   = 0.6f;
-        public const float DefaultShadowDilate   = 0.1f;
-        public const float DefaultShadowSoftness = 0.35f;
+        public const float DefaultOutlineWidth   = 0.15f;
+        public const float DefaultShadowOffset   = 0.55f;
+        public const float DefaultShadowDilate   = 0.05f;
+        public const float DefaultShadowSoftness = 0.3f;
 
         /// <summary>
         /// face は維持したまま、アウトライン + ソフトシャドウ(Underlay)を付与してコントラストを底上げ。
@@ -34,6 +34,15 @@ namespace Sandbox.UI
             float shadowSoftness = DefaultShadowSoftness)
         {
             if (text == null) return;
+
+            // フォント未割当のまま fontMaterial を読むと内部で new Material(null) となり
+            // ArgumentNullException を投げる。既定フォントで補完し、無ければ安全に抜ける。
+            if (text.font == null)
+            {
+                if (TMP_Settings.defaultFontAsset == null) return;
+                text.font = TMP_Settings.defaultFontAsset;
+            }
+            if (text.font.material == null) return;
 
             // per-instance material（共有マテリアルを汚染しない）
             Material mat = text.fontMaterial;

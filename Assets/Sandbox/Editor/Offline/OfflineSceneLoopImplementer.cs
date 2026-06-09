@@ -501,7 +501,7 @@ public static class OfflineSceneLoopImplementer
 
         var pause = GetOrAddComponent<PauseMenu>(pauseRoot);
         var pauseSo = new SerializedObject(pause);
-        pauseSo.FindProperty("_mainMenuScene")?.SetValueSafe("MainMenu");
+        pauseSo.FindProperty("_mainMenuScene")?.SetValueSafe("");
         pauseSo.ApplyModifiedPropertiesWithoutUndo();
 
         panelGraphics.SetActive(true);
@@ -603,6 +603,8 @@ public static class OfflineSceneLoopImplementer
             EnsurePrefabComponent<ItemUseController>(root);
             EnsurePrefabComponent<ItemHandController>(root);
             EnsureEmoteWheelSetup(root);
+            StripDebugCapsuleMesh(root);
+            EnsurePrefabComponent<PlayerVisualCleanup>(root);
 
             PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
         }
@@ -638,6 +640,18 @@ public static class OfflineSceneLoopImplementer
     {
         if (root.GetComponent<T>() == null)
             root.AddComponent<T>();
+    }
+
+    /// <summary>ExplorerModel がある PlayerPrefab からデバッグ Capsule メッシュを除去する。</summary>
+    private static void StripDebugCapsuleMesh(GameObject root)
+    {
+        if (root.transform.Find("ExplorerModel") == null)
+            return;
+
+        if (root.TryGetComponent(out MeshRenderer mr))
+            Object.DestroyImmediate(mr, true);
+        if (root.TryGetComponent(out MeshFilter mf))
+            Object.DestroyImmediate(mf, true);
     }
 
     private static List<string> ValidateRequirements()

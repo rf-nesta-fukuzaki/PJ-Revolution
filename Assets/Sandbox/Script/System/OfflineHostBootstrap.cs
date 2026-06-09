@@ -28,6 +28,8 @@ public sealed class OfflineHostBootstrap
             yield break;
         }
 
+        NetworkManagerConfigGuard.Ensure(networkManager);
+
         var transport = networkManager.GetComponent<UnityTransport>();
         if (transport != null)
         {

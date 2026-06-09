@@ -1,9 +1,10 @@
+using Sandbox.UI;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// GDD §14.6 — インベントリ HUD（4スロット・耐久ミニバー）。
+/// GDD §14.6 — インベントリ HUD（R.E.P.O. 端末スロット風・4枠）。
 /// </summary>
 public class InventoryHud : MonoBehaviour
 {
@@ -15,6 +16,7 @@ public class InventoryHud : MonoBehaviour
 
     private struct SlotView
     {
+        public RectTransform Root;
         public Image Icon;
         public Image DurabilityFill;
         public TextMeshProUGUI Label;
@@ -93,7 +95,7 @@ public class InventoryHud : MonoBehaviour
             var view = _slots[i];
             bool hasItem = item != null && !item.IsBroken;
             if (view.Icon != null)
-                view.Icon.color = hasItem ? new Color(0.85f, 0.75f, 0.45f, 1f) : new Color(0.25f, 0.25f, 0.25f, 0.6f);
+                view.Icon.color = hasItem ? UiPalette.Amber : new Color(0.2f, 0.22f, 0.26f, 0.5f);
             if (view.DurabilityFill != null)
                 view.DurabilityFill.fillAmount = hasItem ? item.DurabilityPct : 0f;
             if (view.Label != null)
@@ -108,81 +110,89 @@ public class InventoryHud : MonoBehaviour
         var canvas = canvasGo.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 40;
-        canvasGo.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        var scaler = canvasGo.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
         canvasGo.AddComponent<GraphicRaycaster>();
 
-        _panel = new GameObject("InventoryPanel");
-        _panel.transform.SetParent(canvasGo.transform, false);
-        var panelRect = _panel.AddComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(1f, 0f);
-        panelRect.anchorMax = new Vector2(1f, 0f);
-        panelRect.pivot     = new Vector2(1f, 0f);
-        panelRect.anchoredPosition = new Vector2(-24f, 24f);
-        panelRect.sizeDelta = new Vector2(360f, 72f);
+        var outer = FlowUiTheme.NewRect("InventoryPanel", canvasGo.transform);
+        outer.anchorMin = outer.anchorMax = new Vector2(1f, 0f);
+        outer.pivot = new Vector2(1f, 0f);
+        outer.anchoredPosition = new Vector2(-20f, 24f);
+        outer.sizeDelta = new Vector2(392f, 88f);
+        _panel = outer.gameObject;
+        FlowUiTheme.AddSprite(outer, UiSprite.RoundedRect(18), FlowUiTheme.TerminalBg);
 
-        var bg = _panel.AddComponent<Image>();
-        bg.color = new Color(0f, 0f, 0f, 0.55f);
+        var frame = FlowUiTheme.NewRect("Frame", outer);
+        FlowUiTheme.Stretch(frame);
+        FlowUiTheme.AddSprite(frame, UiSprite.RoundedFrame(18, 2), FlowUiTheme.TerminalBorder)
+            .raycastTarget = false;
+
+        var inner = FlowUiTheme.NewRect("Inner", outer);
+        FlowUiTheme.Stretch(inner, 2f);
+
+        var header = CreateLabel(inner, "Header", "GEAR", 11, new Vector2(0.02f, 0.92f),
+            new Vector2(0.3f, 0.92f), FlowUiTheme.TerminalAccent, FontStyles.Bold);
 
         for (int i = 0; i < 4; i++)
         {
-            var slotGo = new GameObject($"Slot{i + 1}");
-            slotGo.transform.SetParent(_panel.transform, false);
-            var rect = slotGo.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0f, 0.5f);
-            rect.anchorMax = new Vector2(0f, 0.5f);
-            rect.pivot     = new Vector2(0f, 0.5f);
-            rect.anchoredPosition = new Vector2(12f + i * 86f, 0f);
-            rect.sizeDelta = new Vector2(76f, 56f);
+            var slotFrame = FlowUiTheme.CreateTerminalPanel(inner, $"Slot{i + 1}",
+                new Vector2(0f, 0f), new Vector2(0f, 0f),
+                new Vector2(10f + i * 94f, 10f), new Vector2(92f + i * 94f, 72f));
 
-            var frame = slotGo.AddComponent<Image>();
-            frame.color = new Color(0.2f, 0.2f, 0.2f, 0.9f);
+            var iconGo = FlowUiTheme.NewRect("Icon", slotFrame);
+            iconGo.anchorMin = new Vector2(0.08f, 0.28f);
+            iconGo.anchorMax = new Vector2(0.92f, 0.92f);
+            iconGo.offsetMin = iconGo.offsetMax = Vector2.zero;
+            var icon = iconGo.gameObject.AddComponent<Image>();
+            icon.color = new Color(0.2f, 0.22f, 0.26f, 0.5f);
 
-            var iconGo = new GameObject("Icon");
-            iconGo.transform.SetParent(slotGo.transform, false);
-            var iconRect = iconGo.AddComponent<RectTransform>();
-            iconRect.anchorMin = Vector2.zero;
-            iconRect.anchorMax = Vector2.one;
-            iconRect.offsetMin = new Vector2(6f, 16f);
-            iconRect.offsetMax = new Vector2(-6f, -6f);
-            var icon = iconGo.AddComponent<Image>();
-            icon.color = new Color(0.25f, 0.25f, 0.25f, 0.6f);
+            var barBg = FlowUiTheme.NewRect("DurabilityBg", slotFrame);
+            barBg.anchorMin = new Vector2(0.1f, 0.1f);
+            barBg.anchorMax = new Vector2(0.9f, 0.22f);
+            barBg.offsetMin = barBg.offsetMax = Vector2.zero;
+            barBg.gameObject.AddComponent<Image>().color = UiPalette.Track;
 
-            var barBgGo = new GameObject("DurabilityBg");
-            barBgGo.transform.SetParent(slotGo.transform, false);
-            var barBgRect = barBgGo.AddComponent<RectTransform>();
-            barBgRect.anchorMin = new Vector2(0f, 0f);
-            barBgRect.anchorMax = new Vector2(1f, 0f);
-            barBgRect.pivot     = new Vector2(0.5f, 0f);
-            barBgRect.anchoredPosition = new Vector2(0f, 4f);
-            barBgRect.sizeDelta = new Vector2(-12f, 6f);
-            barBgGo.AddComponent<Image>().color = new Color(0.1f, 0.1f, 0.1f, 1f);
-
-            var barGo = new GameObject("DurabilityFill");
-            barGo.transform.SetParent(barBgGo.transform, false);
-            var barRect = barGo.AddComponent<RectTransform>();
-            barRect.anchorMin = Vector2.zero;
-            barRect.anchorMax = Vector2.one;
-            barRect.offsetMin = Vector2.zero;
-            barRect.offsetMax = Vector2.zero;
-            var fill = barGo.AddComponent<Image>();
+            var barFill = FlowUiTheme.NewRect("DurabilityFill", barBg);
+            FlowUiTheme.Stretch(barFill);
+            var fill = barFill.gameObject.AddComponent<Image>();
             fill.type = Image.Type.Filled;
             fill.fillMethod = Image.FillMethod.Horizontal;
-            fill.color = new Color(0.3f, 0.85f, 0.35f, 1f);
+            fill.color = UiPalette.Sage;
 
-            var labelGo = new GameObject("Label");
-            labelGo.transform.SetParent(slotGo.transform, false);
-            var labelRect = labelGo.AddComponent<RectTransform>();
-            labelRect.anchorMin = new Vector2(0f, 1f);
-            labelRect.anchorMax = new Vector2(1f, 1f);
-            labelRect.pivot     = new Vector2(0.5f, 1f);
-            labelRect.anchoredPosition = new Vector2(0f, -2f);
-            labelRect.sizeDelta = new Vector2(-4f, 14f);
-            var label = labelGo.AddComponent<TextMeshProUGUI>();
-            label.fontSize = 10f;
-            label.alignment = TextAlignmentOptions.Center;
-            label.text = $"[{i + 1}]";
+            var label = CreateLabel(slotFrame, "Label", $"[{i + 1}]", 9,
+                new Vector2(0f, 1f), new Vector2(1f, 1f), UiPalette.CreamDim, FontStyles.Normal);
+            label.rectTransform.offsetMin = new Vector2(2f, -14f);
+            label.rectTransform.offsetMax = new Vector2(-2f, -2f);
 
-            _slots[i] = new SlotView { Icon = icon, DurabilityFill = fill, Label = label };
+            _slots[i] = new SlotView
+            {
+                Root = slotFrame,
+                Icon = icon,
+                DurabilityFill = fill,
+                Label = label,
+            };
         }
+    }
+
+    private static TextMeshProUGUI CreateLabel(Transform parent, string name, string text, int size,
+        Vector2 anchorMin, Vector2 anchorMax, Color color, FontStyles style)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.anchorMin = anchorMin;
+        rt.anchorMax = anchorMax;
+        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        var tmp = go.AddComponent<TextMeshProUGUI>();
+        tmp.text = text;
+        tmp.fontSize = size;
+        tmp.fontStyle = style;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = color;
+        if (tmp.font == null && TMP_Settings.defaultFontAsset != null)
+            tmp.font = TMP_Settings.defaultFontAsset;
+        FlowUiTheme.StyleReadable(tmp, 0.1f);
+        return tmp;
     }
 }

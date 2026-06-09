@@ -57,12 +57,22 @@ public sealed class GameLoopAutoPilot : MonoBehaviour
     {
         Log($"ARMED. targetLoops={targetLoops}  startScene='{ActiveScene}'");
 
-        // 1) タイトル → インゲーム
+        // 1) タイトル → ロビー → インゲーム
         if (ActiveScene == GameFlow.TitleScene)
         {
             yield return Wait(stepDelay);
-            Log("STEP 1: タイトル → インゲーム（ロビー出発を模擬）");
-            GameFlow.GoToInGame();
+            Log("STEP 1: タイトル → ロビー → インゲーム");
+            var menu = Object.FindFirstObjectByType<Sandbox.UI.SandboxStartMenu>();
+            if (menu != null)
+            {
+                menu.OnPlay();
+                yield return Wait(0.5f);
+                menu.OnStartGame();
+            }
+            else
+            {
+                GameFlow.GoToInGame();
+            }
             yield return WaitForScene(GameFlow.InGameScene);
         }
 

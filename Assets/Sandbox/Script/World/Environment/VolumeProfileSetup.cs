@@ -75,6 +75,44 @@ namespace Sandbox.World.Environment
         private void OnEnable() { Build(); }
         private void OnDisable() { Teardown(); }
 
+        /// <summary>
+        /// 屋内/屋外の夕景キャンプ向けプリセット。雪山日中向け既定値より暖かく、
+        /// ランタン/焚き火のハイライトがにじむようブルーム閾値を下げ、暮色のムードを強める。
+        /// OnEnable(Build) 前に呼ぶこと（GameObject を一旦無効化してから AddComponent → 本メソッド → 有効化）。
+        /// </summary>
+        public void ApplyCozyDuskPreset()
+        {
+            // 低い閾値で薄暗いランタン/焚き火の芯がやわらかく発光する
+            bloomIntensity = 0.55f;
+            bloomThreshold = 0.95f;
+            bloomScatter = 0.72f;
+            bloomTint = new Color(1.0f, 0.86f, 0.66f, 1f);
+
+            // 周辺減光をやや強め、机上の出発準備に視線を集める
+            vignetteIntensity = 0.32f;
+            vignetteSmoothness = 0.45f;
+            vignetteColor = new Color(0.05f, 0.03f, 0.04f, 1f);
+
+            // 暮色のフィルミックな色域（暖色フィルタ＋やや高コントラスト）
+            postExposure = 0.10f;
+            contrast = 18f;
+            colorFilter = new Color(1.0f, 0.93f, 0.84f, 1f);
+            saturation = 12f;
+
+            // 暖色寄りのホワイトバランス
+            temperature = 14f;
+            tint = 2f;
+
+            // 影は冷たい青紫、ハイライトは焚き火の橙
+            splitShadows = new Color(0.30f, 0.34f, 0.52f, 1f);
+            splitHighlights = new Color(1.0f, 0.78f, 0.50f, 1f);
+            splitBalance = 4f;
+
+            // 粒状感は控えめ、色収差はごく僅か
+            filmGrainIntensity = 0.10f;
+            chromaticAberration = 0.05f;
+        }
+
         private void Build()
         {
             if (_volumeGo != null) return;

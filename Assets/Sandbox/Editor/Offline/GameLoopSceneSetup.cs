@@ -18,6 +18,8 @@ using UnityEngine.SceneManagement;
 ///   2. <c>StartMenu</c> の <see cref="SandboxStartMenu"/>.gameSceneName を空にし、GameFlow 既定（SandboxOfflineCombined）へ委譲。
 ///   3. <c>SandboxOfflineCombined</c> 内の在シーン <see cref="BasecampShop"/> を無効化（外部ショップシーンへ役割を移譲）。
 ///   4. Build Settings の先頭を [StartMenu, SandboxOfflineCombined, Shop] の順に整える。
+///   5. <see cref="SettingsRuntimeUiBuilder"/> / <see cref="MainMenuRuntimeUiBuilder"/> で
+///      Settings・MainMenu のテーマ UI 配線をシーン YAML に永続化する。
 ///
 /// メニュー: Peak Plunder > Game Loop > Setup Game Loop Scenes
 /// </summary>
@@ -26,6 +28,8 @@ public static class GameLoopSceneSetup
     private const string TitleScenePath    = "Assets/Sandbox/Scenes/StartMenu.unity";
     private const string InGameScenePath   = "Assets/Sandbox/Scenes/SandboxOfflineCombined.unity";
     private const string ShopScenePath     = "Assets/Sandbox/Scenes/Shop.unity";
+    private const string MainMenuScenePath = "Assets/Sandbox/Scenes/MainMenu.unity";
+    private const string OfflineTestPath   = "Assets/Sandbox/Scenes/OfflineTestScene.unity";
 
     [MenuItem(PeakPlunderEditorMenus.GameLoop.SetupGameLoopScenes)]
     public static void SetupGameLoopScenes()
@@ -36,6 +40,11 @@ public static class GameLoopSceneSetup
         CreateOrRefreshShopScene();
         ConfigureTitleScene();
         DisableInSceneShopInCombined();
+        RefreshResultScreenInScene(InGameScenePath);
+        RefreshResultScreenInScene(OfflineTestPath);
+        RefreshSettingsInScene(InGameScenePath);
+        RefreshSettingsInScene(OfflineTestPath);
+        RefreshMainMenuInScene();
         ConfigureBuildSettings();
 
         AssetDatabase.SaveAssets();
@@ -68,8 +77,11 @@ public static class GameLoopSceneSetup
         if (buildPaths.Count > 0 && buildPaths[0] != TitleScenePath)
             problems.Add($"Build Settings 先頭がタイトルシーンでない（現在: {buildPaths[0]}）");
 
+        ValidateSceneHasComponent(TitleScenePath, typeof(SandboxStartMenu), problems);
+        ValidateSceneHasComponent(ShopScenePath, typeof(ShopSceneController), problems);
+
         if (problems.Count == 0)
-            Debug.Log("[GameLoop Validate] OK — 3 シーンが揃い、Build Settings も整っています。");
+            Debug.Log("[GameLoop Validate] OK — 3 シーンが揃い、Build Settings・主要コンポーネントも整っています。");
         else
             Debug.LogWarning("[GameLoop Validate] 課題:\n  - " + string.Join("\n  - ", problems));
     }
@@ -117,6 +129,65 @@ public static class GameLoopSceneSetup
         {
             Debug.LogWarning("[GameLoop] StartMenu に SandboxStartMenu が見つかりません。");
         }
+    }
+
+    // ── 3.5 リザルト画面の配線補完 ───────────────────────────
+    private static void RefreshResultScreenInScene(string scenePath)
+    {
+        if (!File.Exists(scenePath)) return;
+
+        var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+        var result = Object.FindFirstObjectByType<ResultScreen>(FindObjectsInactive.Include);
+        if (result != null)
+        {
+            ResultScreenRuntimeBuilder.EnsureStructureAndSave(result);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Debug.Log($"[GameLoop] {scenePath} の ResultScreen 配線を補完・保存しました。");
+        }
+    }
+
+    // ── 3.6 Settings / MainMenu テーマ UI 永続化 ─────────────
+    private static void RefreshSettingsInScene(string scenePath)
+    {
+        if (!File.Exists(scenePath)) return;
+
+        var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
+        var settings = Object.FindFirstObjectByType<SettingsManager>(FindObjectsInactive.Include);
+        if (settings == null) return;
+
+        SettingsRuntimeUiBuilder.EnsureThemedAndSave(settings);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        Debug.Log($"[GameLoop] {scenePath} の Settings UI を補完・保存しました。");
+    }
+
+    private static void RefreshMainMenuInScene()
+    {
+        if (!File.Exists(MainMenuScenePath)) return;
+
+        var scene = EditorSceneManager.OpenScene(MainMenuScenePath, OpenSceneMode.Single);
+        var menu = Object.FindFirstObjectByType<MainMenuManager>(FindObjectsInactive.Include);
+        if (menu == null)
+        {
+            Debug.LogWarning($"[GameLoop] {MainMenuScenePath} に MainMenuManager が見つかりません。");
+            return;
+        }
+
+        MainMenuRuntimeUiBuilder.EnsureThemedAndSave(menu);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        Debug.Log($"[GameLoop] {MainMenuScenePath} の MainMenu UI を補完・保存しました。");
+    }
+
+    private static void ValidateSceneHasComponent(string scenePath, System.Type type, List<string> problems)
+    {
+        if (!File.Exists(scenePath)) return;
+        var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+        bool found = Object.FindFirstObjectByType(type, FindObjectsInactive.Include) != null;
+        EditorSceneManager.CloseScene(scene, true);
+        if (!found)
+            problems.Add($"{scenePath} に {type.Name} がありません。");
     }
 
     // ── 3. 在シーンショップの無効化 ──────────────────────────

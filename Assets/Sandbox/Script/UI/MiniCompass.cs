@@ -34,6 +34,10 @@ public class MiniCompass : MonoBehaviour
     [Tooltip("コンパス面（背景円・リング・方位・針）を実行時に自動整備する")]
     [SerializeField] private bool _autoBuildFace = true;
 
+    [Tooltip("コンパス全体の表示倍率。1=従来サイズ。HUD の占有を抑えるため既定で縮小。")]
+    [Range(0.4f, 1.2f)]
+    [SerializeField] private float _faceScale = 0.68f;
+
     // ── ピン種別ごとの色（PinSystem.PinType と対応）──────────
     private static readonly Color[] PIN_COLORS = {
         new Color(0.94f, 0.33f, 0.30f, 1f), // Danger
@@ -222,6 +226,9 @@ public class MiniCompass : MonoBehaviour
     {
         var root = transform as RectTransform;
         if (root == null) return;
+
+        // HUD の占有を抑えるため、ベイク済み・実行時生成の両パーツをまとめて縮小する。
+        root.localScale = new Vector3(_faceScale, _faceScale, 1f);
 
         if (_dialTransform == null)
             BuildDial(root);

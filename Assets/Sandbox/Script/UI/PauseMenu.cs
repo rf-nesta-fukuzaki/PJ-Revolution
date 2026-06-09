@@ -133,6 +133,29 @@ public class PauseMenu : MonoBehaviour
         OnResumed?.Invoke();
     }
 
+#if UNITY_EDITOR
+    /// <summary>エディタキャプチャ用：確認ダイアログを即表示する。</summary>
+    public void EditorShowConfirmForCapture()
+    {
+        if (!IsPaused) Pause();
+        RequestLeave();
+    }
+
+    /// <summary>エディタキャプチャ用：ポーズ UI を完全に隠す。</summary>
+    public void EditorForceHideForCapture()
+    {
+        if (IsPaused) Resume();
+        if (_view?.Root != null)
+        {
+            _view.Root.SetActive(false);
+            _view.Group.alpha = 0f;
+        }
+        IsPaused = false;
+        _page = PausePage.None;
+        Time.timeScale = 1f;
+    }
+#endif
+
     /// <summary>Esc / Cancel の 1 段戻る処理。</summary>
     private void HandleCancel()
     {

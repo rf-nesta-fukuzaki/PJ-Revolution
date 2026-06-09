@@ -34,7 +34,7 @@ public class QuotaUpgradeHud : MonoBehaviour
     private int   _cachedExtracted;
     private bool  _built;
 
-    private TextMeshProUGUI _quotaTitle, _quotaValue, _moneyLabel, _up1, _up2, _up3;
+    private TextMeshProUGUI _quotaLine, _moneyLabel, _up1, _up2, _up3;
 
     /// <summary>テスト用：最後にキャッシュした搬入価値。</summary>
     public int CachedExtracted => _cachedExtracted;
@@ -93,10 +93,10 @@ public class QuotaUpgradeHud : MonoBehaviour
         int level    = q != null ? q.Level : 1;
         bool met     = _cachedExtracted >= required && required > 0;
 
-        _quotaTitle.text = $"ノルマ Lv{level}";
-        _quotaValue.text = met ? $"抽出 {_cachedExtracted} / {required} pt  [達成]"
-                               : $"抽出 {_cachedExtracted} / {required} pt";
-        _quotaValue.color = met ? Good : TextMain;
+        _quotaLine.text = met
+            ? $"ノルマ Lv{level}   ·   抽出 {_cachedExtracted} / {required} pt  [達成]"
+            : $"ノルマ Lv{level}   ·   抽出 {_cachedExtracted} / {required} pt";
+        _quotaLine.color = met ? Good : TextMain;
 
         _moneyLabel.text = $"所持金 {CurrencyWallet.Balance} G";
         _up1.text = UpgradeLine("[1] 最大HP",     UpgradeType.MaxHealth);
@@ -129,45 +129,68 @@ public class QuotaUpgradeHud : MonoBehaviour
         scaler.matchWidthOrHeight  = 0.5f;
         // GraphicRaycaster は入力不要なので付けない（数字キーは InputStateReader 経由）。
 
-        // ── ノルマパネル（上中央）──
+        // ── ノルマ（上中央・1 行コンパクト）──
         var quotaPanel = MakePanel(canvasGo.transform, "QuotaPanel",
-            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(380f, 78f), new Vector2(0f, -14f));
-        _quotaTitle = MakeText(quotaPanel, "Title", 8f, 26f, 22, TextDim,  TextAlignmentOptions.Center, "ノルマ Lv1");
-        _quotaValue = MakeText(quotaPanel, "Value", 34f, 36f, 28, TextMain, TextAlignmentOptions.Center, "抽出 0 / 0 pt");
+            new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(520f, 48f), new Vector2(0f, -12f));
+        _quotaLine = MakeText(quotaPanel, "QuotaLine", 10f, 28f, 24, TextMain, TextAlignmentOptions.Center,
+            "ノルマ Lv1   ·   抽出 0 / 0 pt");
 
         // ── 所持金 + アップグレード（左下）──
         var upPanel = MakePanel(canvasGo.transform, "UpgradePanel",
-            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(330f, 158f), new Vector2(16f, 16f));
-        _moneyLabel = MakeText(upPanel, "Money", 8f,  30f, 24, Gold,     TextAlignmentOptions.Left, "所持金 0 G");
-        _up1        = MakeText(upPanel, "Up1",   42f, 26f, 19, TextMain, TextAlignmentOptions.Left, "[1] 最大HP");
-        _up2        = MakeText(upPanel, "Up2",   70f, 26f, 19, TextMain, TextAlignmentOptions.Left, "[2] 最大スタミナ");
-        _up3        = MakeText(upPanel, "Up3",   98f, 26f, 19, TextMain, TextAlignmentOptions.Left, "[3] ダッシュ速度");
+            new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(340f, 148f), new Vector2(16f, 16f));
+        // 共有 PanelBg(α0.55) は背景が透けて文字が埋もれるため、この情報パネルは不透明寄りにする。
+        var upBg = upPanel.GetComponent<Image>();
+        if (upBg != null) upBg.color = new Color(0.05f, 0.05f, 0.07f, 0.88f);
+        var accent = FlowUiTheme.NewRect("Accent", upPanel);
+        accent.anchorMin = new Vector2(0f, 0f);
+        accent.anchorMax = new Vector2(0f, 1f);
+        accent.pivot = new Vector2(0f, 0.5f);
+        accent.sizeDelta = new Vector2(4f, -12f);
+        accent.anchoredPosition = new Vector2(6f, 0f);
+        FlowUiTheme.AddSprite(accent, UiSprite.RoundedRect(2), UiPalette.Amber).raycastTarget = false;
+        MakeText(upPanel, "Header", 8f, 22f, 16, TextDim, TextAlignmentOptions.Left, "恒久強化  [1-3]");
+        _moneyLabel = MakeText(upPanel, "Money", 30f, 28f, 22, Gold,     TextAlignmentOptions.Left, "所持金 0 G");
+        _up1        = MakeText(upPanel, "Up1",   58f, 24f, 18, TextMain, TextAlignmentOptions.Left, "[1] 最大HP");
+        _up2        = MakeText(upPanel, "Up2",   84f, 24f, 18, TextMain, TextAlignmentOptions.Left, "[2] 最大スタミナ");
+        _up3        = MakeText(upPanel, "Up3",  110f, 24f, 18, TextMain, TextAlignmentOptions.Left, "[3] ダッシュ速度");
 
         if (font != null)
             foreach (var t in canvasGo.GetComponentsInChildren<TextMeshProUGUI>(true))
                 t.font = font;
 
+        // 可読性（アウトライン＋ソフトシャドウ）はフォント割当の後に適用する。
+        // 先に適用すると t.font 代入でマテリアルが既定へ戻り、設定が失われるため。
+        foreach (var t in canvasGo.GetComponentsInChildren<TextMeshProUGUI>(true))
+            UiReadability.MakeReadable(t);
+
         _built = true;
     }
 
-    private RectTransform MakePanel(Transform parent, string name, Vector2 anchor, Vector2 pivot, Vector2 size, Vector2 pos)
-    {
-        var go = new GameObject(name);
-        go.transform.SetParent(parent, false);
-        var img = go.AddComponent<Image>();
-        img.color = PanelBg;
-        img.raycastTarget = false;
-        var rt = img.rectTransform;
-        rt.anchorMin = anchor; rt.anchorMax = anchor; rt.pivot = pivot;
-        rt.sizeDelta = size; rt.anchoredPosition = pos;
-        return rt;
-    }
+        private static RectTransform MakePanel(Transform parent, string name, Vector2 anchor, Vector2 pivot, Vector2 size, Vector2 pos)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            var img = go.AddComponent<Image>();
+            img.sprite = UiSprite.RoundedRect(16);
+            img.type = Image.Type.Sliced;
+            img.color = PanelBg;
+            img.raycastTarget = false;
+            var rt = img.rectTransform;
+            rt.anchorMin = anchor; rt.anchorMax = anchor; rt.pivot = pivot;
+            rt.sizeDelta = size; rt.anchoredPosition = pos;
+
+            var frame = FlowUiTheme.NewRect("Frame", rt);
+            FlowUiTheme.Stretch(frame, 1f);
+            FlowUiTheme.AddSprite(frame, UiSprite.RoundedFrame(16, 2), FlowUiTheme.TerminalBorder)
+                .raycastTarget = false;
+            return rt;
+        }
 
     /// <summary>パネル左上を原点に、横幅いっぱい(左右 12px インセット)・高さ height の行を yTop 下に配置。</summary>
     private TextMeshProUGUI MakeText(RectTransform panel, string name, float yTop, float height,
         int fontSize, Color color, TextAlignmentOptions align, string initial)
     {
-        const float padX = 12f;
+        const float padX = 16f;
         var go = new GameObject(name);
         go.transform.SetParent(panel, false);
         var tmp = go.AddComponent<TextMeshProUGUI>();

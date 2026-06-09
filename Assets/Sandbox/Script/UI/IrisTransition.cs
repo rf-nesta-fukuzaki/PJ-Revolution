@@ -41,8 +41,13 @@ public sealed class IrisTransition : MonoBehaviour, ISceneFadeService
     [SerializeField] private float irisOutDuration = 0.4f;
     [SerializeField] private float irisInDuration  = 0.85f;
 
+    [Header("Loading")]
+    [Tooltip("GDD — ローディング中 TIPS の最低表示秒数。")]
+    [SerializeField] private float minLoadingDisplaySeconds = 3f;
+
     [Header("Appearance")]
     [SerializeField] private Color irisColor = Color.black;
+    [SerializeField] private Color irisLoadingTint = new(0.02f, 0.08f, 0.09f, 1f);
 
     // ── Private fields ─────────────────────────────────────────────────────
 
@@ -123,7 +128,12 @@ public sealed class IrisTransition : MonoBehaviour, ISceneFadeService
     {
         _isSceneTransitioning = true;
 
+        string tip = LoadingTipsCatalog.PickRandom();
+        LoadingTipsOverlay.Instance?.Show(tip);
+
         yield return IrisOutCoroutine(irisOutDuration, null);
+
+        float loadStartedAt = Time.unscaledTime;
 
         AsyncOperation op = sceneName != null
             ? SceneManager.LoadSceneAsync(sceneName)
@@ -133,13 +143,31 @@ public sealed class IrisTransition : MonoBehaviour, ISceneFadeService
         {
             op.allowSceneActivation = false;
             while (op.progress < 0.9f)
+            {
+                LoadingTipsOverlay.Instance?.SetProgress(Mathf.Clamp01(op.progress / 0.9f));
                 yield return null;
+            }
+            LoadingTipsOverlay.Instance?.SetProgress(1f);
             op.allowSceneActivation = true;
             yield return op;
         }
 
-        // シーン初期化が安定するまで 1 フレーム待機
         yield return null;
+
+        float elapsed = Time.unscaledTime - loadStartedAt;
+        float remain  = minLoadingDisplaySeconds - elapsed;
+        if (remain > 0f)
+        {
+            float t = 0f;
+            while (t < remain)
+            {
+                t += Time.unscaledDeltaTime;
+                LoadingTipsOverlay.Instance?.SetProgress(Mathf.Lerp(0.85f, 1f, t / remain));
+                yield return null;
+            }
+        }
+
+        LoadingTipsOverlay.Instance?.Hide();
 
         yield return IrisInCoroutine(irisInDuration, null);
 
@@ -154,17 +182,19 @@ public sealed class IrisTransition : MonoBehaviour, ISceneFadeService
         while (t < duration)
         {
             t += Time.unscaledDeltaTime;
-            SetRadius(Mathf.Lerp(startRadius, 0f, t / duration));
+            float p = t / duration;
+            SetRadius(Mathf.Lerp(startRadius, 0f, p));
+            SetIrisTint(Color.Lerp(irisColor, irisLoadingTint, p));
             yield return null;
         }
 
         SetRadius(0f);
+        SetIrisTint(irisLoadingTint);
         onComplete?.Invoke();
     }
 
     private IEnumerator IrisInCoroutine(float duration, System.Action onComplete)
     {
-        // 解像度変更に備えてアスペクト比を再計算
         UpdateAspectRatio();
         float maxRadius = GetMaxRadius();
         float t = 0f;
@@ -172,12 +202,20 @@ public sealed class IrisTransition : MonoBehaviour, ISceneFadeService
         while (t < duration)
         {
             t += Time.unscaledDeltaTime;
-            SetRadius(Mathf.Lerp(0f, maxRadius, t / duration));
+            float p = t / duration;
+            SetRadius(Mathf.Lerp(0f, maxRadius, p));
+            SetIrisTint(Color.Lerp(irisLoadingTint, irisColor, p));
             yield return null;
         }
 
         SetRadius(maxRadius);
+        SetIrisTint(irisColor);
         onComplete?.Invoke();
+    }
+
+    private void SetIrisTint(Color color)
+    {
+        _material?.SetColor(ColorProp, color);
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────
